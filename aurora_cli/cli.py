@@ -22,21 +22,35 @@ def main(ctx):
 
 
 @main.command()
-@click.option('--url', prompt='URL du serveur Aurora (ex: https://xxx.trycloudflare.com)', help='Server URL')
-@click.option('--key', prompt='Clé API (Bearer)', hide_input=True, help='API Key')
-def connect(url, key):
-    """Connect to Aurora server."""
-    client = AuroraClient(server_url=url, api_key=key, timeout=10.0)
+def connect():
+    """Connect to Aurora server via an Invite Code."""
+    import base64
+    import json
+    
+    display.console.print("\n[bold cyan]🔗 Connexion au serveur Aurora[/bold cyan]")
+    display.console.print("Demandez le code d'invitation à l'administrateur du serveur.")
+    invite_code = input("\nCode d'invitation : ").strip()
+    
     try:
+        # Decode invite code
+        decoded = json.loads(base64.b64decode(invite_code).decode('utf-8'))
+        url = decoded.get("u", "")
+        key = decoded.get("k", "")
+        
+        if not url or not key:
+            raise ValueError("Code d'invitation invalide.")
+            
+        client = AuroraClient(server_url=url, api_key=key, timeout=10.0)
         res = client.auth()
+        
         if res.get("ok"):
             config.set_key("server_url", url.rstrip("/"))
             config.set_key("api_key", key)
-            display.success(f"Connexion réussie ! (Label: {res.get('label', 'N/A')})")
+            display.success(f"Connexion réussie au serveur ! (Tunnel Actif)")
         else:
             display.error(f"Erreur d'authentification: {res.get('error')}")
     except Exception as e:
-        display.error(f"Impossible de se connecter: {e}")
+        display.error(f"Impossible de se connecter: le code est invalide ou expiré. ({e})")
 
 
 @main.command()
