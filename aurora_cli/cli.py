@@ -138,7 +138,8 @@ def run(request):
     if not client.ping():
         display.error("Serveur injoignable.")
         return
-    import os\n    run_mission(client, request, workspace=os.getcwd(), permissions=config.get("default_permissions", "AUTONOMOUS"))
+    import os
+    run_mission(client, request, workspace=os.getcwd(), permissions=config.get("default_permissions", "AUTONOMOUS"))
 
 
 # --- Agents Group ---
