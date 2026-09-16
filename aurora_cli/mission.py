@@ -71,6 +71,29 @@ def run_mission(client: AuroraClient, request: str, workspace: str = "", permiss
                 except Exception as e:
                     display.error(f"Erreur d'envoi du mot de passe : {e}")
 
+            elif etype == "file_transfer":
+                import base64
+                from pathlib import Path
+                filename = event.get("filename", "downloaded_file")
+                b64data = event.get("data", "")
+                
+                # Trouver le Bureau (Desktop)
+                desktop = Path.home() / "Desktop"
+                if not desktop.exists():
+                    desktop = Path.home() / "Bureau"
+                if not desktop.exists():
+                    desktop = Path.home()
+                    
+                out_path = desktop / filename
+                if token_buffer:
+                    display.console.print("\n")
+                    token_buffer = ""
+                try:
+                    out_path.write_bytes(base64.b64decode(b64data))
+                    display.success(f"Fichier reçu et enregistré sur votre Mac : {out_path}")
+                except Exception as e:
+                    display.error(f"Erreur lors de l'enregistrement du fichier : {e}")
+
             elif etype == "error":
                 display.error(event.get("message", "Une erreur est survenue."))
                 
