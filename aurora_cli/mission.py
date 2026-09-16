@@ -53,7 +53,7 @@ def run_mission(client: AuroraClient, request: str, workspace: str = "", permiss
                     if live_spinner:
                         live_spinner.stop()
                     reflection_start = time.time()
-                    spin = Spinner("dots", text=Text(f"▸ {step_name}...", style="dim"))
+                    spin = Spinner("bouncingBar", text=Text(f"✧ Aurora | {step_name}...", style="bold magenta"))
                     live_spinner = Live(spin, refresh_per_second=10, console=display.console, transient=True)
                     live_spinner.start()
                 
@@ -63,7 +63,7 @@ def run_mission(client: AuroraClient, request: str, workspace: str = "", permiss
                     live_spinner.stop()
                     live_spinner = None
                     elapsed_step = int(time.time() - reflection_start)
-                    display.console.print(f"[dim]▸ {step_name} ({elapsed_step}s)[/dim]")
+                    display.console.print(f"[bold magenta]✧ Aurora[/bold magenta] [dim]| {step_name} ({elapsed_step}s)[/dim]")
                 elif "Action:" in step_name:
                     pass # Handled by the tokens usually, or we can ignore
                 
@@ -72,7 +72,7 @@ def run_mission(client: AuroraClient, request: str, workspace: str = "", permiss
                     elapsed = event.get("elapsed", 0)
                     mins = int(elapsed) // 60
                     secs = int(elapsed) % 60
-                    spin = Spinner("dots", text=Text(f"▸ {current_step} [{mins:02d}:{secs:02d}]...", style="dim"))
+                    spin = Spinner("bouncingBar", text=Text(f"✧ Aurora | {current_step} [{mins:02d}:{secs:02d}]...", style="bold magenta"))
                     live_spinner.update(spin)
                     
             elif etype == "token":
@@ -83,7 +83,7 @@ def run_mission(client: AuroraClient, request: str, workspace: str = "", permiss
                 # Custom formatting for Bash commands
                 if "[EXECUTION BASH]:" in token:
                     cmd = token.replace("[EXECUTION BASH]:", "").strip()
-                    display.console.print(f"\n[bold blue]●[/bold blue] [bold]Bash[/bold]([cyan]{cmd}[/cyan])")
+                    display.console.print(f"\n[bold cyan]⚡[/bold cyan] [bold white]Système[/bold white] [dim]❯[/dim] [cyan]{cmd}[/cyan]")
                 else:
                     # Indent raw token output slightly for aesthetics
                     # If it has newlines, indent the next line
