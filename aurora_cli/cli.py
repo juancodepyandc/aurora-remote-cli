@@ -60,12 +60,22 @@ def connect():
             "client_key": client_key
         }, timeout=10.0)
         
-        if r.status_code == 200 and r.json().get("ok"):
-            config.set_key("server_url", url)
-            config.set_key("api_key", client_key)
-            display.success(f"Connexion établie avec succès ! (Appareil : {device_name})")
+        if r.status_code == 200:
+            try:
+                data = r.json()
+                if data.get("ok"):
+                    config.set_key("server_url", url)
+                    config.set_key("api_key", client_key)
+                    display.success(f"Connexion établie avec succès ! (Appareil : {device_name})")
+                else:
+                    display.error(f"Refus du serveur: {data.get('error', 'Inconnue')}")
+            except Exception:
+                display.error("Le serveur a répondu avec un format invalide.")
         else:
-            display.error(f"Refus du serveur: {r.text}")
+            if "<html" in r.text.lower() or "cloudflare" in r.text.lower():
+                display.error(f"Le serveur distant (Linux) est hors-ligne ou inaccessible (Erreur {r.status_code}).\nVeuillez vous assurer qu'Aurora est bien lancé sur la machine principale.")
+            else:
+                display.error(f"Erreur HTTP {r.status_code}: {r.text[:200]}")
     except Exception as e:
         display.error(f"Impossible de se connecter automatiquement. ({e})")
 
