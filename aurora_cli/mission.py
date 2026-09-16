@@ -30,27 +30,43 @@ def run_mission(client: AuroraClient, request: str, workspace: str = "", permiss
     start_time = time.time()
     token_buffer = ""
     
+    from rich.status import Status
+    status_spinner = None
+
     try:
         for event in client.mission_stream(mission_id):
             etype = event.get("type", "")
             
             if etype == "step_start":
+                if status_spinner:
+                    status_spinner.stop()
                 step_name = event.get("step", "Processing")
                 current_step = step_name
-                display.mission_step(step_name, event.get("index", 0), elapsed=0, done=False)
+                
+                # Start a beautiful status spinner for the step
+                status_spinner = display.console.status(f"[bold cyan]En cours :[/bold cyan] [white]{step_name}[/white]", spinner="bouncingBar")
+                status_spinner.start()
                 
             elif etype == "step_end":
+                if status_spinner:
+                    status_spinner.stop()
+                    status_spinner = None
                 elapsed = time.time() - start_time
                 step_name = event.get("step", current_step)
                 display.mission_step(step_name, event.get("index", 0), elapsed=elapsed, done=True)
                 
             elif etype == "token":
-                # For now, print tokens directly as they stream during execution
+                if status_spinner:
+                    status_spinner.stop()
+                    status_spinner = None
                 token = event.get("content", "")
                 token_buffer += token
                 display.token_print(token)
                 
             elif etype == "file_diff":
+                if status_spinner:
+                    status_spinner.stop()
+                    status_spinner = None
                 filename = event.get("filename", "unknown")
                 diff_lines = event.get("diff", [])
                 if token_buffer:
@@ -59,12 +75,14 @@ def run_mission(client: AuroraClient, request: str, workspace: str = "", permiss
                 display.code_diff(filename, diff_lines)
                 
             elif etype == "sudo_request":
+                if status_spinner:
+                    status_spinner.stop()
+                    status_spinner = None
                 reason = event.get("reason", "Action nécessite des privilèges élevés")
                 if token_buffer:
                     display.console.print("\n")
                     token_buffer = ""
                 pwd = display.ask_password(f"{reason}. Mot de passe sudo :")
-                # Envoi du mot de passe au serveur (le serveur l'utilise puis l'oublie)
                 try:
                     client.post(f"/api/cli/mission/{mission_id}/input", data={"input_type": "password", "value": pwd})
                     display.success("Mot de passe transmis et supprimé localement.")
@@ -72,17 +90,17 @@ def run_mission(client: AuroraClient, request: str, workspace: str = "", permiss
                     display.error(f"Erreur d'envoi du mot de passe : {e}")
 
             elif etype == "file_transfer":
+                if status_spinner:
+                    status_spinner.stop()
+                    status_spinner = None
                 import base64
                 from pathlib import Path
                 filename = event.get("filename", "downloaded_file")
                 b64data = event.get("data", "")
                 
-                # Trouver le Bureau (Desktop)
                 desktop = Path.home() / "Desktop"
-                if not desktop.exists():
-                    desktop = Path.home() / "Bureau"
-                if not desktop.exists():
-                    desktop = Path.home()
+                if not desktop.exists(): desktop = Path.home() / "Bureau"
+                if not desktop.exists(): desktop = Path.home()
                     
                 out_path = desktop / filename
                 if token_buffer:
@@ -95,23 +113,21 @@ def run_mission(client: AuroraClient, request: str, workspace: str = "", permiss
                     display.error(f"Erreur lors de l'enregistrement du fichier : {e}")
 
             elif etype == "error":
+                if status_spinner:
+                    status_spinner.stop()
+                    status_spinner = None
                 display.error(event.get("message", "Une erreur est survenue."))
                 
             elif etype == "mission_complete":
+                if status_spinner:
+                    status_spinner.stop()
+                    status_spinner = None
                 if token_buffer:
-                    display.console.print("\n") # Ensure newline after stream
+                    display.console.print("\n")
+                    token_buffer = ""
                 display.mission_summary(event)
+                break
                 
-                # Check for temporary agents
-                try:
-                    dyn_agents = client.agents_dynamic().get("agents", [])
-                    mission_agents = [a for a in dyn_agents if a.get("created_by") == mission_id and a.get("type") == "temporary"]
-                    if mission_agents:
-                        handle_temporary_agents(client, mission_agents)
-                except Exception:
-                    pass
-                return
-
     except KeyboardInterrupt:
         display.console.print("\n")
         display.info("Interruption demandée, arrêt de la mission sur le serveur...")
