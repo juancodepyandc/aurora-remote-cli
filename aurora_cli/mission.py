@@ -33,7 +33,13 @@ def run_mission(client: AuroraClient, request: str, workspace: str = "", permiss
     
     info_text = Text()
     info_text.append("🚀 Mission : ", style="bold green")
-    info_text.append(f"{mission_id}\n")
+    
+    # Clean up request for display
+    display_req = request.replace('\n', ' ')
+    if len(display_req) > 55:
+        display_req = display_req[:55] + "..."
+        
+    info_text.append(f"{display_req}\n")
     info_text.append("📂 Confinement : ", style="bold blue")
     info_text.append(f"{actual_ws}\n")
     info_text.append("🔌 Exécution : ", style="bold magenta")
