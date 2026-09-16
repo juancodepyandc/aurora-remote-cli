@@ -112,6 +112,14 @@ def run_mission(client: AuroraClient, request: str, workspace: str = "", permiss
                 except Exception as e:
                     display.error(f"Erreur lors de l'enregistrement du fichier : {e}")
 
+            elif etype == "heartbeat":
+                if status_spinner:
+                    elapsed = event.get("elapsed", 0)
+                    mins = int(elapsed) // 60
+                    secs = int(elapsed) % 60
+                    time_str = f"[{mins:02d}:{secs:02d}]"
+                    status_spinner.update(f"[bold cyan]En cours :[/bold cyan] [white]{current_step}[/white] [dim]{time_str}[/dim]")
+                    
             elif etype == "error":
                 if status_spinner:
                     status_spinner.stop()
