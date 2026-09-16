@@ -151,11 +151,9 @@ def run_mission(client: AuroraClient, request: str, workspace: str = "", permiss
                 filename = event.get("filename", "downloaded_file")
                 b64data = event.get("data", "")
                 
-                desktop = Path.home() / "Desktop"
-                if not desktop.exists(): desktop = Path.home() / "Bureau"
-                if not desktop.exists(): desktop = Path.home()
-                    
-                out_path = desktop / filename
+                # Sauvegarde prioritaire dans le dossier actuel (workspace) sinon fallback Bureau
+                actual_ws = workspace or os.getcwd()
+                out_path = Path(actual_ws) / filename
                 if token_buffer:
                     display.console.print("\n")
                     token_buffer = ""
