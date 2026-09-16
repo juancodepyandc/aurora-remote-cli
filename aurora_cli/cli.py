@@ -22,24 +22,31 @@ def main(ctx):
 
 
 @main.command()
-@click.argument('url', required=False)
-def connect(url):
-    """Connect to Aurora server automatically."""
+def connect():
+    """Connect to Aurora server automatically (zero friction)."""
     import uuid
     import socket
+    import httpx
+    import json
     
-    display.console.print("\n[bold cyan]🔗 Connexion au serveur Aurora[/bold cyan]")
-    
-    if not url:
-        url = input("Entrez l'URL du tunnel Cloudflare (ex: https://xxx.trycloudflare.com) : ").strip()
-    
-    if not url:
-        display.error("URL requise.")
-        return
-        
-    url = url.rstrip("/")
+    display.console.print("\n[bold cyan]🔗 Connexion automatique au serveur Aurora[/bold cyan]")
     
     try:
+        # Fetch dynamic URL from the permanent Gist
+        display.console.print("Recherche du serveur en cours...")
+        # L'URL "raw" de Github Gist pointe toujours vers la version la plus récente de ce Gist public
+        gist_url = "https://gist.githubusercontent.com/juancodepyandc/4510a5d538cef3e262ec38b6acc5bde0/raw/tunnel_sync.txt"
+        
+        # We fetch without cache
+        r_url = httpx.get(gist_url, headers={"Cache-Control": "no-cache"}, timeout=10.0)
+        r_url.raise_for_status()
+        url = r_url.text.strip().rstrip("/")
+        
+        if not url or "trycloudflare" not in url:
+            raise ValueError(f"URL de tunnel invalide reçue : {url}")
+            
+        display.console.print(f"Serveur localisé : [green]{url}[/green]")
+        
         # Generate a unique identity for this client
         client_key = config.get("api_key")
         if not client_key:
@@ -47,8 +54,7 @@ def connect(url):
             
         device_name = socket.gethostname()
         
-        # We need to register this identity on the server
-        import httpx
+        display.console.print("Vérification et enregistrement...")
         r = httpx.post(f"{url}/api/cli/register", json={
             "device_name": device_name,
             "client_key": client_key
@@ -57,11 +63,11 @@ def connect(url):
         if r.status_code == 200 and r.json().get("ok"):
             config.set_key("server_url", url)
             config.set_key("api_key", client_key)
-            display.success(f"Connexion établie avec succès ! Appareil enregistré sous : {device_name}")
+            display.success(f"Connexion établie avec succès ! (Appareil : {device_name})")
         else:
             display.error(f"Refus du serveur: {r.text}")
     except Exception as e:
-        display.error(f"Impossible de se connecter à l'URL. Le serveur est-il en ligne ? ({e})")
+        display.error(f"Impossible de se connecter automatiquement. ({e})")
 
 
 @main.command()
