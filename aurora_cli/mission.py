@@ -31,42 +31,73 @@ def run_mission(client: AuroraClient, request: str, workspace: str = "", permiss
     token_buffer = ""
     
     from rich.status import Status
-    status_spinner = None
+    live_spinner = None
+
+    # UI state
+    from rich.live import Live
+    from rich.spinner import Spinner
+    from rich.text import Text
+    import re
+    
+    live_spinner = None
+    reflection_start = 0
 
     try:
         for event in client.mission_stream(mission_id):
             etype = event.get("type", "")
             
             if etype == "step_start":
-                if status_spinner:
-                    status_spinner.stop()
-                step_name = event.get("step", "Processing")
+                step_name = event.get("step", "")
                 current_step = step_name
-                
-                # Start a beautiful status spinner for the step
-                status_spinner = display.console.status(f"[bold cyan]En cours :[/bold cyan] [white]{step_name}[/white]", spinner="bouncingBar")
-                status_spinner.start()
+                if "Réflexion" in step_name or "Exécution" in step_name:
+                    if live_spinner:
+                        live_spinner.stop()
+                    reflection_start = time.time()
+                    spin = Spinner("dots", text=Text(f"▸ {step_name}...", style="dim"))
+                    live_spinner = Live(spin, refresh_per_second=10, console=display.console, transient=True)
+                    live_spinner.start()
                 
             elif etype == "step_end":
-                if status_spinner:
-                    status_spinner.stop()
-                    status_spinner = None
-                elapsed = time.time() - start_time
                 step_name = event.get("step", current_step)
-                display.mission_step(step_name, event.get("index", 0), elapsed=elapsed, done=True)
+                if live_spinner and ("Réflexion" in step_name or "Exécution" in step_name):
+                    live_spinner.stop()
+                    live_spinner = None
+                    elapsed_step = int(time.time() - reflection_start)
+                    display.console.print(f"[dim]▸ {step_name} ({elapsed_step}s)[/dim]")
+                elif "Action:" in step_name:
+                    pass # Handled by the tokens usually, or we can ignore
                 
+            elif etype == "heartbeat":
+                if live_spinner:
+                    elapsed = event.get("elapsed", 0)
+                    mins = int(elapsed) // 60
+                    secs = int(elapsed) % 60
+                    spin = Spinner("dots", text=Text(f"▸ {current_step} [{mins:02d}:{secs:02d}]...", style="dim"))
+                    live_spinner.update(spin)
+                    
             elif etype == "token":
-                if status_spinner:
-                    status_spinner.stop()
-                    status_spinner = None
+                if live_spinner:
+                    live_spinner.stop()
+                    live_spinner = None
                 token = event.get("content", "")
-                token_buffer += token
-                display.token_print(token)
+                # Custom formatting for Bash commands
+                if "[EXECUTION BASH]:" in token:
+                    cmd = token.replace("[EXECUTION BASH]:", "").strip()
+                    display.console.print(f"\n[bold blue]●[/bold blue] [bold]Bash[/bold]([cyan]{cmd}[/cyan])")
+                else:
+                    # Indent raw token output slightly for aesthetics
+                    # If it has newlines, indent the next line
+                    lines = token.split("\n")
+                    for i, line in enumerate(lines):
+                        if i == len(lines) - 1:
+                            display.console.print(f"  [dim]{line}[/dim]", end="", highlight=False)
+                        else:
+                            display.console.print(f"  [dim]{line}[/dim]", highlight=False)
                 
             elif etype == "file_diff":
-                if status_spinner:
-                    status_spinner.stop()
-                    status_spinner = None
+                if live_spinner:
+                    live_spinner.stop()
+                    live_spinner = None
                 filename = event.get("filename", "unknown")
                 diff_lines = event.get("diff", [])
                 if token_buffer:
@@ -75,9 +106,9 @@ def run_mission(client: AuroraClient, request: str, workspace: str = "", permiss
                 display.code_diff(filename, diff_lines)
                 
             elif etype == "sudo_request":
-                if status_spinner:
-                    status_spinner.stop()
-                    status_spinner = None
+                if live_spinner:
+                    live_spinner.stop()
+                    live_spinner = None
                 reason = event.get("reason", "Action nécessite des privilèges élevés")
                 if token_buffer:
                     display.console.print("\n")
@@ -90,9 +121,9 @@ def run_mission(client: AuroraClient, request: str, workspace: str = "", permiss
                     display.error(f"Erreur d'envoi du mot de passe : {e}")
 
             elif etype == "file_transfer":
-                if status_spinner:
-                    status_spinner.stop()
-                    status_spinner = None
+                if live_spinner:
+                    live_spinner.stop()
+                    live_spinner = None
                 import base64
                 from pathlib import Path
                 filename = event.get("filename", "downloaded_file")
@@ -112,24 +143,18 @@ def run_mission(client: AuroraClient, request: str, workspace: str = "", permiss
                 except Exception as e:
                     display.error(f"Erreur lors de l'enregistrement du fichier : {e}")
 
-            elif etype == "heartbeat":
-                if status_spinner:
-                    elapsed = event.get("elapsed", 0)
-                    mins = int(elapsed) // 60
-                    secs = int(elapsed) % 60
-                    time_str = f"[{mins:02d}:{secs:02d}]"
-                    status_spinner.update(f"[bold cyan]En cours :[/bold cyan] [white]{current_step}[/white] [dim]{time_str}[/dim]")
+
                     
             elif etype == "error":
-                if status_spinner:
-                    status_spinner.stop()
-                    status_spinner = None
+                if live_spinner:
+                    live_spinner.stop()
+                    live_spinner = None
                 display.error(event.get("message", "Une erreur est survenue."))
                 
             elif etype == "mission_complete":
-                if status_spinner:
-                    status_spinner.stop()
-                    status_spinner = None
+                if live_spinner:
+                    live_spinner.stop()
+                    live_spinner = None
                 if token_buffer:
                     display.console.print("\n")
                     token_buffer = ""
