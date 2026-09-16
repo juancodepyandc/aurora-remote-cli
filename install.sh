@@ -48,13 +48,9 @@ add_to_path "$HOME/.bash_profile"
 echo ""
 echo "✅ Installation terminée avec succès !"
 echo "⚡ Le chemin $USER_BIN a été ajouté à votre configuration de terminal."
-echo "⚠️  ACTION REQUISE : Pour pouvoir utiliser la commande 'aurora' immédiatement, tapez ceci :"
-if [[ "$SHELL" == *"zsh"* ]]; then
-    echo "    source ~/.zshrc"
-else
-    echo "    source ~/.bashrc"
-fi
-echo ""
-echo "🚀 Ensuite, connectez-vous avec :"
+echo "🔄 Redémarrage automatique du terminal pour appliquer les changements..."
+echo "🚀 Vous pourrez ensuite taper :"
 echo "    aurora connect"
-echo ""
+echo "==============================================="
+sleep 2
+exec "$SHELL" -l
