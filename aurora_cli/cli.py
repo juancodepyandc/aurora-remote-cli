@@ -1,4 +1,28 @@
 """Main CLI entrypoint for Aurora Remote CLI."""
+
+# --- PATCH ANTI-CENSURE DNS (Box FR / NXDOMAIN Errno 8) ---
+import socket
+import httpx
+
+_orig_getaddrinfo = socket.getaddrinfo
+
+def _patched_getaddrinfo(host, port, family=0, type=0, proto=0, flags=0):
+    if host.endswith(".trycloudflare.com"):
+        try:
+            # Resolution via DNS-over-HTTPS (Cloudflare) pour contourner le blocage FAI
+            r = httpx.get(f"https://cloudflare-dns.com/dns-query?name={host}&type=A", headers={"accept": "application/dns-json"}, timeout=5.0)
+            if r.status_code == 200:
+                answers = r.json().get("Answer", [])
+                if answers:
+                    ip = answers[0]["data"]
+                    return _orig_getaddrinfo(ip, port, family, type, proto, flags)
+        except Exception:
+            pass
+    return _orig_getaddrinfo(host, port, family, type, proto, flags)
+
+socket.getaddrinfo = _patched_getaddrinfo
+# ---------------------------------------------------------
+
 import click
 
 from aurora_cli import config
@@ -57,6 +81,7 @@ def connect():
         device_name = socket.gethostname()
         
         display.console.print("Vérification et enregistrement...")
+        console.print(f"DEBUG URL: '{url}'")
         r = httpx.post(f"{url}/api/cli/register", json={
             "device_name": device_name,
             "client_key": client_key
