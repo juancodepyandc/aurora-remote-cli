@@ -67,6 +67,17 @@ def connect():
                     config.set_key("server_url", url)
                     config.set_key("api_key", client_key)
                     display.success(f"Connexion établie avec succès ! (Appareil : {device_name})")
+                    
+                    # Lancement magique et immédiat de l'interface !
+                    display.console.print("\n[bold green]🚀 Démarrage de l'interface interactive...[/bold green]")
+                    import time
+                    time.sleep(1)
+                    from aurora_cli.interactive import run_interactive
+                    from aurora_cli.client import AuroraClient
+                    
+                    # Instantiate client with newly configured keys
+                    client = AuroraClient(server_url=url, api_key=client_key, timeout=10.0)
+                    run_interactive(client)
                 else:
                     display.error(f"Refus du serveur: {data.get('error', 'Inconnue')}")
             except Exception:
