@@ -81,7 +81,7 @@ def connect():
         device_name = socket.gethostname()
         
         display.console.print("Vérification et enregistrement...")
-        console.print(f"DEBUG URL: '{url}'")
+        display.console.print(f"DEBUG URL: '{url}'")
         r = httpx.post(f"{url}/api/cli/register", json={
             "device_name": device_name,
             "client_key": client_key
