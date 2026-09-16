@@ -151,9 +151,27 @@ def run_mission(client: AuroraClient, request: str, workspace: str = "", permiss
                 filename = event.get("filename", "downloaded_file")
                 b64data = event.get("data", "")
                 
-                # Sauvegarde prioritaire dans le dossier actuel (workspace) sinon fallback Bureau
-                actual_ws = workspace or os.getcwd()
-                out_path = Path(actual_ws) / filename
+                # Routage universel vers les Téléchargements selon l'OS (Mac/Android/iOS)
+                import platform
+                
+                out_dir = Path(os.getcwd()) # Fallback
+                
+                # Détection Android (Termux)
+                if "com.termux" in os.environ.get("PREFIX", ""):
+                    out_dir = Path("/storage/emulated/0/Download")
+                # Détection iOS (a-Shell)
+                elif "APPDIR" in os.environ and "a-Shell" in os.environ["APPDIR"]:
+                    out_dir = Path.home()  # a-Shell home (Documents)
+                # Détection Mac/Win
+                else:
+                    dl = Path.home() / "Downloads"
+                    dl_fr = Path.home() / "Téléchargements"
+                    if dl.exists(): out_dir = dl
+                    elif dl_fr.exists(): out_dir = dl_fr
+                
+                # Ensure it exists
+                out_dir.mkdir(parents=True, exist_ok=True)
+                out_path = out_dir / filename
                 if token_buffer:
                     display.console.print("\n")
                     token_buffer = ""
