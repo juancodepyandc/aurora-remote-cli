@@ -22,35 +22,46 @@ def main(ctx):
 
 
 @main.command()
-def connect():
-    """Connect to Aurora server via an Invite Code."""
-    import base64
-    import json
+@click.argument('url', required=False)
+def connect(url):
+    """Connect to Aurora server automatically."""
+    import uuid
+    import socket
     
     display.console.print("\n[bold cyan]🔗 Connexion au serveur Aurora[/bold cyan]")
-    display.console.print("Demandez le code d'invitation à l'administrateur du serveur.")
-    invite_code = input("\nCode d'invitation : ").strip()
+    
+    if not url:
+        url = input("Entrez l'URL du tunnel Cloudflare (ex: https://xxx.trycloudflare.com) : ").strip()
+    
+    if not url:
+        display.error("URL requise.")
+        return
+        
+    url = url.rstrip("/")
     
     try:
-        # Decode invite code
-        decoded = json.loads(base64.b64decode(invite_code).decode('utf-8'))
-        url = decoded.get("u", "")
-        key = decoded.get("k", "")
-        
-        if not url or not key:
-            raise ValueError("Code d'invitation invalide.")
+        # Generate a unique identity for this client
+        client_key = config.get("api_key")
+        if not client_key:
+            client_key = "aurora_cli_" + str(uuid.uuid4()).replace("-", "")
             
-        client = AuroraClient(server_url=url, api_key=key, timeout=10.0)
-        res = client.auth()
+        device_name = socket.gethostname()
         
-        if res.get("ok"):
-            config.set_key("server_url", url.rstrip("/"))
-            config.set_key("api_key", key)
-            display.success(f"Connexion réussie au serveur ! (Tunnel Actif)")
+        # We need to register this identity on the server
+        import httpx
+        r = httpx.post(f"{url}/api/cli/register", json={
+            "device_name": device_name,
+            "client_key": client_key
+        }, timeout=10.0)
+        
+        if r.status_code == 200 and r.json().get("ok"):
+            config.set_key("server_url", url)
+            config.set_key("api_key", client_key)
+            display.success(f"Connexion établie avec succès ! Appareil enregistré sous : {device_name}")
         else:
-            display.error(f"Erreur d'authentification: {res.get('error')}")
+            display.error(f"Refus du serveur: {r.text}")
     except Exception as e:
-        display.error(f"Impossible de se connecter: le code est invalide ou expiré. ({e})")
+        display.error(f"Impossible de se connecter à l'URL. Le serveur est-il en ligne ? ({e})")
 
 
 @main.command()
