@@ -34,13 +34,14 @@ def connect():
     try:
         # Fetch dynamic URL from the permanent Gist
         display.console.print("Recherche du serveur en cours...")
-        # L'URL "raw" de Github Gist pointe toujours vers la version la plus récente de ce Gist public
-        gist_url = "https://gist.githubusercontent.com/juancodepyandc/4510a5d538cef3e262ec38b6acc5bde0/raw/tunnel_sync.txt"
+        # On utilise l'API GitHub pour contourner le cache agressif des CDN (qui cause des erreurs de DNS avec des vieux liens)
+        gist_api_url = "https://api.github.com/gists/4510a5d538cef3e262ec38b6acc5bde0"
         
-        # We fetch without cache
-        r_url = httpx.get(gist_url, headers={"Cache-Control": "no-cache"}, timeout=10.0)
+        r_url = httpx.get(gist_api_url, timeout=10.0)
         r_url.raise_for_status()
-        url = r_url.text.strip().rstrip("/")
+        
+        gist_data = r_url.json()
+        url = gist_data.get("files", {}).get("tunnel_sync.txt", {}).get("content", "").strip().rstrip("/")
         
         if not url or "trycloudflare" not in url:
             raise ValueError(f"URL de tunnel invalide reçue : {url}")
