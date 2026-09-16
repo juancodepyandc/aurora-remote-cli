@@ -1,8 +1,6 @@
 <#
 .SYNOPSIS
-Installe le client Aurora Remote CLI sur Windows.
-.DESCRIPTION
-Vérifie la présence de Python, installe le package via pipx ou pip, et affiche les instructions.
+Installe le client Aurora Remote CLI sur Windows de façon robuste.
 #>
 
 Write-Host "===============================================" -ForegroundColor Cyan
@@ -10,31 +8,36 @@ Write-Host "  Installation du client Aurora Remote CLI" -ForegroundColor Cyan
 Write-Host "===============================================" -ForegroundColor Cyan
 
 if (-not (Get-Command "python" -ErrorAction SilentlyContinue)) {
-    Write-Host "❌ Erreur: Python 3 est requis mais non installé. (python.org)" -ForegroundColor Red
+    Write-Host "❌ Erreur: Python 3 est requis mais non installé." -ForegroundColor Red
     exit 1
 }
 
 Write-Host "📦 Installation du paquet aurora-cli..." -ForegroundColor Yellow
-
-if (Get-Command "pipx" -ErrorAction SilentlyContinue) {
-    Write-Host "✨ 'pipx' détecté. Installation isolée..." -ForegroundColor Cyan
-    pipx install . --force
-} else {
-    Write-Host "⚠️ 'pipx' non détecté. Installation via pip user..." -ForegroundColor Yellow
-    python -m pip install --user .
-}
+python -m pip install --user --upgrade --force-reinstall .
 
 if ($LASTEXITCODE -ne 0) {
     Write-Host "❌ Erreur lors de l'installation." -ForegroundColor Red
     exit 1
 }
 
+$UserBase = python -c "import site, os; print(os.path.join(site.USER_BASE, 'Scripts'))"
+if (-not (Test-Path "$UserBase\aurora.exe")) {
+    $UserBase = python -c "import os, sys; print(os.path.dirname(sys.executable))"
+}
+
+Write-Host "🔍 Chemin d'installation détecté : $UserBase" -ForegroundColor Cyan
+
+# Ajout dynamique au PATH Windows
+$UserPath = [Environment]::GetEnvironmentVariable("PATH", "User")
+if ($UserPath -notmatch [regex]::Escape($UserBase)) {
+    [Environment]::SetEnvironmentVariable("PATH", "$UserPath;$UserBase", "User")
+    Write-Host "⚡ Le chemin a été ajouté aux variables d'environnement Windows de façon permanente." -ForegroundColor Green
+}
+
 Write-Host ""
 Write-Host "✅ Installation terminée avec succès !" -ForegroundColor Green
-Write-Host "⚠️  Assurez-vous que votre dossier Python Scripts est dans votre variable d'environnement PATH." -ForegroundColor Yellow
+Write-Host "⚠️  ACTION REQUISE : Fermez et rouvrez cette fenêtre PowerShell pour recharger le PATH." -ForegroundColor Yellow
 Write-Host ""
-Write-Host "🚀 Pour commencer :" -ForegroundColor Cyan
-Write-Host "  1. Obtenez une clé API Bearer sur le serveur Aurora"
-Write-Host "  2. Lancez 'aurora connect' pour configurer l'URL et la clé"
-Write-Host "  3. Lancez 'aurora' pour entrer dans le mode interactif"
+Write-Host "🚀 Ensuite, tapez simplement :" -ForegroundColor Cyan
+Write-Host "    aurora connect"
 Write-Host ""
