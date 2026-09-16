@@ -63,6 +63,18 @@ def run_interactive(client: AuroraClient) -> None:
     history_file = str(config.HISTORY_FILE)
     config.ensure_dirs()
     from prompt_toolkit.styles import Style
+    from prompt_toolkit.lexers import PygmentsLexer
+    from pygments.lexer import RegexLexer, bygroups
+    from pygments.token import Keyword, String, Text
+    
+    class AuroraLexer(RegexLexer):
+        tokens = {
+            'root': [
+                (r'(^/\w+)(\s+)(.*)$', bygroups(Keyword, Text, String)),
+                (r'(^/\w+)$', Keyword),
+                (r'.', Text),
+            ]
+        }
     
     # Style cyberpunk / moderne pour le menu déroulant (autocomplétion)
     custom_style = Style.from_dict({
@@ -72,12 +84,15 @@ def run_interactive(client: AuroraClient) -> None:
         'scrollbar.background': 'bg:#222222',
         'scrollbar.button': 'bg:#00ffff',
         'prompt': '#00ffff bold',
+        'keyword': '#ff00ff bold', # Magenta pour /commande
+        'string': '#ffff00',       # Jaune pour les arguments
     })
 
     prompt_session: PromptSession = PromptSession(
         history=FileHistory(history_file),
         completer=COMMAND_COMPLETER,
         style=custom_style,
+        lexer=PygmentsLexer(AuroraLexer),
         complete_while_typing=True
     )
 
@@ -179,24 +194,30 @@ def _cmd_status(client: AuroraClient) -> None:
         display.error(f"Erreur: {e}")
 
 
-def _cmd_permissions(client: AuroraClient, user_input: str) -> None:
+def _cmd_permissions(client, user_input: str) -> None:
     parts = user_input.split()
     if len(parts) > 1:
         level = parts[1].upper()
-        try:
-            result = client.permissions_set(level)
-            if result.get("ok"):
-                display.success(f"Permissions: {level}")
-            else:
-                display.error(result.get("error", "Failed"))
-        except Exception as e:
-            display.error(str(e))
     else:
         try:
             data = client.permissions_get()
             display.permissions_display(data.get("levels", {}))
+            console.print("[cyan]Entrez le nom de la permission (ex: AUTONOMOUS, SAFE) ou laissez vide pour annuler :[/cyan]")
+            level = input("Nouvelle permission > ").strip().upper()
+            if not level:
+                return
         except Exception as e:
             display.error(str(e))
+            return
+            
+    try:
+        result = client.permissions_set(level)
+        if result.get("ok"):
+            display.success(f"Permissions: {level}")
+        else:
+            display.error(result.get("error", "Failed"))
+    except Exception as e:
+        display.error(str(e))
 
 
 def _cmd_agents(client: AuroraClient) -> None:
