@@ -171,7 +171,7 @@ def run_interactive(client: AuroraClient) -> None:
         # permettant à l'IA de réfléchir, de lancer des outils et de modifier des fichiers.
         try:
             from aurora_cli.mission import run_mission
-            run_mission(client, user_input, permissions=config.get("default_permissions", "AUTONOMOUS"), session_id=session_id)
+            import os\n            run_mission(client, user_input, workspace=os.getcwd(), permissions=config.get("default_permissions", "AUTONOMOUS"), session_id=session_id)
         except KeyboardInterrupt:
             console.print("\n[yellow]Interrompu par l'utilisateur.[/yellow]\n")
         except Exception as e:
