@@ -62,9 +62,23 @@ def run_interactive(client: AuroraClient) -> None:
     messages: list[dict] = []
     history_file = str(config.HISTORY_FILE)
     config.ensure_dirs()
+    from prompt_toolkit.styles import Style
+    
+    # Style cyberpunk / moderne pour le menu déroulant (autocomplétion)
+    custom_style = Style.from_dict({
+        'completion-menu': 'bg:#1e1e1e #00ffff',
+        'completion-menu.completion.current': 'bg:#00ffff #000000 bold',
+        'completion-menu.completion': 'bg:#1e1e1e #00aaaa',
+        'scrollbar.background': 'bg:#222222',
+        'scrollbar.button': 'bg:#00ffff',
+        'prompt': '#00ffff bold',
+    })
+
     prompt_session: PromptSession = PromptSession(
         history=FileHistory(history_file),
         completer=COMMAND_COMPLETER,
+        style=custom_style,
+        complete_while_typing=True
     )
 
     # Handle Ctrl+C gracefully
@@ -137,29 +151,16 @@ def run_interactive(client: AuroraClient) -> None:
                 console.print(f"[dim]Commande inconnue: {cmd}. Tapez /help.[/dim]")
             continue
 
-        # Chat message
-        messages.append({"role": "user", "content": user_input})
-        console.print()
-
+        # --- Agentic Mission Execution ---
+        # Au lieu d'un simple chat textuel, chaque message lance une mission complète
+        # permettant à l'IA de réfléchir, de lancer des outils et de modifier des fichiers.
         try:
-            full_response = ""
-            for event in client.chat_stream(messages, session_id=session_id):
-                etype = event.get("type", "")
-                if etype == "token":
-                    token = event.get("content", "")
-                    display.token_print(token)
-                    full_response += token
-                elif etype == "done":
-                    pass
-                elif etype == "error":
-                    display.error(event.get("error", "Unknown error"))
-            console.print("\n")
-            if full_response:
-                messages.append({"role": "assistant", "content": full_response})
+            from aurora_cli.mission import run_mission
+            run_mission(client, user_input, permissions=config.get("default_permissions", "AUTONOMOUS"), session_id=session_id)
         except KeyboardInterrupt:
-            console.print("\n[yellow]Interrompu.[/yellow]\n")
+            console.print("\n[yellow]Interrompu par l'utilisateur.[/yellow]\n")
         except Exception as e:
-            display.error(f"Erreur: {e}")
+            display.error(f"Erreur d'exécution: {e}")
             console.print()
 
 

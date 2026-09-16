@@ -12,11 +12,10 @@ from aurora_cli import display
 from aurora_cli.client import AuroraClient
 
 
-def run_mission(client: AuroraClient, request: str, workspace: str = "", permissions: str = "AUTONOMOUS", model: str = "") -> None:
+def run_mission(client: AuroraClient, request: str, workspace: str = "", permissions: str = "AUTONOMOUS", model: str = "", session_id: str = "") -> None:
     """Start and monitor an autonomous mission."""
-    display.info("Initialisation de la mission...")
     try:
-        data = client.mission_start(request, workspace=workspace, permissions=permissions, model=model)
+        data = client.mission_start(request, workspace=workspace, permissions=permissions, model=model, session_id=session_id)
         mission_id = data.get("mission_id")
         if not mission_id:
             display.error("Impossible de démarrer la mission.")
@@ -25,7 +24,7 @@ def run_mission(client: AuroraClient, request: str, workspace: str = "", permiss
         display.error(f"Erreur de démarrage: {e}")
         return
 
-    display.success(f"Mission démarrée (ID: {mission_id})")
+    display.success(f"Mission {mission_id[:8]} démarrée. Analyse de la requête en cours...")
     
     current_step = ""
     start_time = time.time()

@@ -14,46 +14,51 @@ from rich.columns import Columns
 console = Console()
 
 
-def banner(status: dict) -> None:
-    """Display the Aurora connection banner."""
-    hw = status.get("hardware", {})
-    gpu_info = hw.get("gpu", "N/A")
-    vram = hw.get("vram_total_gb", 0)
-    if vram:
-        gpu_info += f" ({vram} GB)"
-
-    models_count = status.get("models_count", 0)
-    agents_off = status.get("agents_official", 0)
-    agents_dyn = status.get("agents_dynamic_saved", 0)
-    mcp_srv = status.get("mcp_servers", 0)
-    mcp_tools = status.get("mcp_tools", 0)
-    skills = status.get("skills_count", 0)
-    conns = status.get("connections", [])
-    hostname = status.get("hostname", "Server")
-
-    connected = "[green]● Connected[/green]" if status.get("ok") else "[red]● Disconnected[/red]"
-
-    lines = [
-        "",
-        "       [bold bright_cyan]AURORA[/bold bright_cyan]",
-        "  [dim]Autonomous AI Agent[/dim]",
-        "",
-        f"  Server   : [bold]{hostname}[/bold]",
-        f"  Status   : {connected}",
-        f"  GPU      : [yellow]{gpu_info}[/yellow]",
-        f"  Models   : {models_count} loaded",
-        f"  Agents   : {agents_off} official, {agents_dyn} saved",
+    
+def banner(status_data: dict) -> None:
+    """Affiche une bannière futuriste et animée."""
+    from rich.live import Live
+    from rich.panel import Panel
+    from rich.align import Align
+    import time
+    
+    frames = [
+        "[bold cyan]A[/bold cyan]",
+        "[bold cyan]AU[/bold cyan]",
+        "[bold cyan]AUR[/bold cyan]",
+        "[bold cyan]AURO[/bold cyan]",
+        "[bold cyan]AUROR[/bold cyan]",
+        "[bold cyan]AURORA[/bold cyan]",
+        "[bold cyan]A U R O R A[/bold cyan]",
+        "[bold cyan]A U R O R A[/bold cyan] [white]I N I T I A L I Z I N G . . .[/white]",
     ]
-    if mcp_srv:
-        lines.append(f"  MCP      : {mcp_srv} servers, {mcp_tools} tools")
-    if skills:
-        lines.append(f"  Skills   : {skills} loaded")
-    if conns:
-        lines.append(f"  Services : {', '.join(c.capitalize() for c in conns[:5])}")
-    lines.append("")
-
-    content = "\n".join(lines)
-    console.print(Panel(content, border_style="bright_cyan", width=50))
+    
+    with Live(auto_refresh=False) as live:
+        for frame in frames:
+            content = f"{frame}\n\n[dim]Système distant synchronisé.[/dim]"
+            live.update(Panel(Align.center(content), border_style="cyan", width=60))
+            live.refresh()
+            time.sleep(0.08)
+            
+        time.sleep(0.3)
+        
+        hw = status_data.get("hardware", {})
+        gpu_info = hw.get("gpu", "N/A")
+        vram = hw.get("vram_total_gb", 0)
+        if vram:
+            gpu_info += f" ({vram} GB)"
+            
+        final_content = (
+            "[bold white]A U R O R A   N E X U S[/bold white]\n"
+            "[bold cyan]───────────────────────────────────[/bold cyan]\n"
+            f"[dim]Serveur distant[/dim]  : [green]En ligne[/green]\n"
+            f"[dim]Puissance Brute[/dim]  : [cyan]{gpu_info}[/cyan]\n"
+            f"[dim]Mode Autonome[/dim]    : [magenta]Opérationnel[/magenta]\n"
+            "[bold cyan]───────────────────────────────────[/bold cyan]"
+        )
+        live.update(Panel(Align.center(final_content), border_style="bold blue", width=60))
+        live.refresh()
+    console.print()
 
 
 def doctor_results(checks: list[dict]) -> None:
