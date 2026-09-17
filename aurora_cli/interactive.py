@@ -183,8 +183,7 @@ def run_interactive(client: AuroraClient) -> None:
                     
                     console.print(table)
                     
-                    choice = IntPrompt.ask("
-[bold cyan]Sélectionnez un ID de mode[/bold cyan]", choices=["1", "2", "3"], show_choices=False)
+                    choice = IntPrompt.ask("\n[bold cyan]Sélectionnez un ID de mode[/bold cyan]", choices=["1", "2", "3"], show_choices=False)
                     
                     mode_map = {"1": "autonome", "2": "fast", "3": "base"}
                     selected_mode = mode_map[str(choice)]
@@ -227,8 +226,7 @@ def run_interactive(client: AuroraClient) -> None:
                     task_result["text"] = result
                     done_event.set()
                 
-                console.print(f"
-[bold cyan]Routage AGI :[/bold cyan] [bold magenta]Analyse...[/bold magenta]")
+                console.print(f"\n[bold cyan]Routage AGI :[/bold cyan] [bold magenta]Analyse...[/bold magenta]")
                 task_id, route, past_ctx = jobia_engine.process_request(user_input, callback=on_jobia_done)
                 
                 # Animation Swarm (Visibilité du processus)
@@ -259,17 +257,14 @@ def run_interactive(client: AuroraClient) -> None:
                         time.sleep(0.1)
                 
                 # Une fois terminé, on affiche l'animation Typewriter
-                console.print(f"
-[bold green]✔ Tâche {task_id} traitée en {time.time() - start_time:.1f}s.[/bold green]")
+                console.print(f"\n[bold green]✔ Tâche {task_id} traitée en {time.time() - start_time:.1f}s.[/bold green]")
                 
-                lines = task_result["text"].split('
-')
+                lines = task_result["text"].split("\n")
                 displayed_text = ""
                 
                 with Live(auto_refresh=False, console=console) as live:
                     for line in lines:
-                        displayed_text += line + "
-"
+                        displayed_text += line + "\n"
                         # Utilisation de justify="left" et d'un code_theme pour sublimer les maths et le code
                         md = Markdown(displayed_text, justify="left", code_theme="monokai")
                         panel = Panel(md, border_style="cyan", title="[bold magenta]Synthèse J.O.B.I.A[/bold magenta]", expand=False, padding=(1, 2))
@@ -280,9 +275,7 @@ def run_interactive(client: AuroraClient) -> None:
             else:
                 console.print("[red]ERREUR FATALE: Moteur J.O.B.I.A. hors-service. Dépannage requis.[/red]")
         except KeyboardInterrupt:
-            console.print("
-[yellow]Interrompu par l'utilisateur.[/yellow]
-")
+            console.print("\n[yellow]Interrompu par l'utilisateur.[/yellow]\n")
         except Exception as e:
             display.error(f"Erreur d'exécution: {e}")
             console.print()
