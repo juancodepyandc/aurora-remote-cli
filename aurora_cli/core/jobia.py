@@ -12,8 +12,17 @@ from datetime import datetime, timedelta
 from typing import Callable, Any, Dict, List
 import logging
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [J.O.B.I.A.] %(message)s")
+import logging
+from aurora_cli.core.paths import AGI_LOG_PATH
+
+# Configuration silencieuse (Fichier uniquement)
+logging.basicConfig(
+    level=logging.INFO, 
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    handlers=[logging.FileHandler(str(AGI_LOG_PATH), encoding='utf-8')]
+)
 logger = logging.getLogger("JOBIA")
+logging.getLogger("httpx").setLevel(logging.WARNING)
 
 class DockerSandbox:
     def __init__(self):
