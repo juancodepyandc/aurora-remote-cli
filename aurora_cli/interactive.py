@@ -169,25 +169,33 @@ def run_interactive(client: AuroraClient) -> None:
                 console.clear()
             elif cmd == "/mode":
                 if jobia_engine:
-                    try:
-                        import questionary
-                        result = questionary.select(
-                            "Sélectionnez le mode de routage d'intelligence :",
-                            choices=[
-                                questionary.Choice("Autonome (Routage dynamique et intelligent)", "autonome"),
-                                questionary.Choice("Mode Surmultiplié (Cloud Dédié - Sous quotas)", "fast"),
-                                questionary.Choice("Mode Local (PC strict)", "base")
-                            ],
-                            style=questionary.Style([('qmark', 'fg:cyan bold'), ('question', 'bold'), ('answer', 'fg:magenta bold'), ('pointer', 'fg:cyan bold'), ('highlighted', 'fg:cyan bold')])
-                        ).ask()
-                        
-                        if result:
-                            if jobia_engine.set_mode(result):
-                                console.print(f"[bold green]✔ Mode J.O.B.I.A. basculé sur : {result.upper()}[/bold green]")
-                            else:
-                                console.print("[red]Mode refusé (Quotas Cloud potentiellement épuisés).[/red]")
-                    except ImportError:
-                        console.print("[red]Bibliothèque 'questionary' manquante. Tapez: pip install questionary[/red]")
+                    from rich.table import Table
+                    from rich.prompt import IntPrompt
+                    
+                    table = Table(title="[bold magenta]✧ Configuration du Routage Neuronal ✧[/bold magenta]", border_style="cyan", show_header=True, header_style="bold cyan", expand=True)
+                    table.add_column("ID", justify="center", style="bold yellow", width=4)
+                    table.add_column("Mode d'Exécution", style="bold white")
+                    table.add_column("Description", style="dim")
+                    
+                    table.add_row("1", "Autonome", "Routage dynamique et intelligent (Recommandé)")
+                    table.add_row("2", "Surmultiplié", "Cloud Dédié (Performances maximales, sous quotas)")
+                    table.add_row("3", "Local Strict", "Exécution 100% Locale (Aucune fuite de données)")
+                    
+                    console.print(table)
+                    
+                    choice = IntPrompt.ask("
+[bold cyan]Sélectionnez un ID de mode[/bold cyan]", choices=["1", "2", "3"], show_choices=False)
+                    
+                    mode_map = {"1": "autonome", "2": "fast", "3": "base"}
+                    selected_mode = mode_map[str(choice)]
+                    
+                    with console.status("[bold magenta]Reconfiguration de l'architecture en cours...[/bold magenta]", spinner="dots12"):
+                        import time
+                        time.sleep(1) # Simulation de la reconnexion réseau
+                        if jobia_engine.set_mode(selected_mode):
+                            console.print(f"[bold green]✔ Architecture verrouillée sur le mode : {selected_mode.upper()}[/bold green]")
+                        else:
+                            console.print("[red]✖ Rejeté (Quotas Cloud potentiellement épuisés).[/red]")
                 else:
                     console.print("[red]Moteur J.O.B.I.A. non disponible.[/red]")
             elif cmd == "/stop":
@@ -207,8 +215,28 @@ def run_interactive(client: AuroraClient) -> None:
                 def on_jobia_done(task_id, result):
                     from rich.markdown import Markdown
                     from rich.panel import Panel
-                    console.print(f"\n[bold green]✔ Analyse J.O.B.I.A {task_id} Terminée[/bold green]")
-                    console.print(Panel(Markdown(result), border_style="cyan", title="[bold magenta]Rapport de Synthèse[/bold magenta]", expand=False))
+                    from rich.live import Live
+                    from rich.console import Group
+                    import time
+                    
+                    console.print(f"
+[bold green]✔ Tâche {task_id} traitée.[/bold green]")
+                    
+                    # Simulation d'affichage progressif (Typewriter Effect)
+                    # Pour éviter de bloquer l'UI trop longtemps, on l'affiche par blocs.
+                    lines = result.split('
+')
+                    displayed_text = ""
+                    
+                    with Live(auto_refresh=False, console=console) as live:
+                        for line in lines:
+                            displayed_text += line + "
+"
+                            md = Markdown(displayed_text)
+                            panel = Panel(md, border_style="cyan", title="[bold magenta]Synthèse J.O.B.I.A[/bold magenta]", expand=False)
+                            live.update(panel, refresh=True)
+                            time.sleep(0.05)  # Effet d'écriture rapide
+                    
                     console.print("J.O.B.I.A ⚡ > ", end="", flush=True)
                     
                 console.print("[bold magenta]🧠 J.O.B.I.A analyse votre requête...[/bold magenta]")
