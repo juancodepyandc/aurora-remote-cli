@@ -37,7 +37,7 @@ Pour vous connecter au serveur Aurora, l'administrateur (celui qui héberge le s
 
 Exécutez simplement :
 ```bash
-aurora connect
+jobia connect
 ```
 Puis collez votre code d'invitation lorsqu'il vous est demandé.
 
@@ -79,7 +79,7 @@ git clone https://github.com/juancodepyandc/aurora-remote-cli.git
 cd aurora-remote-cli
 pip install .
 ```
-3. Connectez-vous avec `aurora connect`.
+3. Connectez-vous avec `jobia connect`.
 *Note : Tous les fichiers générés par l'IA (images, sons, etc.) atterriront automatiquement dans le dossier local de l'application a-Shell (accessible via l'application Fichiers de votre iPhone).*
 
 ### Mobile : Android (Termux)
@@ -102,5 +102,5 @@ git clone https://github.com/juancodepyandc/aurora-remote-cli.git
 cd aurora-remote-cli
 pip install .
 ```
-5. Connectez-vous avec `aurora connect`.
+5. Connectez-vous avec `jobia connect`.
 *Note : Tous les fichiers générés atterriront directement dans votre dossier `Téléchargements` Android principal !*

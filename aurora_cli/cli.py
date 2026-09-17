@@ -49,7 +49,7 @@ def main(ctx):
         client = AuroraClient()
         if not config.is_configured() or not client.ping():
             display.error("Client non configuré ou serveur injoignable.")
-            display.info("Veuillez lancer: aurora connect")
+            display.info("Veuillez lancer: jobia connect")
             return
         run_interactive(client)
 
@@ -62,7 +62,7 @@ def connect():
     import httpx
     import json
     
-    display.console.print("\n[bold cyan]🔗 Connexion automatique au serveur Aurora[/bold cyan]")
+    display.console.print("\n[bold cyan]🔗 Connexion automatique au Cerveau J.O.B.I.A[/bold cyan]")
     
     try:
         # Contournement du cache agressif CDN de GitHub (5 minutes)

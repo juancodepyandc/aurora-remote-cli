@@ -59,7 +59,7 @@ def run_interactive(client: AuroraClient) -> None:
         display.banner(status)
     except Exception as e:
         display.error(f"Cannot connect to Aurora server: {e}")
-        console.print("[dim]Run 'aurora connect' to configure the server connection.[/dim]")
+        console.print("[dim]Run 'jobia connect' to configure the server connection.[/dim]")
         return
 
     # Create session
@@ -169,15 +169,23 @@ def run_interactive(client: AuroraClient) -> None:
                 console.clear()
             elif cmd == "/mode":
                 if jobia_engine:
-                    parts = user_input.split()
-                    if len(parts) > 1:
-                        new_mode = parts[1].lower()
-                        if jobia_engine.set_mode(new_mode):
-                            console.print(f"[bold green]Mode J.O.B.I.A. défini sur : {new_mode.upper()}[/bold green]")
+                    from prompt_toolkit.shortcuts import radiolist_dialog
+                    result = radiolist_dialog(
+                        title="Configuration J.O.B.I.A",
+                        text="Sélectionnez le mode de routage d'intelligence :",
+                        values=[
+                            ("autonome", "Autonome (Routage dynamique et intelligent)"),
+                            ("fast", "Fast (Kaggle Cloud - Sous réserve de quotas)"),
+                            ("base", "Base (100% Local PC)")
+                        ]
+                    ).run()
+                    if result:
+                        if jobia_engine.set_mode(result):
+                            console.print(f"
+[bold green]✔ Mode J.O.B.I.A. basculé sur : {result.upper()}[/bold green]")
                         else:
-                            console.print("[red]Mode invalide (utilisez : autonome, fast, base).[/red]")
-                    else:
-                        console.print(f"[cyan]Mode actuel : {jobia_engine.mode.upper()}[/cyan]")
+                            console.print("
+[red]Mode refusé (Quotas Kaggle potentiellement épuisés).[/red]")
                 else:
                     console.print("[red]Moteur J.O.B.I.A. non disponible.[/red]")
             elif cmd == "/stop":

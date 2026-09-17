@@ -50,7 +50,7 @@ echo "✅ Installation terminée avec succès !"
 echo "⚡ Le chemin $USER_BIN a été ajouté à votre configuration de terminal."
 echo "🔄 Redémarrage automatique du terminal pour appliquer les changements..."
 echo "🚀 Vous pourrez ensuite taper :"
-echo "    aurora connect"
+echo "    jobia connect"
 echo "==============================================="
 sleep 2
 exec "$SHELL" -l

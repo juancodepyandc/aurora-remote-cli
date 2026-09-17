@@ -39,5 +39,5 @@ Write-Host "✅ Installation terminée avec succès !" -ForegroundColor Green
 Write-Host "⚠️  ACTION REQUISE : Fermez et rouvrez cette fenêtre PowerShell pour recharger le PATH." -ForegroundColor Yellow
 Write-Host ""
 Write-Host "🚀 Ensuite, tapez simplement :" -ForegroundColor Cyan
-Write-Host "    aurora connect"
+Write-Host "    jobia connect"
 Write-Host ""
