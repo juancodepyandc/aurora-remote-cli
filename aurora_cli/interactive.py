@@ -46,7 +46,7 @@ INTERNAL_COMMANDS = {
     "/stop": "Stop current task",
     "/exit": "Exit Aurora",
     "/mode": "Changer le mode (autonome, fast, base)",
-    "/agi": "Lancer la boucle cognitive AGI (Swarm, RAG, ReAct)",
+    "/jobia": "Intelligence suprême : Gère automatiquement les nouvelles exécutions, RAG, et requêtes",
 }
 
 COMMAND_COMPLETER = WordCompleter(list(INTERNAL_COMMANDS.keys()), sentence=True)
