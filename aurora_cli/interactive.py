@@ -181,11 +181,9 @@ def run_interactive(client: AuroraClient) -> None:
                     ).run()
                     if result:
                         if jobia_engine.set_mode(result):
-                            console.print(f"
-[bold green]✔ Mode J.O.B.I.A. basculé sur : {result.upper()}[/bold green]")
+                            console.print(f"\n[bold green]✔ Mode J.O.B.I.A. basculé sur : {result.upper()}[/bold green]")
                         else:
-                            console.print("
-[red]Mode refusé (Quotas Kaggle potentiellement épuisés).[/red]")
+                            console.print("\n[red]Mode refusé (Quotas Kaggle potentiellement épuisés).[/red]")
                 else:
                     console.print("[red]Moteur J.O.B.I.A. non disponible.[/red]")
             elif cmd == "/stop":
