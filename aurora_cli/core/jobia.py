@@ -221,7 +221,7 @@ class JOBIACore:
             #         return "local_client_execution"
                 
             return "local_server_llm_logic"
-    def process_request(self, prompt: str, callback: Callable = None):
+    def process_request(self, prompt: str, callback: Callable = None, client=None, session_id: str = ""):
         route = self.route_task(prompt)
         past_context = self.memory.recall(prompt)
         task_id = f"jobia_{datetime.now().strftime('%H%M%S')}"
@@ -231,12 +231,23 @@ class JOBIACore:
                 script = "echo 'J.O.B.I.A. Cyber Execution' && nmap --version || echo 'Nmap not found'"
                 res = self.sandbox.execute(script, image="kalilinux/kali-rolling")
                 self.memory.store(prompt, script, res["stdout"] if res["success"] else res["stderr"])
-                return res
+                return res["stdout"] if res["success"] else res["stderr"]
             else:
-                import time; time.sleep(2)
-                res = f"J.O.B.I.A. processed via {route}"
-                self.memory.store(prompt, "Standard Action", res)
-                return res
+                if client:
+                    data = client.mission_start(prompt, session_id=session_id)
+                    mission_id = data.get("mission_id")
+                    if not mission_id:
+                        return "Erreur : Impossible de démarrer la mission côté serveur."
+                    
+                    full_text = ""
+                    for event in client.mission_stream(mission_id):
+                        if event.get("type") == "token":
+                            full_text += event.get("content", "")
+                    
+                    self.memory.store(prompt, "Cerveau AGI", full_text)
+                    return full_text
+                else:
+                    return "Erreur: Client non connecté au Cerveau."
 
         self.async_manager.run_in_background(task_id, worker_logic, callback=callback)
         return task_id, route, past_context

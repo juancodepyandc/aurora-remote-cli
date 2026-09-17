@@ -223,11 +223,14 @@ def run_interactive(client: AuroraClient) -> None:
                 task_result = {"text": ""}
                 
                 def on_jobia_done(task_id, result):
-                    task_result["text"] = result
+                    if isinstance(result, dict) and "data" in result:
+                        task_result["text"] = str(result["data"])
+                    else:
+                        task_result["text"] = str(result)
                     done_event.set()
                 
                 console.print(f"\n[bold cyan]Routage AGI :[/bold cyan] [bold magenta]Analyse...[/bold magenta]")
-                task_id, route, past_ctx = jobia_engine.process_request(user_input, callback=on_jobia_done)
+                task_id, route, past_ctx = jobia_engine.process_request(user_input, callback=on_jobia_done, client=client, session_id=session_id)
                 
                 # Animation Swarm (Visibilité du processus)
                 start_time = time.time()
