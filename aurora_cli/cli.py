@@ -75,7 +75,11 @@ def connect():
         
         url = r_url.text.strip().rstrip("/")
         
-        if not url or "trycloudflare" not in url:
+        if not url:
+            display.console.print("[yellow]Le fichier de synchronisation est vide.[/yellow]")
+            raise ValueError("Serveur Hors-Ligne (Le démon Linux a fermé le tunnel publiquement).")
+            
+        if "trycloudflare" not in url:
             raise ValueError(f"URL de tunnel invalide reçue : {url}")
             
         display.console.print(f"Serveur localisé : [green]{url}[/green]")
