@@ -7,7 +7,8 @@ import os
 import sqlite3
 import subprocess
 import threading
-from datetime import datetime
+import psutil
+from datetime import datetime, timedelta
 from typing import Callable, Any, Dict, List
 import logging
 
@@ -15,12 +16,10 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [J.O.B.I.A.] %(messa
 logger = logging.getLogger("JOBIA")
 
 class DockerSandbox:
-    """Environnement d'exécution sécurisé et éphémère."""
     def __init__(self):
         self.kali_installed_temporarily = False
 
     def setup_kali(self):
-        """Installe Kali Linux temporairement si nécessaire."""
         logger.info("Vérification de l'image kalilinux/kali-rolling...")
         res = subprocess.run(["docker", "images", "-q", "kalilinux/kali-rolling"], capture_output=True, text=True)
         if not res.stdout.strip():
@@ -35,7 +34,7 @@ class DockerSandbox:
         logger.info(f"Création d'une Sandbox [{image}]...")
         cmd = [
             "docker", "run", "--rm", "-i",
-            "--network", "bridge", # Permet le scan, mais conteneur isolé et jetable
+            "--network", "bridge",
             "--memory", "1g",
             image, "sh", "-c", script_content
         ]
@@ -54,12 +53,10 @@ class DockerSandbox:
             return {"success": False, "stdout": "", "stderr": str(e), "code": -1}
 
     def teardown(self):
-        """Désinstalle Kali si installé spécifiquement pour cette session."""
         if self.kali_installed_temporarily:
             logger.info("Nettoyage de fin de session : Suppression de l'image Kali Linux...")
             subprocess.run(["docker", "rmi", "kalilinux/kali-rolling", "-f"], capture_output=True)
             self.kali_installed_temporarily = False
-
 
 class LongTermMemory:
     def __init__(self, db_path: str = os.path.expanduser("~/.aurora_jobia_memory.db")):
@@ -95,7 +92,6 @@ class LongTermMemory:
             cursor.execute("SELECT topic, content, resolution FROM memory_fts WHERE memory_fts MATCH ? ORDER BY rank LIMIT ?", (query, limit))
             return [dict(row) for row in cursor.fetchall()]
 
-
 class AsyncTaskManager:
     def __init__(self):
         self.tasks: Dict[str, threading.Thread] = {}
@@ -116,18 +112,64 @@ class AsyncTaskManager:
         thread.start()
         return task_id
 
+from rich.prompt import Confirm
+
+class KaggleQuotaManager:
+    """Gère les limites d'utilisation de Kaggle en interrogeant l'API réelle."""
+    def __init__(self):
+        self.is_grayed_out = False
+
+    def check_quota(self) -> bool:
+        # Fini les compteurs artificiels de 2 heures.
+        # On interroge réellement le statut de l'API Kaggle locale.
+        try:
+            import os
+            # On vérifie d'abord si le token existe
+            if not os.path.exists(os.path.expanduser("~/.kaggle/kaggle.json")):
+                logger.error("[QUOTA] kaggle.json introuvable. Mode FAST grisé définitivement.")
+                self.is_grayed_out = True
+                return False
+                
+            from kaggle.api.kaggle_api_extended import KaggleApi
+            api = KaggleApi()
+            api.authenticate()
+            
+            # Vérification de l'état du réseau Kaggle et des kernels
+            kernels = api.kernels_list(mine=True)
+            self.is_grayed_out = False
+            return True
+        except Exception as e:
+            logger.warning(f"[QUOTA] Kaggle indisponible (Quota GPU épuisé ou erreur réseau: {e}).")
+            self.is_grayed_out = True
+            return False
+
+class HardwareAssessor:
+    """Évalue en temps réel la capacité matérielle du client."""
+    @staticmethod
+    def assess_client_capacity() -> bool:
+        try:
+            ram = psutil.virtual_memory().total / (1024 ** 3)
+            cpu_cores = psutil.cpu_count(logical=False)
+            return ram > 16.0 and cpu_cores >= 8
+        except:
+            return False
 
 class JOBIACore:
     """Juan Optimized Base Intelligence Architecture."""
     def __init__(self):
-        self.mode = "autonome" # autonome, fast (Kaggle), base (Local PC)
+        self.mode = "autonome"
         self.memory = LongTermMemory()
         self.sandbox = DockerSandbox()
         self.async_manager = AsyncTaskManager()
+        self.kaggle_quota = KaggleQuotaManager()
+        self.hardware = HardwareAssessor()
 
     def set_mode(self, mode: str):
         valid_modes = ["autonome", "fast", "base"]
         if mode in valid_modes:
+            if mode == "fast" and self.kaggle_quota.is_grayed_out:
+                logger.error("[J.O.B.I.A] Impossible de forcer FAST. Mode Kaggle grisé (en cooldown).")
+                return False
             self.mode = mode
             return True
         return False
@@ -138,17 +180,32 @@ class JOBIACore:
         is_media = any(kw in prompt_lower for kw in ["vidéo", "3d", "image", "dessin", "render"])
         
         if self.mode == "fast":
-            # Kaggle force
+            if not self.kaggle_quota.check_quota():
+                self.mode = "base"
+                return "local_hardware"
             return "kaggle_cloud"
+            
         elif self.mode == "base":
-            # Local force
             if is_cyber: return "kali_local_sandbox"
             return "local_hardware"
+            
         else: # autonome
             if is_cyber: return "kali_local_sandbox"
-            if is_media: return "kaggle_cloud_heavy"
-            return "local_llm_logic"
-
+            if is_media: 
+                if self.kaggle_quota.check_quota():
+                    return "kaggle_cloud_heavy"
+                
+            # Évaluation d'exécution distribuée maximale
+            if self.hardware.assess_client_capacity():
+                # Fini les futures mises à jour : l'invite est immédiate et réelle.
+                from rich.console import Console
+                c = Console()
+                c.print("\n[bold yellow]⚡ J.O.B.I.A. Hardware Engine[/bold yellow]")
+                c.print("Votre machine cliente dispose d'une puissance supérieure (>16Go RAM, >8 Cores).")
+                if Confirm.ask("Autoriser l'AGI à exécuter cette charge lourde à 100% sur votre client pour préserver les quotas distants ?"):
+                    return "local_client_execution"
+                
+            return "local_server_llm_logic"
     def process_request(self, prompt: str, callback: Callable = None):
         route = self.route_task(prompt)
         past_context = self.memory.recall(prompt)
