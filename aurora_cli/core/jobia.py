@@ -97,10 +97,14 @@ class LongTermMemory:
             conn.commit()
 
     def recall(self, query: str, limit: int = 3) -> List[Dict]:
+        import re
+        safe_query = re.sub(r'[^\w\s]', ' ', query)
+        if not safe_query.strip():
+            return []
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
-            cursor.execute("SELECT topic, content, resolution FROM memory_fts WHERE memory_fts MATCH ? ORDER BY rank LIMIT ?", (query, limit))
+            cursor.execute("SELECT topic, content, resolution FROM memory_fts WHERE memory_fts MATCH ? ORDER BY rank LIMIT ?", (safe_query, limit))
             return [dict(row) for row in cursor.fetchall()]
 
 class AsyncTaskManager:
@@ -207,14 +211,14 @@ class JOBIACore:
                     return "kaggle_cloud_heavy"
                 
             # Évaluation d'exécution distribuée maximale
-            if self.hardware.assess_client_capacity():
-                # Fini les futures mises à jour : l'invite est immédiate et réelle.
-                from rich.console import Console
-                c = Console()
-                c.print("\n[bold yellow]⚡ J.O.B.I.A. Hardware Engine[/bold yellow]")
-                c.print("Votre machine cliente dispose d'une puissance supérieure (>16Go RAM, >8 Cores).")
-                if Confirm.ask("Autoriser l'AGI à exécuter cette charge lourde à 100% sur votre client pour préserver les quotas distants ?"):
-                    return "local_client_execution"
+            # Désactivé temporairement à la demande de l'utilisateur (Mac M-series RAM != GPU serveur)
+            # if self.hardware.assess_client_capacity():
+            #     from rich.console import Console
+            #     c = Console()
+            #     c.print("\n[bold yellow]⚡ J.O.B.I.A. Hardware Engine[/bold yellow]")
+            #     c.print("Votre machine cliente dispose d'une puissance supérieure (>16Go RAM, >8 Cores).")
+            #     if Confirm.ask("Autoriser l'AGI à exécuter cette charge lourde à 100% sur votre client pour préserver les quotas distants ?"):
+            #         return "local_client_execution"
                 
             return "local_server_llm_logic"
     def process_request(self, prompt: str, callback: Callable = None):

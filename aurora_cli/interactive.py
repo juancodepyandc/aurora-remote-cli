@@ -212,43 +212,77 @@ def run_interactive(client: AuroraClient) -> None:
         # --- J.O.B.I.A. Core Execution ---
         try:
             if jobia_engine:
+                import threading
+                import time
+                from rich.live import Live
+                from rich.panel import Panel
+                from rich.markdown import Markdown
+                from rich.text import Text
+                from rich.spinner import Spinner
+                
+                done_event = threading.Event()
+                task_result = {"text": ""}
+                
                 def on_jobia_done(task_id, result):
-                    from rich.markdown import Markdown
-                    from rich.panel import Panel
-                    from rich.live import Live
-                    from rich.console import Group
-                    import time
-                    
-                    console.print(f"
-[bold green]✔ Tâche {task_id} traitée.[/bold green]")
-                    
-                    # Simulation d'affichage progressif (Typewriter Effect)
-                    # Pour éviter de bloquer l'UI trop longtemps, on l'affiche par blocs.
-                    lines = result.split('
-')
-                    displayed_text = ""
-                    
-                    with Live(auto_refresh=False, console=console) as live:
-                        for line in lines:
-                            displayed_text += line + "
-"
-                            md = Markdown(displayed_text)
-                            panel = Panel(md, border_style="cyan", title="[bold magenta]Synthèse J.O.B.I.A[/bold magenta]", expand=False)
-                            live.update(panel, refresh=True)
-                            time.sleep(0.05)  # Effet d'écriture rapide
-                    
-                    console.print("J.O.B.I.A ⚡ > ", end="", flush=True)
-                    
-                console.print("[bold magenta]🧠 J.O.B.I.A analyse votre requête...[/bold magenta]")
+                    task_result["text"] = result
+                    done_event.set()
+                
+                console.print(f"
+[bold cyan]Routage AGI :[/bold cyan] [bold magenta]Analyse...[/bold magenta]")
                 task_id, route, past_ctx = jobia_engine.process_request(user_input, callback=on_jobia_done)
-                console.print(f"[bold cyan]Routage AGI actif :[/bold cyan] [bold magenta]{route}[/bold magenta]")
-                if past_ctx:
-                    console.print(f"[dim]Mémoire locale récupérée : {len(past_ctx)} entrées contextuelles.[/dim]")
-                console.print(f"[dim]Délégation de la tâche {task_id} en arrière-plan (non-bloquant)...[/dim]")
+                
+                # Animation Swarm (Visibilité du processus)
+                start_time = time.time()
+                steps = [
+                    (0, "Transmission de la requête au Cerveau Principal..."),
+                    (2, "Activation du Swarm (Tree of Thought)..."),
+                    (4, "Agent Theorist : Génération d'hypothèses divergentes..."),
+                    (7, "Agent Critic : Évaluation des probabilités de succès..."),
+                    (10, "Agent Empirique : Structuration logique des données..."),
+                    (14, "Synthèse : Rédaction du rapport final...")
+                ]
+                
+                with Live(auto_refresh=True, console=console) as live:
+                    while not done_event.is_set():
+                        elapsed = time.time() - start_time
+                        
+                        # Déterminer l'étape actuelle
+                        current_step_text = steps[-1][1]
+                        for i in range(len(steps)):
+                            if elapsed < steps[i][0]:
+                                current_step_text = steps[i-1][1] if i > 0 else steps[0][1]
+                                break
+                                
+                        spinner = Spinner("dots", text=Text(f"[{elapsed:.1f}s] {current_step_text}", style="cyan"))
+                        panel = Panel(spinner, border_style="magenta", title="[bold cyan]🧠 J.O.B.I.A Engine en cours[/bold cyan]", expand=False)
+                        live.update(panel)
+                        time.sleep(0.1)
+                
+                # Une fois terminé, on affiche l'animation Typewriter
+                console.print(f"
+[bold green]✔ Tâche {task_id} traitée en {time.time() - start_time:.1f}s.[/bold green]")
+                
+                lines = task_result["text"].split('
+')
+                displayed_text = ""
+                
+                with Live(auto_refresh=False, console=console) as live:
+                    for line in lines:
+                        displayed_text += line + "
+"
+                        # Utilisation de justify="left" et d'un code_theme pour sublimer les maths et le code
+                        md = Markdown(displayed_text, justify="left", code_theme="monokai")
+                        panel = Panel(md, border_style="cyan", title="[bold magenta]Synthèse J.O.B.I.A[/bold magenta]", expand=False, padding=(1, 2))
+                        live.update(panel, refresh=True)
+                        time.sleep(0.03)
+                
+                console.print("J.O.B.I.A ⚡ > ", end="", flush=True)
             else:
                 console.print("[red]ERREUR FATALE: Moteur J.O.B.I.A. hors-service. Dépannage requis.[/red]")
         except KeyboardInterrupt:
-            console.print("\n[yellow]Interrompu par l'utilisateur.[/yellow]\n")
+            console.print("
+[yellow]Interrompu par l'utilisateur.[/yellow]
+")
         except Exception as e:
             display.error(f"Erreur d'exécution: {e}")
             console.print()
