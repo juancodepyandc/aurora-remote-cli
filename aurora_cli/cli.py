@@ -65,16 +65,21 @@ def connect():
     display.console.print("\n[bold cyan]🔗 Connexion automatique au serveur Aurora[/bold cyan]")
     
     try:
-        # Fetch dynamic URL from the aurora-live repository
-        display.console.print("Recherche du serveur en cours...")
-        raw_url = "https://raw.githubusercontent.com/juancodepyandc/aurora-live/main/tunnel.txt"
+        # Contournement du cache agressif CDN de GitHub (5 minutes)
+        # On passe par l'API REST officielle qui donne l'état en temps réel.
+        display.console.print("Recherche du serveur en temps réel (API)...")
+        api_url = "https://api.github.com/repos/juancodepyandc/aurora-live/contents/tunnel.txt"
         
-        import time
-        r_url = httpx.get(f"{raw_url}?_t={int(time.time())}", headers={"Cache-Control": "no-cache"}, timeout=10.0)
+        import time, base64
+        r_url = httpx.get(f"{api_url}?_t={int(time.time())}", headers={"Cache-Control": "no-cache", "Accept": "application/vnd.github.v3+json"}, timeout=10.0)
         r_url.raise_for_status()
         
-        url = r_url.text.strip().rstrip("/")
-        
+        data = r_url.json()
+        if "content" in data and data["encoding"] == "base64":
+            url = base64.b64decode(data["content"]).decode("utf-8").strip().rstrip("/")
+        else:
+            url = ""
+            
         if not url:
             display.console.print("[yellow]Le fichier de synchronisation est vide.[/yellow]")
             raise ValueError("Serveur Hors-Ligne (Le démon Linux a fermé le tunnel publiquement).")
