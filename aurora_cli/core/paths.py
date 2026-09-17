@@ -18,3 +18,6 @@ def init_app_dirs():
     """Crée l'architecture cachée si elle n'existe pas."""
     for directory in [APP_DIR, BRAIN_DIR, LOGS_DIR, CONFIG_DIR]:
         directory.mkdir(parents=True, exist_ok=True)
+
+# Auto-initialisation au chargement du module
+init_app_dirs()
