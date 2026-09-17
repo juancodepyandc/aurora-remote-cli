@@ -46,7 +46,6 @@ INTERNAL_COMMANDS = {
     "/stop": "Stop current task",
     "/exit": "Exit Aurora",
     "/mode": "Changer le mode (autonome, fast, base)",
-    "/jobia": "Intelligence suprême : Gère automatiquement les nouvelles exécutions, RAG, et requêtes",
 }
 
 COMMAND_COMPLETER = WordCompleter(list(INTERNAL_COMMANDS.keys()), sentence=True)
@@ -130,7 +129,7 @@ def run_interactive(client: AuroraClient) -> None:
 
     while True:
         try:
-            user_input = prompt_session.prompt("Aurora > ", ).strip()
+            user_input = prompt_session.prompt("J.O.B.I.A ⚡ > ", ).strip()
         except (EOFError, KeyboardInterrupt):
             console.print("\n[dim]Au revoir.[/dim]")
             break
@@ -181,26 +180,6 @@ def run_interactive(client: AuroraClient) -> None:
                         console.print(f"[cyan]Mode actuel : {jobia_engine.mode.upper()}[/cyan]")
                 else:
                     console.print("[red]Moteur J.O.B.I.A. non disponible.[/red]")
-            elif cmd == "/jobia":
-                if jobia_engine:
-                    query = user_input[len("/jobia"):].strip()
-                    if not query:
-                        console.print("[yellow]Requête requise (ex: /jobia optimise le réseau).[/yellow]")
-                        continue
-                        
-                    def on_jobia_done(task_id, result):
-                        console.print(f"\n[bold green]✔ J.O.B.I.A. Tâche {task_id} Terminée[/bold green]")
-                        console.print(result)
-                        console.print("Aurora > ", end="", flush=True)
-                        
-                    console.print("[bold magenta]🧠 Activation de J.O.B.I.A (Analyse de la requête...)[/bold magenta]")
-                    task_id, route, past_ctx = jobia_engine.process_request(query, callback=on_jobia_done)
-                    console.print(f"[bold cyan]J.O.B.I.A[/bold cyan] routage intelligent actif : [bold magenta]{route}[/bold magenta]")
-                    if past_ctx:
-                        console.print(f"[dim]Mémoire locale récupérée : {len(past_ctx)} entrées contextuelles.[/dim]")
-                    console.print(f"[dim]Tâche {task_id} déléguée en arrière-plan (non-bloquant)...[/dim]")
-                else:
-                    console.print("[red]Moteur J.O.B.I.A. non initialisé.[/red]")
             elif cmd == "/stop":
                 if current_mission_id:
                     client.mission_stop(current_mission_id)

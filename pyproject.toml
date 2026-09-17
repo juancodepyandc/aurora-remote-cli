@@ -19,6 +19,7 @@ dependencies = [
 
 [project.scripts]
 aurora = "aurora_cli.cli:main"
+jobia = "aurora_cli.cli:main"
 
 [build-system]
 requires = ["setuptools>=68"]
