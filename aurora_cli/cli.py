@@ -34,6 +34,11 @@ from aurora_cli.client import AuroraClient
 from aurora_cli import display
 from aurora_cli.interactive import run_interactive
 from aurora_cli.mission import run_mission
+from aurora_cli.core.paths import init_app_dirs
+
+# Initialisation de l'architecture cachée
+init_app_dirs()
+
 
 
 @click.group(invoke_without_command=True)

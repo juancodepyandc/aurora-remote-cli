@@ -58,8 +58,10 @@ class DockerSandbox:
             subprocess.run(["docker", "rmi", "kalilinux/kali-rolling", "-f"], capture_output=True)
             self.kali_installed_temporarily = False
 
+from aurora_cli.core.paths import SQLITE_DB_PATH
+
 class LongTermMemory:
-    def __init__(self, db_path: str = os.path.expanduser("~/.aurora_jobia_memory.db")):
+    def __init__(self, db_path: str = str(SQLITE_DB_PATH)):
         self.db_path = db_path
         self._init_db()
 

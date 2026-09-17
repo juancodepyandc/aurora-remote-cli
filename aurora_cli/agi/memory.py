@@ -2,12 +2,13 @@ import os
 import logging
 import uuid
 from typing import List, Dict
+from aurora_cli.core.paths import CHROMA_DB_PATH
 
 logger = logging.getLogger("AGI.Memory")
 
 class VectorMemory:
     """Mémoire Associative (RAG) utilisant ChromaDB."""
-    def __init__(self, db_path: str = "~/.aurora_agi_memory"):
+    def __init__(self, db_path: str = str(CHROMA_DB_PATH)):
         self.db_path = os.path.expanduser(db_path)
         self.collection_name = "agi_long_term"
         self.client = None
