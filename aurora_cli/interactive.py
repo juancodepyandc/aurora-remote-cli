@@ -14,6 +14,17 @@ from rich.markdown import Markdown
 from aurora_cli import config
 from aurora_cli.client import AuroraClient
 from aurora_cli import display
+try:
+    from aurora_cli.core.jobia import JOBIACore
+    jobia_engine = JOBIACore()
+except ImportError:
+    jobia_engine = None
+
+try:
+    from aurora_cli.agi.cognitive_loop import CognitiveEngine
+    agi_engine = CognitiveEngine()
+except ImportError:
+    agi_engine = None
 
 console = Console()
 
@@ -34,6 +45,8 @@ INTERNAL_COMMANDS = {
     "/clear": "Clear the terminal",
     "/stop": "Stop current task",
     "/exit": "Exit Aurora",
+    "/mode": "Changer le mode (autonome, fast, base)",
+    "/agi": "Lancer la boucle cognitive AGI (Swarm, RAG, ReAct)",
 }
 
 COMMAND_COMPLETER = WordCompleter(list(INTERNAL_COMMANDS.keys()), sentence=True)
@@ -155,6 +168,27 @@ def run_interactive(client: AuroraClient) -> None:
                 _cmd_sessions(client)
             elif cmd == "/clear":
                 console.clear()
+            elif cmd == "/nexus":
+                if nexus_engine:
+                    query = user_input[len("/nexus"):].strip()
+                    if not query:
+                        console.print("[yellow]Veuillez fournir une requête (ex: /nexus scan réseau).[/yellow]")
+                        continue
+                        
+                    def on_nexus_done(task_id, result):
+                        console.print(f"
+[bold green]✔ NEXUS Tâche {task_id} Terminée[/bold green]")
+                        console.print(result)
+                        console.print("Aurora > ", end="", flush=True)
+                        
+                    task_id, route, past_ctx = nexus_engine.process_request(query, callback=on_nexus_done)
+                    console.print(f"[bold cyan]NEXUS[/bold cyan] routage actif : [bold magenta]{route}[/bold magenta]")
+                    if past_ctx:
+                        console.print(f"[dim]Mémoire locale récupérée : {len(past_ctx)} entrées contextuelles.[/dim]")
+                    console.print(f"[dim]Tâche {task_id} lancée en arrière-plan (non-bloquant)...[/dim]")
+                else:
+                    console.print("[red]Nexus Engine non disponible.[/red]")
+()
             elif cmd == "/stop":
                 if current_mission_id:
                     client.mission_stop(current_mission_id)

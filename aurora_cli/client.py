@@ -11,17 +11,23 @@ from aurora_cli import config
 class AuroraClient:
     """Lightweight HTTP client for the Aurora bridge server."""
 
+
     def __init__(self, server_url: str = "", api_key: str = "", timeout: float = 30.0):
         cfg = config.load()
         self.server_url = (server_url or cfg.get("server_url", "")).rstrip("/")
         self.api_key = api_key or cfg.get("api_key", "")
         self.timeout = timeout
+        
+        # Expert mode: Robust connection transport with retries
+        transport = httpx.HTTPTransport(retries=3)
         self._client = httpx.Client(
+            transport=transport,
             base_url=self.server_url,
             headers={"Authorization": f"Bearer {self.api_key}"},
             timeout=httpx.Timeout(timeout, connect=10.0),
             follow_redirects=True,
         )
+
 
     def close(self) -> None:
         self._client.close()

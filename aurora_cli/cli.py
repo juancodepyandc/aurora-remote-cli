@@ -24,6 +24,10 @@ socket.getaddrinfo = _patched_getaddrinfo
 # ---------------------------------------------------------
 
 import click
+from rich.traceback import install as install_rich_traceback
+
+# Install expert traceback handler
+install_rich_traceback(show_locals=True, theme="monokai")
 
 from aurora_cli import config
 from aurora_cli.client import AuroraClient
