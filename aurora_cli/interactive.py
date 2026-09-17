@@ -169,21 +169,25 @@ def run_interactive(client: AuroraClient) -> None:
                 console.clear()
             elif cmd == "/mode":
                 if jobia_engine:
-                    from prompt_toolkit.shortcuts import radiolist_dialog
-                    result = radiolist_dialog(
-                        title="Configuration J.O.B.I.A",
-                        text="Sélectionnez le mode de routage d'intelligence :",
-                        values=[
-                            ("autonome", "Autonome (Routage dynamique et intelligent)"),
-                            ("fast", "Fast (Kaggle Cloud - Sous réserve de quotas)"),
-                            ("base", "Base (100% Local PC)")
-                        ]
-                    ).run()
-                    if result:
-                        if jobia_engine.set_mode(result):
-                            console.print(f"\n[bold green]✔ Mode J.O.B.I.A. basculé sur : {result.upper()}[/bold green]")
-                        else:
-                            console.print("\n[red]Mode refusé (Quotas Kaggle potentiellement épuisés).[/red]")
+                    try:
+                        import questionary
+                        result = questionary.select(
+                            "Sélectionnez le mode de routage d'intelligence :",
+                            choices=[
+                                questionary.Choice("Autonome (Routage dynamique et intelligent)", "autonome"),
+                                questionary.Choice("Mode Surmultiplié (Cloud Dédié - Sous quotas)", "fast"),
+                                questionary.Choice("Mode Local (PC strict)", "base")
+                            ],
+                            style=questionary.Style([('qmark', 'fg:cyan bold'), ('question', 'bold'), ('answer', 'fg:magenta bold'), ('pointer', 'fg:cyan bold'), ('highlighted', 'fg:cyan bold')])
+                        ).ask()
+                        
+                        if result:
+                            if jobia_engine.set_mode(result):
+                                console.print(f"[bold green]✔ Mode J.O.B.I.A. basculé sur : {result.upper()}[/bold green]")
+                            else:
+                                console.print("[red]Mode refusé (Quotas Cloud potentiellement épuisés).[/red]")
+                    except ImportError:
+                        console.print("[red]Bibliothèque 'questionary' manquante. Tapez: pip install questionary[/red]")
                 else:
                     console.print("[red]Moteur J.O.B.I.A. non disponible.[/red]")
             elif cmd == "/stop":
@@ -197,13 +201,24 @@ def run_interactive(client: AuroraClient) -> None:
                 console.print(f"[dim]Commande inconnue: {cmd}. Tapez /help.[/dim]")
             continue
 
-        # --- Agentic Mission Execution ---
-        # Au lieu d'un simple chat textuel, chaque message lance une mission complète
-        # permettant à l'IA de réfléchir, de lancer des outils et de modifier des fichiers.
+        # --- J.O.B.I.A. Core Execution ---
         try:
-            from aurora_cli.mission import run_mission
-            import os
-            run_mission(client, user_input, workspace=os.getcwd(), permissions=config.get("default_permissions", "AUTONOMOUS"), session_id=session_id)
+            if jobia_engine:
+                def on_jobia_done(task_id, result):
+                    from rich.markdown import Markdown
+                    from rich.panel import Panel
+                    console.print(f"\n[bold green]✔ Analyse J.O.B.I.A {task_id} Terminée[/bold green]")
+                    console.print(Panel(Markdown(result), border_style="cyan", title="[bold magenta]Rapport de Synthèse[/bold magenta]", expand=False))
+                    console.print("J.O.B.I.A ⚡ > ", end="", flush=True)
+                    
+                console.print("[bold magenta]🧠 J.O.B.I.A analyse votre requête...[/bold magenta]")
+                task_id, route, past_ctx = jobia_engine.process_request(user_input, callback=on_jobia_done)
+                console.print(f"[bold cyan]Routage AGI actif :[/bold cyan] [bold magenta]{route}[/bold magenta]")
+                if past_ctx:
+                    console.print(f"[dim]Mémoire locale récupérée : {len(past_ctx)} entrées contextuelles.[/dim]")
+                console.print(f"[dim]Délégation de la tâche {task_id} en arrière-plan (non-bloquant)...[/dim]")
+            else:
+                console.print("[red]ERREUR FATALE: Moteur J.O.B.I.A. hors-service. Dépannage requis.[/red]")
         except KeyboardInterrupt:
             console.print("\n[yellow]Interrompu par l'utilisateur.[/yellow]\n")
         except Exception as e:
