@@ -62,13 +62,30 @@ def run_interactive(client: AuroraClient) -> None:
         console.print("[dim]Run 'jobia connect' to configure the server connection.[/dim]")
         return
 
-    # Create session
+    # Create or Resume Session
     try:
-        session_data = client.session_create(
-            permissions=config.get("default_permissions", "AUTONOMOUS")
-        )
-        session_id = session_data.get("session", {}).get("id", "")
-    except Exception:
+        from rich.prompt import Prompt
+        data = client.session_list()
+        sessions = data.get("sessions", [])
+        
+        session_id = ""
+        if sessions:
+            console.print("\n[bold cyan]Sessions Actives Détectées :[/bold cyan]")
+            for i, s in enumerate(sessions):
+                console.print(f"  [bold yellow]{i+1}.[/bold yellow] {s['id']} (Perms: {s.get('permissions', 'N/A')})")
+            
+            console.print("\n[dim]Tapez le numéro pour reprendre, ou Entrée pour une nouvelle session.[/dim]")
+            ans = Prompt.ask("Choix", default="")
+            if ans.isdigit() and 1 <= int(ans) <= len(sessions):
+                session_id = sessions[int(ans)-1]["id"]
+                console.print(f"[bold green]✔ Contexte restauré : {session_id}[/bold green]\n")
+            
+        if not session_id:
+            session_data = client.session_create(permissions="AUTONOMOUS")
+            session_id = session_data.get("session", {}).get("id", "")
+            if sessions:
+                console.print(f"[bold magenta]✨ Nouvelle session initiée : {session_id}[/bold magenta]\n")
+    except Exception as e:
         session_id = ""
 
     messages: list[dict] = []
