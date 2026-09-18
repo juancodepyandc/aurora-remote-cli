@@ -257,7 +257,10 @@ def run_interactive(client: AuroraClient) -> None:
                         task_result["text"] = str(result["data"])
                         done_event.set()
                     elif isinstance(result, dict) and "data" in result:
-                        task_result["text"] = str(result["data"])
+                        if isinstance(result["data"], dict) and "data" in result["data"]:
+                            task_result["text"] = str(result["data"]["data"])
+                        else:
+                            task_result["text"] = str(result["data"])
                         done_event.set()
                     else:
                         task_result["text"] = str(result)
