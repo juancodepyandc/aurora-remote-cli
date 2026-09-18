@@ -129,7 +129,7 @@ def run_interactive(client: AuroraClient) -> None:
 
     while True:
         try:
-            user_input = prompt_session.prompt("J.O.B.I.A ⚡ > ", ).strip()
+            user_input = prompt_session.prompt("NEXUS > ", ).strip()
         except (EOFError, KeyboardInterrupt):
             console.print("\n[dim]Au revoir.[/dim]")
             break
@@ -243,21 +243,41 @@ def run_interactive(client: AuroraClient) -> None:
                     (14, "Synthèse : Rédaction du rapport final...")
                 ]
                 
+                from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn
+                
                 with Live(auto_refresh=True, console=console) as live:
                     while not done_event.is_set():
                         elapsed = time.time() - start_time
                         
-                        # Déterminer l'étape actuelle
-                        current_step_text = steps[-1][1]
+                        # Smooth transition logic
+                        current_idx = len(steps) - 1
                         for i in range(len(steps)):
                             if elapsed < steps[i][0]:
-                                current_step_text = steps[i-1][1] if i > 0 else steps[0][1]
+                                current_idx = i - 1 if i > 0 else 0
                                 break
                                 
-                        spinner = Spinner("dots", text=Text(f"[{elapsed:.1f}s] {current_step_text}", style="cyan"))
-                        panel = Panel(spinner, border_style="magenta", title="[bold cyan]🧠 J.O.B.I.A Engine en cours[/bold cyan]", expand=False)
+                        step_text = steps[current_idx][1]
+                        progress_pct = min(100, int((elapsed / 15.0) * 100))
+                        
+                        # Build a Pro-Level Multi-Element Layout
+                        grid = Table.grid(expand=True)
+                        grid.add_column()
+                        grid.add_row(Spinner("bouncingBar", text=Text(f" {step_text}", style="bold cyan")))
+                        grid.add_row(f"[dim magenta]Phase {current_idx+1}/{len(steps)} | Time: {elapsed:.1f}s[/dim magenta]")
+                        
+                        # Progress bar simulation
+                        bar = "[" + "="*(progress_pct//5) + ">" + "."*(20 - progress_pct//5) + "]"
+                        grid.add_row(f"[bold blue]{bar}[/bold blue] {progress_pct}%")
+
+                        panel = Panel(
+                            grid, 
+                            border_style="magenta", 
+                            title="[bold cyan]🧠 J.O.B.I.A COGNITIVE ENGINE[/bold cyan]", 
+                            box=box.HEAVY, 
+                            padding=(1, 2)
+                        )
                         live.update(panel)
-                        time.sleep(0.1)
+                        time.sleep(0.05)
                 
                 # Une fois terminé, on affiche l'animation Typewriter
                 console.print(f"\n[bold green]✔ Tâche {task_id} traitée en {time.time() - start_time:.1f}s.[/bold green]")
@@ -274,7 +294,7 @@ def run_interactive(client: AuroraClient) -> None:
                         live.update(panel, refresh=True)
                         time.sleep(0.03)
                 
-                console.print("J.O.B.I.A ⚡ > ", end="", flush=True)
+                console.print("[bold green]NEXUS[/bold green] [dim cyan]>[/dim cyan] ", end="", flush=True)
             else:
                 console.print("[red]ERREUR FATALE: Moteur J.O.B.I.A. hors-service. Dépannage requis.[/red]")
         except KeyboardInterrupt:

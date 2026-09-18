@@ -35,38 +35,61 @@ class AuroraClient:
     # --- Low-level ---
 
     def get(self, path: str, **kwargs: Any) -> dict:
-        r = self._client.get(path, **kwargs)
-        r.raise_for_status()
-        return r.json()
+        try:
+            r = self._client.get(path, **kwargs)
+            r.raise_for_status()
+            return r.json()
+        except httpx.RequestError as e:
+            return {"ok": False, "error": f"Connection error: {e}"}
+        except httpx.HTTPStatusError as e:
+            return {"ok": False, "error": f"HTTP error {e.response.status_code}"}
 
     def post(self, path: str, data: dict | None = None, **kwargs: Any) -> dict:
-        r = self._client.post(path, json=data or {}, **kwargs)
-        r.raise_for_status()
-        return r.json()
+        try:
+            r = self._client.post(path, json=data or {}, **kwargs)
+            r.raise_for_status()
+            return r.json()
+        except httpx.RequestError as e:
+            return {"ok": False, "error": f"Connection error: {e}"}
+        except httpx.HTTPStatusError as e:
+            return {"ok": False, "error": f"HTTP error {e.response.status_code}"}
 
     def delete(self, path: str, **kwargs: Any) -> dict:
-        r = self._client.delete(path, **kwargs)
-        r.raise_for_status()
-        return r.json()
+        try:
+            r = self._client.delete(path, **kwargs)
+            r.raise_for_status()
+            return r.json()
+        except httpx.RequestError as e:
+            return {"ok": False, "error": f"Connection error: {e}"}
+        except httpx.HTTPStatusError as e:
+            return {"ok": False, "error": f"HTTP error {e.response.status_code}"}
 
     def stream_sse(self, path: str, data: dict | None = None, method: str = "POST") -> Generator[dict, None, None]:
         """Stream SSE events from the server. Yields parsed JSON dicts."""
-        with httpx.Client(
-            base_url=self.server_url,
-            headers={"Authorization": f"Bearer {self.api_key}"},
-            timeout=httpx.Timeout(600.0, connect=10.0),
-        ) as client:
-            if method == "POST":
-                req = client.stream("POST", path, json=data or {})
-            else:
-                req = client.stream("GET", path)
-            with req as response:
-                for line in response.iter_lines():
-                    if line.startswith("data: "):
-                        try:
-                            yield json.loads(line[6:])
-                        except json.JSONDecodeError:
-                            continue
+        transport = httpx.HTTPTransport(retries=3)
+        try:
+            with httpx.Client(
+                transport=transport,
+                base_url=self.server_url,
+                headers={"Authorization": f"Bearer {self.api_key}"},
+                timeout=httpx.Timeout(600.0, connect=10.0),
+            ) as client:
+                if method == "POST":
+                    req = client.stream("POST", path, json=data or {})
+                else:
+                    req = client.stream("GET", path)
+                with req as response:
+                    response.raise_for_status()
+                    for line in response.iter_lines():
+                        if line.startswith("data: "):
+                            try:
+                                yield json.loads(line[6:])
+                            except json.JSONDecodeError:
+                                continue
+        except httpx.RequestError as e:
+            yield {"type": "error", "error": f"Connection error: {e}"}
+        except httpx.HTTPStatusError as e:
+            yield {"type": "error", "error": f"HTTP error {e.response.status_code}"}
 
     # --- Auth ---
 
