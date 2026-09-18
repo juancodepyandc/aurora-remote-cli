@@ -165,6 +165,13 @@ def run_interactive(client: AuroraClient) -> None:
                 console.print(f"[dim]Session: {session_id}[/dim]")
             elif cmd == "/sessions":
                 _cmd_sessions(client)
+            elif cmd == "/fresh":
+                try:
+                    session_data = client.session_create(permissions="AUTONOMOUS")
+                    session_id = session_data.get("session", {}).get("id", "")
+                    console.print(f"\n[bold green]✔ Contexte réinitialisé. Nouvelle session : {session_id}[/bold green]\n")
+                except Exception as e:
+                    console.print(f"[red]Erreur session : {e}[/red]")
             elif cmd == "/clear":
                 console.clear()
             elif cmd == "/mode":
@@ -218,6 +225,8 @@ def run_interactive(client: AuroraClient) -> None:
                 from rich.markdown import Markdown
                 from rich.text import Text
                 from rich.spinner import Spinner
+                from rich.table import Table
+                from rich import box
                 
                 done_event = threading.Event()
                 task_result = {"text": ""}
@@ -244,6 +253,8 @@ def run_interactive(client: AuroraClient) -> None:
                 ]
                 
                 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn
+                from rich.table import Table
+                from rich import box
                 
                 with Live(auto_refresh=True, console=console) as live:
                     while not done_event.is_set():
