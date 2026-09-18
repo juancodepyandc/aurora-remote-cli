@@ -242,10 +242,13 @@ class JOBIACore:
                     full_text = ""
                     for event in client.mission_stream(mission_id):
                         if event.get("type") == "token":
-                            full_text += event.get("content", "")
+                            chunk = event.get("content", "")
+                            full_text += chunk
+                            if callback:
+                                callback(task_id, {"stream": True, "data": chunk})
                     
                     self.memory.store(prompt, "Cerveau AGI", full_text)
-                    return full_text
+                    return {"stream_done": True, "data": full_text}
                 else:
                     return "Erreur: Client non connecté au Cerveau."
 

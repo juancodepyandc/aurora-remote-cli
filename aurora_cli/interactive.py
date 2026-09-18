@@ -242,87 +242,61 @@ def run_interactive(client: AuroraClient) -> None:
                 from rich.markdown import Markdown
                 from rich.text import Text
                 from rich.spinner import Spinner
+                from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn
                 from rich.table import Table
                 from rich import box
                 
                 done_event = threading.Event()
                 task_result = {"text": ""}
+                streamed_text = {"content": ""}
                 
                 def on_jobia_done(task_id, result):
-                    if isinstance(result, dict) and "data" in result:
+                    if isinstance(result, dict) and result.get("stream"):
+                        streamed_text["content"] += str(result["data"])
+                    elif isinstance(result, dict) and result.get("stream_done"):
                         task_result["text"] = str(result["data"])
+                        done_event.set()
+                    elif isinstance(result, dict) and "data" in result:
+                        task_result["text"] = str(result["data"])
+                        done_event.set()
                     else:
                         task_result["text"] = str(result)
-                    done_event.set()
+                        done_event.set()
                 
-                console.print(f"\n[bold cyan]Routage AGI :[/bold cyan] [bold magenta]Analyse...[/bold magenta]")
+                console.print(f"
+[bold cyan]Routage AGI :[/bold cyan] [bold magenta]Transmission de la mission...[/bold magenta]")
                 task_id, route, past_ctx = jobia_engine.process_request(user_input, callback=on_jobia_done, client=client, session_id=session_id)
                 
-                # Animation Swarm (Visibilité du processus)
                 start_time = time.time()
-                steps = [
-                    (0, "Transmission de la requête au Cerveau Principal..."),
-                    (2, "Activation du Swarm (Tree of Thought)..."),
-                    (4, "Agent Theorist : Génération d'hypothèses divergentes..."),
-                    (7, "Agent Critic : Évaluation des probabilités de succès..."),
-                    (10, "Agent Empirique : Structuration logique des données..."),
-                    (14, "Synthèse : Rédaction du rapport final...")
-                ]
-                
-                from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn
-                from rich.table import Table
-                from rich import box
                 
                 with Live(auto_refresh=True, console=console) as live:
                     while not done_event.is_set():
                         elapsed = time.time() - start_time
                         
-                        # Smooth transition logic
-                        current_idx = len(steps) - 1
-                        for i in range(len(steps)):
-                            if elapsed < steps[i][0]:
-                                current_idx = i - 1 if i > 0 else 0
-                                break
-                                
-                        step_text = steps[current_idx][1]
-                        progress_pct = min(100, int((elapsed / 15.0) * 100))
-                        
-                        # Build a Pro-Level Multi-Element Layout
-                        grid = Table.grid(expand=True)
-                        grid.add_column()
-                        grid.add_row(Spinner("bouncingBar", text=Text(f" {step_text}", style="bold cyan")))
-                        grid.add_row(f"[dim magenta]Phase {current_idx+1}/{len(steps)} | Time: {elapsed:.1f}s[/dim magenta]")
-                        
-                        # Progress bar simulation
-                        bar = "[" + "="*(progress_pct//5) + ">" + "."*(20 - progress_pct//5) + "]"
-                        grid.add_row(f"[bold blue]{bar}[/bold blue] {progress_pct}%")
-
-                        panel = Panel(
-                            grid, 
-                            border_style="magenta", 
-                            title="[bold cyan]🧠 J.O.B.I.A COGNITIVE ENGINE[/bold cyan]", 
-                            box=box.HEAVY, 
-                            padding=(1, 2)
-                        )
-                        live.update(panel)
+                        if not streamed_text["content"]:
+                            # Phase d'attente / Reflexion (Le serveur calcule)
+                            grid = Table.grid(expand=True)
+                            grid.add_column()
+                            grid.add_row(Spinner("dots", text=Text(" Les agents réfléchissent (Exploration de l'arbre des possibles)...", style="bold cyan")))
+                            grid.add_row(f"[dim magenta]Phase de réflexion | Temps écoulé: {elapsed:.1f}s[/dim magenta]")
+                            panel = Panel(grid, border_style="magenta", title="[bold cyan]🧠 J.O.B.I.A COGNITIVE ENGINE[/bold cyan]", box=box.HEAVY, padding=(1, 2))
+                            live.update(panel)
+                        else:
+                            # Phase de Streaming (Le texte arrive en temps réel)
+                            md = Markdown(streamed_text["content"] + " █", justify="left", code_theme="monokai")
+                            panel = Panel(md, border_style="cyan", title=f"[bold magenta]🧠 Synthèse J.O.B.I.A (En direct - {elapsed:.1f}s)[/bold magenta]", box=box.HEAVY, padding=(1, 2))
+                            live.update(panel)
+                            
                         time.sleep(0.05)
                 
-                # Une fois terminé, on affiche l'animation Typewriter
-                console.print(f"\n[bold green]✔ Tâche {task_id} traitée en {time.time() - start_time:.1f}s.[/bold green]")
-                
-                lines = task_result["text"].split("\n")
-                displayed_text = ""
-                
-                with Live(auto_refresh=False, console=console) as live:
-                    for line in lines:
-                        displayed_text += line + "\n"
-                        # Utilisation de justify="left" et d'un code_theme pour sublimer les maths et le code
-                        md = Markdown(displayed_text, justify="left", code_theme="monokai")
-                        panel = Panel(md, border_style="cyan", title="[bold magenta]Synthèse J.O.B.I.A[/bold magenta]", expand=False, padding=(1, 2))
-                        live.update(panel, refresh=True)
-                        time.sleep(0.03)
-                
-                console.print("[bold green]NEXUS[/bold green] [dim cyan]>[/dim cyan] ", end="", flush=True)
+                # Une fois terminé, affichage final sans le curseur bloquant
+                console.print(f"
+[bold green]✔ Mission accomplie en {time.time() - start_time:.1f}s.[/bold green]")
+                md_final = Markdown(task_result["text"], justify="left", code_theme="monokai")
+                panel_final = Panel(md_final, border_style="green", title="[bold green]Synthèse Finale[/bold green]", box=box.HEAVY, padding=(1, 2))
+                console.print(panel_final)
+                console.print("[bold green]NEXUS[/bold green] [dim cyan]>[/dim cyan] ", end="")
+
             else:
                 console.print("[red]ERREUR FATALE: Moteur J.O.B.I.A. hors-service. Dépannage requis.[/red]")
         except KeyboardInterrupt:
