@@ -234,7 +234,11 @@ class JOBIACore:
                 return res["stdout"] if res["success"] else res["stderr"]
             else:
                 if client:
-                    data = client.mission_start(prompt, session_id=session_id)
+                    if past_context:
+                        prompt_with_context = f"Contexte précédent pertinent :\n{past_context}\n\nNouvelle requête :\n{prompt}"
+                    else:
+                        prompt_with_context = prompt
+                    data = client.mission_start(prompt_with_context, session_id=session_id)
                     mission_id = data.get("mission_id")
                     if not mission_id:
                         return "Erreur : Impossible de démarrer la mission côté serveur."

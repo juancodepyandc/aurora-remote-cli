@@ -181,7 +181,7 @@ def run_interactive(client: AuroraClient) -> None:
             elif cmd == "/session":
                 console.print(f"[dim]Session: {session_id}[/dim]")
             elif cmd == "/sessions":
-                _cmd_sessions(client)
+                session_id = _cmd_sessions(client, session_id)
             elif cmd == "/fresh":
                 try:
                     session_data = client.session_create(permissions="AUTONOMOUS")
@@ -398,9 +398,43 @@ def _cmd_connections(client: AuroraClient) -> None:
         display.error(str(e))
 
 
-def _cmd_sessions(client: AuroraClient) -> None:
+def _cmd_sessions(client: AuroraClient, current_session_id: str = "") -> str:
     try:
         data = client.session_list()
-        display.sessions_table(data.get("sessions", []))
+        sessions = data.get("sessions", [])
+        if not sessions:
+            console.print("[yellow]Aucune session active.[/yellow]")
+            return current_session_id
+            
+        import questionary
+        choices = [{"name": f"Session {s['id']} (Msg: {s.get('message_count',0)})", "value": s["id"]} for s in sessions]
+        action = questionary.select(
+            "Gérer les sessions :",
+            choices=[
+                {"name": "Lister les sessions", "value": "list"},
+                {"name": "Reprendre une session", "value": "resume"},
+                {"name": "Supprimer une session", "value": "delete"},
+                {"name": "Annuler", "value": "cancel"}
+            ]
+        ).ask()
+        
+        if action == "list":
+            display.sessions_table(sessions)
+        elif action == "resume":
+            sid = questionary.select("Choisir la session à reprendre:", choices=choices).ask()
+            if sid:
+                console.print(f"[bold green]✔ Session reprise : {sid}[/bold green]")
+                return sid
+        elif action == "delete":
+            sid = questionary.select("Choisir la session à supprimer:", choices=choices).ask()
+            if sid:
+                res = client.session_delete(sid)
+                if res.get("ok"):
+                    console.print(f"[bold red]Session {sid} supprimée avec succès.[/bold red]")
+                    if sid == current_session_id:
+                        console.print("[yellow]Vous avez supprimé la session actuelle. Tapez /fresh pour en recréer une.[/yellow]")
+                else:
+                    console.print(f"[red]Erreur: {res.get('error')}[/red]")
     except Exception as e:
         display.error(str(e))
+    return current_session_id
