@@ -263,8 +263,7 @@ def run_interactive(client: AuroraClient) -> None:
                         task_result["text"] = str(result)
                         done_event.set()
                 
-                console.print(f"
-[bold cyan]Routage AGI :[/bold cyan] [bold magenta]Transmission de la mission...[/bold magenta]")
+                console.print(f"\n[bold cyan]Routage AGI :[/bold cyan] [bold magenta]Transmission de la mission...[/bold magenta]")
                 task_id, route, past_ctx = jobia_engine.process_request(user_input, callback=on_jobia_done, client=client, session_id=session_id)
                 
                 start_time = time.time()
@@ -290,8 +289,7 @@ def run_interactive(client: AuroraClient) -> None:
                         time.sleep(0.05)
                 
                 # Une fois terminé, affichage final sans le curseur bloquant
-                console.print(f"
-[bold green]✔ Mission accomplie en {time.time() - start_time:.1f}s.[/bold green]")
+                console.print(f"\n[bold green]✔ Mission accomplie en {time.time() - start_time:.1f}s.[/bold green]")
                 md_final = Markdown(task_result["text"], justify="left", code_theme="monokai")
                 panel_final = Panel(md_final, border_style="green", title="[bold green]Synthèse Finale[/bold green]", box=box.HEAVY, padding=(1, 2))
                 console.print(panel_final)
