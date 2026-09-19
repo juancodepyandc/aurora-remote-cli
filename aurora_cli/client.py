@@ -14,7 +14,7 @@ class AuroraClient:
 
     def __init__(self, server_url: str = "", api_key: str = "", timeout: float = 30.0):
         cfg = config.load()
-        self.server_url = (server_url or cfg.get("server_url", "")).rstrip("/")
+        self.server_url = config.resolve_server_url(server_url, cfg)
         self.api_key = api_key or cfg.get("api_key", "")
         self.timeout = timeout
         

@@ -59,6 +59,12 @@ def set_key(key: str, value: Any) -> None:
     save(cfg)
 
 
+def resolve_server_url(explicit: str = "", cfg: dict[str, Any] | None = None) -> str:
+    if cfg is None:
+        cfg = load()
+    return (explicit or os.environ.get("AURORA_SERVER_URL") or cfg.get("server_url", "")).rstrip("/")
+
+
 def is_configured() -> bool:
     cfg = load()
-    return bool(cfg.get("server_url")) and bool(cfg.get("api_key"))
+    return bool(resolve_server_url(cfg=cfg)) and bool(cfg.get("api_key"))
