@@ -4,12 +4,20 @@ import json
 import os
 from pathlib import Path
 from typing import Any
+from aurora_cli.core.paths import APP_CONFIG_DIR, APP_DATA_DIR
+import shutil
 
-
-CONFIG_DIR = Path.home() / ".aurora"
+CONFIG_DIR = APP_CONFIG_DIR
 CONFIG_FILE = CONFIG_DIR / "config.json"
-HISTORY_FILE = CONFIG_DIR / "history"
-SESSIONS_DIR = CONFIG_DIR / "sessions"
+HISTORY_FILE = APP_DATA_DIR / "history"
+SESSIONS_DIR = APP_DATA_DIR / "sessions"
+
+# Migration si l'ancienne conf ~/.aurora/config.json existe toujours
+_old_config_dir = Path.home() / ".aurora"
+_old_config_file = _old_config_dir / "config.json"
+if _old_config_file.exists() and not CONFIG_FILE.exists():
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    shutil.copy(str(_old_config_file), str(CONFIG_FILE))
 
 DEFAULT_CONFIG = {
     "server_url": "",

@@ -106,6 +106,17 @@ def warning(msg: str) -> None:
 def info(msg: str) -> None:
     console.print(f"[bold cyan]ℹ[/bold cyan] {msg}")
 
+def mission_summary(event: dict) -> None:
+    """Affiche le résumé de la mission une fois terminée."""
+    result = event.get("result", "")
+    summary_panel = Panel(
+        Text(result, style="green"),
+        title="[bold green]✓ Mission Terminée[/bold green]",
+        border_style="green",
+        padding=(1, 2)
+    )
+    console.print(summary_panel)
+
 def typing_effect(text_content: str, speed: float = 0.015, title: str = "Assistant"):
     """Un effet de machine à écrire ultra-fluide avec syntax highlighting Markdown."""
     displayed = ""

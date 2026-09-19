@@ -20,11 +20,7 @@ try:
 except ImportError:
     jobia_engine = None
 
-try:
-    from aurora_cli.agi.cognitive_loop import CognitiveEngine
-    agi_engine = CognitiveEngine()
-except ImportError:
-    agi_engine = None
+agi_engine = None
 
 console = Console()
 

@@ -137,7 +137,7 @@ def connect():
 def status():
     """Show server status."""
     try:
-        display.status_display(AuroraClient().status())
+        display.banner(AuroraClient().status())
     except Exception as e:
         display.error(str(e))
 
