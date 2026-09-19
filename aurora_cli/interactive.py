@@ -243,16 +243,21 @@ def run_interactive(client: AuroraClient) -> None:
                 from rich import box
                 
                 done_event = threading.Event()
-                task_result = {"text": ""}
+                task_result = {"text": "", "status": "error", "reconnecting": False}
                 streamed_text = {"content": ""}
                 
                 def on_jobia_done(task_id, result):
-                    if isinstance(result, dict) and result.get("stream"):
+                    if isinstance(result, dict) and result.get("reconnecting"):
+                        task_result["reconnecting"] = True
+                    elif isinstance(result, dict) and result.get("stream"):
+                        task_result["reconnecting"] = False
                         streamed_text["content"] += str(result["data"])
                     elif isinstance(result, dict) and result.get("stream_done"):
+                        task_result["status"] = result.get("status", "error")
                         task_result["text"] = str(result["data"])
                         done_event.set()
                     elif isinstance(result, dict) and "data" in result:
+                        task_result["status"] = result.get("status", "error")
                         if isinstance(result["data"], dict) and "data" in result["data"]:
                             task_result["text"] = str(result["data"]["data"])
                         else:
@@ -271,7 +276,11 @@ def run_interactive(client: AuroraClient) -> None:
                     while not done_event.is_set():
                         elapsed = time.time() - start_time
                         
-                        if not streamed_text["content"]:
+                        if task_result["reconnecting"]:
+                            live.update(Panel(
+                                Markdown(streamed_text["content"], code_theme="monokai"),
+                                title="Connexion interrompue : reprise en cours", border_style="yellow"))
+                        elif not streamed_text["content"]:
                             # Phase d'attente / Reflexion (Le serveur calcule)
                             grid = Table.grid(expand=True)
                             grid.add_column()
@@ -288,9 +297,12 @@ def run_interactive(client: AuroraClient) -> None:
                         time.sleep(0.05)
                 
                 # Une fois terminé, affichage final sans le curseur bloquant
-                console.print(f"\n[bold green]✔ Mission accomplie en {time.time() - start_time:.1f}s.[/bold green]")
+                outcome = task_result["status"]
+                color = "green" if outcome == "success" else "yellow" if outcome == "stopped" else "red"
+                label = "Mission accomplie" if outcome == "success" else "Mission arrêtée" if outcome == "stopped" else "Mission interrompue ou échouée"
+                console.print(f"\n[bold {color}]{label} en {time.time() - start_time:.1f}s.[/bold {color}]")
                 md_final = Markdown(task_result["text"], justify="left", code_theme="monokai")
-                panel_final = Panel(md_final, border_style="green", title="[bold green]Synthèse Finale[/bold green]", box=box.HEAVY, padding=(1, 2))
+                panel_final = Panel(md_final, border_style=color, title=label, box=box.HEAVY, padding=(1, 2))
                 console.print(panel_final)
                 console.print("[bold green]NEXUS[/bold green] [dim cyan]>[/dim cyan] ", end="")
 

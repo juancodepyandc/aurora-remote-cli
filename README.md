@@ -31,15 +31,23 @@ cd aurora-remote-cli
 .\install.ps1
 ```
 
-## 🔗 Connexion (Un clic)
+## Connexion
 
-Pour vous connecter au serveur Aurora, l'administrateur (celui qui héberge le serveur) doit vous fournir un **Code d'Invitation**. Ce code gère automatiquement le tunnel sécurisé et l'authentification.
+L'administrateur doit vous fournir une clé déjà autorisée par le bridge. Le client la demande sans l'afficher et conserve sa configuration pour les connexions suivantes. L'enregistrement anonyme de nouvelles clés est refusé.
 
 Exécutez simplement :
 ```bash
 jobia connect
 ```
-Puis collez votre code d'invitation lorsqu'il vous est demandé.
+Pour un bridge précis, utilisez `jobia connect --server https://votre-bridge.example`.
+La variable `AURORA_API_KEY` permet aussi de transmettre la clé. Une clé existante
+reste utilisable ; une clé révoquée ne permet pas d'enregistrer une nouvelle clé.
+
+Les flux de mission reprennent après une coupure avec `Last-Event-ID`, au maximum
+trois fois. Les événements déjà reçus ne sont pas réaffichés et la mission n'est
+pas relancée. Cette reprise nécessite la version correspondante du bridge et
+son historique en mémoire : elle ne couvre pas un redémarrage du bridge ou du
+client. Un résultat incomplet est affiché comme une erreur.
 
 ## 🎮 Utilisation
 

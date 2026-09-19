@@ -55,82 +55,58 @@ def main(ctx):
 
 
 @main.command()
-def connect():
-    """Connect to Aurora server automatically (zero friction)."""
-    import uuid
-    import socket
-    import httpx
-    import json
-    
-    display.console.print("\n[bold cyan]🔗 Connexion automatique au Cerveau J.O.B.I.A[/bold cyan]")
-    
+@click.option("--server", default="", help="Adresse du bridge ; sinon découverte du tunnel.")
+@click.option("--api-key", envvar="AURORA_API_KEY", default="", help="Clé déjà autorisée par le bridge.")
+def connect(server, api_key):
+    """Connect with an existing bridge key and remember this device."""
+    import base64
+    import time
+    from urllib.parse import urlsplit
+
     try:
-        # Contournement du cache agressif CDN de GitHub (5 minutes)
-        # On passe par l'API REST officielle qui donne l'état en temps réel.
-        display.console.print("Recherche du serveur en temps réel (API)...")
-        api_url = "https://api.github.com/repos/juancodepyandc/aurora-live/contents/tunnel.txt"
-        
-        import time, base64
-        r_url = httpx.get(f"{api_url}?_t={int(time.time())}", headers={"Cache-Control": "no-cache", "Accept": "application/vnd.github.v3+json"}, timeout=10.0)
-        r_url.raise_for_status()
-        
-        data = r_url.json()
-        if "content" in data and data["encoding"] == "base64":
-            url = base64.b64decode(data["content"]).decode("utf-8").strip().rstrip("/")
-        else:
-            url = ""
-            
+        url = server or config.resolve_server_url()
         if not url:
-            display.console.print("[yellow]Le fichier de synchronisation est vide.[/yellow]")
-            raise ValueError("Serveur Hors-Ligne (Le démon Linux a fermé le tunnel publiquement).")
-            
-        if "trycloudflare" not in url:
-            raise ValueError(f"URL de tunnel invalide reçue : {url}")
-            
-        display.console.print(f"Serveur localisé : [green]{url}[/green]")
-        
-        # Generate a unique identity for this client
-        client_key = config.get("api_key")
+            api_url = "https://api.github.com/repos/juancodepyandc/aurora-live/contents/tunnel.txt"
+            response = httpx.get(
+                api_url, params={"_t": str(int(time.time()))},
+                headers={"Cache-Control": "no-cache", "Accept": "application/vnd.github.v3+json"},
+                timeout=10.0,
+            )
+            response.raise_for_status()
+            metadata = response.json()
+            if metadata.get("encoding") != "base64":
+                raise ValueError("Réponse de découverte du serveur invalide")
+            url = base64.b64decode(metadata["content"]).decode("utf-8").strip()
+        url = url.rstrip("/")
+        parsed = urlsplit(url)
+        if parsed.scheme not in ("http", "https") or not parsed.hostname or parsed.username or parsed.password:
+            raise ValueError("Adresse du bridge invalide")
+        client_key = api_key or config.get("api_key")
         if not client_key:
-            client_key = "aurora_cli_" + str(uuid.uuid4()).replace("-", "")
-            
-        device_name = socket.gethostname()
-        
-        display.console.print("Vérification et enregistrement...")
-        r = httpx.post(f"{url}/api/cli/register", json={
-            "device_name": device_name,
-            "client_key": client_key
-        }, timeout=10.0)
-        
-        if r.status_code == 200:
-            try:
-                data = r.json()
-                if data.get("ok"):
-                    config.set_key("server_url", url)
-                    config.set_key("api_key", client_key)
-                    display.success(f"Connexion établie avec succès ! (Appareil : {device_name})")
-                    
-                    # Lancement magique et immédiat de l'interface !
-                    display.console.print("\n[bold green]🚀 Démarrage de l'interface interactive...[/bold green]")
-                    import time
-                    time.sleep(1)
-                    from aurora_cli.interactive import run_interactive
-                    from aurora_cli.client import AuroraClient
-                    
-                    # Instantiate client with newly configured keys
-                    client = AuroraClient(server_url=url, api_key=client_key, timeout=10.0)
-                    run_interactive(client)
-                else:
-                    display.error(f"Refus du serveur: {data.get('error', 'Inconnue')}")
-            except Exception:
-                display.error("Le serveur a répondu avec un format invalide.")
-        else:
-            if "<html" in r.text.lower() or "cloudflare" in r.text.lower():
-                display.error(f"Le serveur distant (Linux) est hors-ligne ou inaccessible (Erreur {r.status_code}).\nVeuillez vous assurer qu'Aurora est bien lancé sur la machine principale.")
-            else:
-                display.error(f"Erreur HTTP {r.status_code}: {r.text[:200]}")
-    except Exception as e:
-        display.error(f"Impossible de se connecter automatiquement. ({e})")
+            client_key = click.prompt("Clé autorisée par l'administrateur du bridge", hide_input=True)
+        response = httpx.post(
+            f"{url}/api/cli/register",
+            headers={"Authorization": f"Bearer {client_key}"},
+            json={"device_name": socket.gethostname(), "client_key": client_key},
+            timeout=10.0,
+        )
+        if response.status_code == 401:
+            display.error("Clé absente, invalide ou révoquée. Fournissez une clé déjà autorisée par le bridge.")
+            return
+        response.raise_for_status()
+        if not response.json().get("ok"):
+            display.error("Le bridge a refusé l'enregistrement de cet appareil.")
+            return
+        config.set_key("server_url", url)
+        config.set_key("api_key", client_key)
+        display.success("Connexion établie.")
+        client = AuroraClient(server_url=url, api_key=client_key, timeout=30.0)
+        try:
+            run_interactive(client)
+        finally:
+            client.close()
+    except (httpx.HTTPError, ValueError, KeyError) as exc:
+        display.error(f"Connexion impossible : {exc}")
 
 
 @main.command()

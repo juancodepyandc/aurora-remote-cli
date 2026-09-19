@@ -215,11 +215,15 @@ def run_mission(client: AuroraClient, request: str, workspace: str = "", permiss
                     out = f"Erreur d'écriture: {e}"
                 client.post(f"/api/cli/mission/{mission_id}/input", data={"input_type": "remote_write_result", "value": out})
 
+            elif etype == "reconnecting":
+                display.info(f"Connexion interrompue, reprise du flux (tentative {event['attempt']}/3)...")
+
             elif etype == "error":
                 if live_spinner:
                     live_spinner.stop()
                     live_spinner = None
-                display.error(event.get("message", "Une erreur est survenue."))
+                display.error(event.get("message") or event.get("error", "Une erreur est survenue."))
+                break
                 
             elif etype == "mission_complete":
                 if live_spinner:
@@ -235,8 +239,11 @@ def run_mission(client: AuroraClient, request: str, workspace: str = "", permiss
         display.console.print("\n")
         display.info("Interruption demandée, arrêt de la mission sur le serveur...")
         try:
-            client.mission_stop(mission_id)
-            display.success("Mission arrêtée.")
+            result = client.mission_stop(mission_id)
+            if result.get("ok"):
+                display.success("Mission arrêtée.")
+            else:
+                display.error(result.get("error", "Arrêt de la mission non confirmé."))
         except Exception as e:
             display.error(f"Erreur lors de l'arrêt: {e}")
 
