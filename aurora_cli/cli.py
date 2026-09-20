@@ -63,33 +63,60 @@ def connect(server, api_key):
     import time
     from urllib.parse import urlsplit
 
+    def discover():
+        response = httpx.get(
+            "https://api.github.com/repos/juancodepyandc/aurora-live/contents/tunnel.txt",
+            params={"_t": str(int(time.time()))},
+            headers={"Cache-Control": "no-cache", "Accept": "application/vnd.github.v3+json"},
+            timeout=10.0,
+        )
+        response.raise_for_status()
+        metadata = response.json()
+        if metadata.get("encoding") != "base64":
+            raise ValueError("Réponse de découverte du serveur invalide")
+        discovered = base64.b64decode(metadata["content"]).decode("utf-8").strip().rstrip("/")
+        if not discovered:
+            raise ValueError("Le serveur distant semble éteint ou son tunnel n'est pas encore publié sur GitHub.")
+        parsed = urlsplit(discovered)
+        if (parsed.scheme != "https" or not parsed.hostname
+                or not parsed.hostname.endswith(".trycloudflare.com")
+                or parsed.username or parsed.password or parsed.port not in (None, 443)
+                or parsed.path or parsed.query or parsed.fragment):
+            raise ValueError("Adresse de tunnel publiée invalide")
+        return discovered
+
+    def register(url, key):
+        return httpx.post(
+            f"{url}/api/cli/register",
+            headers={"Authorization": f"Bearer {key}"},
+            json={"device_name": socket.gethostname(), "client_key": key},
+            timeout=10.0,
+        )
+
     try:
-        url = server or config.resolve_server_url()
-        if not url:
-            api_url = "https://api.github.com/repos/juancodepyandc/aurora-live/contents/tunnel.txt"
-            response = httpx.get(
-                api_url, params={"_t": str(int(time.time()))},
-                headers={"Cache-Control": "no-cache", "Accept": "application/vnd.github.v3+json"},
-                timeout=10.0,
-            )
-            response.raise_for_status()
-            metadata = response.json()
-            if metadata.get("encoding") != "base64":
-                raise ValueError("Réponse de découverte du serveur invalide")
-            url = base64.b64decode(metadata["content"]).decode("utf-8").strip()
-        url = url.rstrip("/")
+        url = (server or config.resolve_server_url() or discover()).rstrip("/")
         parsed = urlsplit(url)
         if parsed.scheme not in ("http", "https") or not parsed.hostname or parsed.username or parsed.password:
             raise ValueError("Adresse du bridge invalide")
         client_key = api_key or config.get("api_key")
         if not client_key:
             client_key = click.prompt("Clé autorisée par l'administrateur du bridge", hide_input=True)
-        response = httpx.post(
-            f"{url}/api/cli/register",
-            headers={"Authorization": f"Bearer {client_key}"},
-            json={"device_name": socket.gethostname(), "client_key": client_key},
-            timeout=10.0,
-        )
+        import os
+        refresh_allowed = (not server and not os.environ.get("AURORA_SERVER_URL")
+                           and parsed.hostname.endswith(".trycloudflare.com"))
+        try:
+            response = register(url, client_key)
+            if refresh_allowed and response.status_code in (502, 503, 504, 530):
+                response.raise_for_status()
+        except (httpx.ConnectError, httpx.TimeoutException, httpx.HTTPStatusError):
+            if not refresh_allowed:
+                raise
+            display.warning("Le tunnel enregistré ne répond plus. Recherche de l’adresse actuelle...")
+            updated = discover()
+            if updated == url:
+                raise
+            url = updated
+            response = register(url, client_key)
         if response.status_code == 401:
             display.error("Clé absente, invalide ou révoquée. Fournissez une clé déjà autorisée par le bridge.")
             return

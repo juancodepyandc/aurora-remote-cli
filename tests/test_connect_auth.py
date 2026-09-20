@@ -51,6 +51,32 @@ class ConnectAuthTests(unittest.TestCase):
         self.assertEqual(post.call_args.kwargs["headers"]["Authorization"], "Bearer hidden-key")
         self.assertNotIn("hidden-key", result.output)
 
+    def test_expired_tunnel_falls_back_to_discovery(self):
+        import base64
+        discovered_b64 = base64.b64encode(b"https://fresh-tunnel.trycloudflare.com").decode()
+        github_resp = httpx.Response(200, json={"encoding": "base64", "content": discovered_b64},
+                                     request=httpx.Request("GET", "https://api.github.com"))
+        dead_request = httpx.Request("POST", "https://old-tunnel.trycloudflare.com/api/cli/register")
+        fresh_resp = httpx.Response(200, json={"ok": True},
+                                    request=httpx.Request("POST", "https://fresh-tunnel.trycloudflare.com/api/cli/register"))
+
+        def mock_post(url, **kwargs):
+            if "old-tunnel" in url:
+                raise httpx.ConnectError("[Errno 8] nodename nor servname provided, or not known", request=dead_request)
+            return fresh_resp
+
+        with mock.patch.object(self.entry.httpx, "get", return_value=github_resp), \
+                mock.patch.object(self.entry.httpx, "post", side_effect=mock_post), \
+                mock.patch.object(self.entry.config, "resolve_server_url", return_value="https://old-tunnel.trycloudflare.com"), \
+                mock.patch.object(self.entry.config, "get", return_value="saved-key"), \
+                mock.patch.object(self.entry.config, "set_key") as save, \
+                mock.patch.object(self.entry, "AuroraClient") as client, \
+                mock.patch.object(self.entry, "run_interactive") as interactive:
+            result = CliRunner().invoke(self.entry.main, ["connect"])
+        self.assertIsNone(result.exception, result.output)
+        save.assert_any_call("server_url", "https://fresh-tunnel.trycloudflare.com")
+        interactive.assert_called_once()
+
 
 if __name__ == "__main__":
     unittest.main()
