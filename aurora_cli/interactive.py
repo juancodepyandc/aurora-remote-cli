@@ -232,26 +232,29 @@ def run_interactive(client: AuroraClient) -> None:
         try:
             if jobia_engine:
                 import threading
+                import queue
                 import time
                 from rich.live import Live
                 from rich.panel import Panel
                 from rich.markdown import Markdown
                 from rich.text import Text
                 from rich.spinner import Spinner
-                from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn
                 from rich.table import Table
                 from rich import box
                 
                 done_event = threading.Event()
+                first_token_received = threading.Event()
+                token_queue: queue.Queue = queue.Queue()
                 task_result = {"text": "", "status": "error", "reconnecting": False}
-                streamed_text = {"content": ""}
                 
                 def on_jobia_done(task_id, result):
                     if isinstance(result, dict) and result.get("reconnecting"):
                         task_result["reconnecting"] = True
                     elif isinstance(result, dict) and result.get("stream"):
                         task_result["reconnecting"] = False
-                        streamed_text["content"] += str(result["data"])
+                        chunk = str(result["data"])
+                        token_queue.put(chunk)
+                        first_token_received.set()
                     elif isinstance(result, dict) and result.get("stream_done"):
                         task_result["status"] = result.get("status", "error")
                         task_result["text"] = str(result["data"])
@@ -272,39 +275,40 @@ def run_interactive(client: AuroraClient) -> None:
                 
                 start_time = time.time()
                 
-                with Live(auto_refresh=True, console=console) as live:
-                    while not done_event.is_set():
+                # Phase 1: Attente / Réflexion (Spinner compact qui ne déborde jamais le terminal)
+                with Live(console=console, auto_refresh=True, refresh_per_second=10) as live:
+                    while not done_event.is_set() and not first_token_received.is_set():
                         elapsed = time.time() - start_time
-                        
+                        grid = Table.grid(expand=True)
+                        grid.add_column()
+                        grid.add_row(Spinner("dots", text=Text(" Les agents réfléchissent (Exploration de l'arbre des possibles)...", style="bold cyan")))
+                        grid.add_row(f"[dim magenta]Phase de réflexion | Temps écoulé: {elapsed:.1f}s[/dim magenta]")
                         if task_result["reconnecting"]:
-                            live.update(Panel(
-                                Markdown(streamed_text["content"], code_theme="monokai"),
-                                title="Connexion interrompue : reprise en cours", border_style="yellow"))
-                        elif not streamed_text["content"]:
-                            # Phase d'attente / Reflexion (Le serveur calcule)
-                            grid = Table.grid(expand=True)
-                            grid.add_column()
-                            grid.add_row(Spinner("dots", text=Text(" Les agents réfléchissent (Exploration de l'arbre des possibles)...", style="bold cyan")))
-                            grid.add_row(f"[dim magenta]Phase de réflexion | Temps écoulé: {elapsed:.1f}s[/dim magenta]")
-                            panel = Panel(grid, border_style="magenta", title="[bold cyan]🧠 J.O.B.I.A COGNITIVE ENGINE[/bold cyan]", box=box.HEAVY, padding=(1, 2))
-                            live.update(panel)
-                        else:
-                            # Phase de Streaming (Le texte arrive en temps réel)
-                            md = Markdown(streamed_text["content"] + " █", justify="left", code_theme="monokai")
-                            panel = Panel(md, border_style="cyan", title=f"[bold magenta]🧠 Synthèse J.O.B.I.A (En direct - {elapsed:.1f}s)[/bold magenta]", box=box.HEAVY, padding=(1, 2))
-                            live.update(panel)
-                            
-                        time.sleep(0.05)
-                
-                # Une fois terminé, affichage final sans le curseur bloquant
+                            grid.add_row("[bold yellow]⚡ Reconnexion au flux distant en cours...[/bold yellow]")
+                        panel = Panel(grid, border_style="magenta", title="[bold cyan]🧠 J.O.B.I.A COGNITIVE ENGINE[/bold cyan]", box=box.ROUNDED, padding=(0, 1))
+                        live.update(panel)
+                        time.sleep(0.06)
+
+                # Phase 2: Flux direct de la réponse dans le terminal (aucun scroll glitch, zéro duplication)
+                if first_token_received.is_set():
+                    console.print(f"\n[bold cyan]┏━━━━ 🧠 Synthèse J.O.B.I.A ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓[/bold cyan]\n")
+                    while not done_event.is_set() or not token_queue.empty():
+                        try:
+                            chunk = token_queue.get(timeout=0.05)
+                            sys.stdout.write(chunk)
+                            sys.stdout.flush()
+                        except queue.Empty:
+                            pass
+                    console.print(f"\n\n[bold cyan]┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛[/bold cyan]")
+                elif task_result["text"]:
+                    md_final = Markdown(task_result["text"], justify="left", code_theme="monokai")
+                    panel_final = Panel(md_final, border_style="cyan", title="🧠 Synthèse J.O.B.I.A", box=box.ROUNDED, padding=(1, 2))
+                    console.print(panel_final)
+
                 outcome = task_result["status"]
                 color = "green" if outcome == "success" else "yellow" if outcome == "stopped" else "red"
-                label = "Mission accomplie" if outcome == "success" else "Mission arrêtée" if outcome == "stopped" else "Mission interrompue ou échouée"
-                console.print(f"\n[bold {color}]{label} en {time.time() - start_time:.1f}s.[/bold {color}]")
-                md_final = Markdown(task_result["text"], justify="left", code_theme="monokai")
-                panel_final = Panel(md_final, border_style=color, title=label, box=box.HEAVY, padding=(1, 2))
-                console.print(panel_final)
-                console.print("[bold green]NEXUS[/bold green] [dim cyan]>[/dim cyan] ", end="")
+                label = "✔ Mission accomplie" if outcome == "success" else "⚠ Mission arrêtée" if outcome == "stopped" else "✖ Mission interrompue ou échouée"
+                console.print(f"[bold {color}]{label} en {time.time() - start_time:.1f}s.[/bold {color}]\n")
 
             else:
                 console.print("[red]ERREUR FATALE: Moteur J.O.B.I.A. hors-service. Dépannage requis.[/red]")
