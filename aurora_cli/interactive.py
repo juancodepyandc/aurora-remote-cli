@@ -41,7 +41,7 @@ INTERNAL_COMMANDS = {
     "/clear": "Clear the terminal",
     "/stop": "Stop current task",
     "/exit": "Exit Aurora",
-    "/mode": "Changer le mode (autonome, fast, base)",
+    "/mode": "Niveau d'effort cognitif et modèle (pro, balanced, deep, cyber, fast)",
 }
 
 COMMAND_COMPLETER = WordCompleter(list(INTERNAL_COMMANDS.keys()), sentence=True)
@@ -192,29 +192,33 @@ def run_interactive(client: AuroraClient) -> None:
                     from rich.table import Table
                     from rich.prompt import IntPrompt
                     
-                    table = Table(title="[bold magenta]✧ Configuration du Routage Neuronal ✧[/bold magenta]", border_style="cyan", show_header=True, header_style="bold cyan", expand=True)
+                    table = Table(title="[bold magenta]✧ Niveau d'Effort Cognitif & Routage Neuronal ✧[/bold magenta]", border_style="cyan", show_header=True, header_style="bold cyan", expand=True)
                     table.add_column("ID", justify="center", style="bold yellow", width=4)
-                    table.add_column("Mode d'Exécution", style="bold white")
-                    table.add_column("Description", style="dim")
+                    table.add_column("Mode / Effort", style="bold white", width=16)
+                    table.add_column("Modèle IA Déployé", style="bold green", width=25)
+                    table.add_column("Description & Capacités", style="dim")
                     
-                    table.add_row("1", "Autonome", "Routage dynamique et intelligent (Recommandé)")
-                    table.add_row("2", "Surmultiplié", "Cloud Dédié (Performances maximales, sous quotas)")
-                    table.add_row("3", "Local Strict", "Exécution 100% Locale (Aucune fuite de données)")
+                    table.add_row("1", "Pro (Défaut)", "Qwen3-Coder 80B", "Effort Maximal AGI : Raisonnement complet, coding et ComfyUI")
+                    table.add_row("2", "Équilibré", "Qwen3-Coder 30B", "Effort Élevé : Rapide et très performant en génération et code")
+                    table.add_row("3", "Deep R1", "DeepSeek-R1 32B", "Raisonnement Analytique : Chaîne de pensée mathématique et logique")
+                    table.add_row("4", "Cyber", "Qwen-Cyber 51B", "Sécurité & Audit : Reconnaissance et investigation")
+                    table.add_row("5", "Rapide", "Qwen3-VL 8B", "Effort Léger : Réponses courtes et instantanées")
                     
                     console.print(table)
                     
-                    choice = IntPrompt.ask("\n[bold cyan]Sélectionnez un ID de mode[/bold cyan]", choices=["1", "2", "3"], show_choices=False)
+                    choice = IntPrompt.ask("\n[bold cyan]Sélectionnez un ID de mode (1-5)[/bold cyan]", choices=["1", "2", "3", "4", "5"], show_choices=False)
                     
-                    mode_map = {"1": "autonome", "2": "fast", "3": "base"}
+                    mode_map = {"1": "pro", "2": "balanced", "3": "deep", "4": "cyber", "5": "fast"}
                     selected_mode = mode_map[str(choice)]
                     
-                    with console.status("[bold magenta]Reconfiguration de l'architecture en cours...[/bold magenta]", spinner="dots12"):
+                    with console.status("[bold magenta]Reconfiguration de l'effort cognitif...[/bold magenta]", spinner="dots12"):
                         import time
-                        time.sleep(1) # Simulation de la reconnexion réseau
+                        time.sleep(0.5)
                         if jobia_engine.set_mode(selected_mode):
-                            console.print(f"[bold green]✔ Architecture verrouillée sur le mode : {selected_mode.upper()}[/bold green]")
+                            model_name = jobia_engine.get_model() or "Suprême Serveur (80B)"
+                            console.print(f"[bold green]✔ Architecture verrouillée sur le mode : {selected_mode.upper()} [{model_name}][/bold green]")
                         else:
-                            console.print("[red]✖ Rejeté (Quotas Cloud potentiellement épuisés).[/red]")
+                            console.print("[red]✖ Mode non reconnu.[/red]")
                 else:
                     console.print("[red]Moteur J.O.B.I.A. non disponible.[/red]")
             elif cmd == "/stop":
@@ -245,11 +249,13 @@ def run_interactive(client: AuroraClient) -> None:
                 done_event = threading.Event()
                 first_token_received = threading.Event()
                 token_queue: queue.Queue = queue.Queue()
-                task_result = {"text": "", "status": "error", "reconnecting": False}
+                task_result = {"text": "", "status": "error", "reconnecting": False, "transferred_files": []}
                 
                 def on_jobia_done(task_id, result):
                     if isinstance(result, dict) and result.get("reconnecting"):
                         task_result["reconnecting"] = True
+                    elif isinstance(result, dict) and result.get("file_transfer"):
+                        task_result.setdefault("transferred_files", []).append(result)
                     elif isinstance(result, dict) and result.get("stream"):
                         task_result["reconnecting"] = False
                         chunk = str(result["data"])
@@ -304,6 +310,19 @@ def run_interactive(client: AuroraClient) -> None:
                     md_final = Markdown(task_result["text"], justify="left", code_theme="monokai")
                     panel_final = Panel(md_final, border_style="cyan", title="🧠 Synthèse J.O.B.I.A", box=box.ROUNDED, padding=(1, 2))
                     console.print(panel_final)
+
+                transferred = task_result.get("transferred_files", [])
+                if transferred:
+                    from rich.table import Table
+                    file_table = Table(title="[bold green]📦 Fichiers transférés sur votre machine[/bold green]", border_style="green", box=box.ROUNDED)
+                    file_table.add_column("Fichier", style="bold white")
+                    file_table.add_column("Taille", justify="right", style="cyan")
+                    file_table.add_column("Emplacement Local", style="dim green")
+                    for tf in transferred:
+                        size_kb = tf.get("size", 0) / 1024
+                        size_str = f"{size_kb:.1f} Ko" if size_kb < 1024 else f"{size_kb/1024:.2f} Mo"
+                        file_table.add_row(tf.get("filename", ""), size_str, tf.get("path", ""))
+                    console.print(file_table)
 
                 outcome = task_result["status"]
                 color = "green" if outcome == "success" else "yellow" if outcome == "stopped" else "red"

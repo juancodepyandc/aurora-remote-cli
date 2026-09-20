@@ -132,6 +132,48 @@ class JobiaOutcomeTests(unittest.TestCase):
         updates = self.run_job([{"type": "mission_complete", "stopped": True}])
         self.assertEqual(updates[-1]["status"], "stopped")
 
+    def test_file_transfer_writes_file_and_notifies_callback(self):
+        import base64
+        import tempfile
+        import os
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as tmpdir:
+            test_content = b"sample_generated_image_bytes_123"
+            b64_data = base64.b64encode(test_content).decode()
+            events = [
+                {"type": "file_transfer", "filename": "test_image/output.png", "data": b64_data},
+                {"type": "mission_complete", "result": "done"}
+            ]
+            orig_cwd = os.getcwd()
+            try:
+                os.chdir(tmpdir)
+                updates = self.run_job(events)
+                out_file = Path(tmpdir) / "test_image" / "output.png"
+                self.assertTrue(out_file.exists())
+                self.assertEqual(out_file.read_bytes(), test_content)
+                self.assertTrue(any(u.get("file_transfer") for u in updates))
+            finally:
+                os.chdir(orig_cwd)
+
+    def test_effort_mode_selection_and_model_forwarding(self):
+        core = JOBIACore()
+        self.assertTrue(core.set_mode("deep"))
+        self.assertEqual(core.get_model(), "deepseek-r1:32b")
+        self.assertTrue(core.set_mode("pro"))
+        self.assertEqual(core.get_model(), "qwen3-coder-next:q4_K_M")
+        self.assertFalse(core.set_mode("nonexistent_mode"))
+
+        # Check that non-empty model is forwarded to client.mission_start
+        done = threading.Event()
+        client = mock.Mock()
+        client.mission_start.return_value = {"ok": True, "mission_id": "test_mis"}
+        client.mission_stream.return_value = iter([{"type": "mission_complete", "result": "ok"}])
+        core.set_mode("deep")
+        core.process_request("hello", lambda tid, res: done.set() if not res.get("stream") else None, client, session_id="s1")
+        self.assertTrue(done.wait(2))
+        client.mission_start.assert_called_once_with("hello", session_id="s1", model="deepseek-r1:32b")
+
 
 if __name__ == "__main__":
     unittest.main()
+
