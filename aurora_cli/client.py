@@ -101,7 +101,7 @@ class AuroraClient:
             try:
                 with self._client.stream(
                     method, path, headers=headers,
-                    timeout=httpx.Timeout(self.timeout if resume else 600.0, connect=10.0),
+                    timeout=httpx.Timeout(600.0, connect=10.0),
                     **kwargs,
                 ) as response:
                     response.raise_for_status()
