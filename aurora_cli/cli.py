@@ -1,33 +1,45 @@
 """Main CLI entrypoint for Aurora Remote CLI."""
 
-# --- PATCH ANTI-CENSURE DNS (Box FR / NXDOMAIN Errno 8) ---
+import ipaddress
 import socket
+
 import httpx
 
 _orig_getaddrinfo = socket.getaddrinfo
 
+
 def _patched_getaddrinfo(host, port, family=0, type=0, proto=0, flags=0):
-    if host.endswith(".trycloudflare.com"):
+    """Use system DNS first; recover failed tunnel lookups through DNS over HTTPS."""
+    try:
+        return _orig_getaddrinfo(host, port, family, type, proto, flags)
+    except socket.gaierror:
+        name = host.decode("ascii", errors="replace") if isinstance(host, bytes) else host
+        if not isinstance(name, str) or not name.endswith(".trycloudflare.com"):
+            raise
         try:
-            # Resolution via DNS-over-HTTPS (Cloudflare) pour contourner le blocage FAI
-            r = httpx.get(f"https://cloudflare-dns.com/dns-query?name={host}&type=A", headers={"accept": "application/dns-json"}, timeout=5.0)
-            if r.status_code == 200:
-                answers = r.json().get("Answer", [])
-                if answers:
-                    ip = answers[0]["data"]
-                    return _orig_getaddrinfo(ip, port, family, type, proto, flags)
-        except Exception:
-            pass
-    return _orig_getaddrinfo(host, port, family, type, proto, flags)
+            response = httpx.get(
+                "https://cloudflare-dns.com/dns-query",
+                params={"name": name, "type": "AAAA" if family == socket.AF_INET6 else "A"},
+                headers={"accept": "application/dns-json"}, timeout=5.0,
+            )
+            response.raise_for_status()
+            for answer in response.json().get("Answer", []):
+                if answer.get("type") in (1, 28):
+                    address = str(ipaddress.ip_address(answer["data"]))
+                    return _orig_getaddrinfo(address, port, family, type, proto, flags)
+        except (httpx.HTTPError, ValueError, KeyError, socket.gaierror):
+            # Preserve the original DNS exception for tunnel rediscovery.
+            raise socket.gaierror(socket.EAI_NONAME, "Tunnel DNS resolution failed") from None
+        raise
+
 
 socket.getaddrinfo = _patched_getaddrinfo
-# ---------------------------------------------------------
 
 import click
 from rich.traceback import install as install_rich_traceback
 
 # Install expert traceback handler
-install_rich_traceback(show_locals=True, theme="monokai")
+install_rich_traceback(show_locals=False, theme="monokai")
 
 from aurora_cli import config
 from aurora_cli.client import AuroraClient
@@ -176,14 +188,21 @@ def permissions(level):
 
 @main.command()
 @click.argument('request', required=True)
-def run(request):
+@click.option('--model', default='', help='Modèle Ollama du serveur à utiliser.')
+@click.option('--server-workspace', default=None, help='Répertoire de travail sur le serveur Aurora.')
+def run(request, model, server_workspace):
     """Démarrer une mission autonome en une commande."""
     client = AuroraClient()
-    if not client.ping():
-        display.error("Serveur injoignable.")
-        return
     import os
-    run_mission(client, request, workspace=os.getcwd(), permissions=config.get("default_permissions", "AUTONOMOUS"))
+    try:
+        if not client.ping():
+            raise click.ClickException("Serveur injoignable.")
+        if not run_mission(client, request, workspace=os.getcwd(), model=model,
+                           permissions=config.get("default_permissions", "AUTONOMOUS"),
+                           server_workspace=server_workspace or config.get("default_workspace") or None):
+            raise click.ClickException("La mission ne s'est pas terminée avec succès.")
+    finally:
+        client.close()
 
 
 # --- Agents Group ---

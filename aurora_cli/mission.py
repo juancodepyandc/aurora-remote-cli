@@ -2,6 +2,7 @@
 from __future__ import annotations
 import json
 import time
+from urllib.parse import urlsplit
 
 from rich.live import Live
 from rich.spinner import Spinner
@@ -12,24 +13,26 @@ from aurora_cli import display
 from aurora_cli.client import AuroraClient
 
 
-def run_mission(client: AuroraClient, request: str, workspace: str = "", permissions: str = "AUTONOMOUS", model: str = "", session_id: str = "") -> None:
+def run_mission(client: AuroraClient, request: str, workspace: str = "", permissions: str = "AUTONOMOUS", model: str = "", session_id: str = "", *, server_workspace: str | None = None) -> bool:
     """Start and monitor an autonomous mission."""
+    if server_workspace is None:
+        local_server = urlsplit(client.server_url).hostname in ("localhost", "127.0.0.1", "::1")
+        server_workspace = workspace if local_server else ""
     try:
-        data = client.mission_start(request, workspace=workspace, permissions=permissions, model=model, session_id=session_id)
+        data = client.mission_start(request, workspace=server_workspace, permissions=permissions, model=model, session_id=session_id)
         mission_id = data.get("mission_id")
         if not mission_id:
-            display.error("Impossible de démarrer la mission.")
-            return
+            display.error(data.get("error", "Impossible de démarrer la mission."))
+            return False
     except Exception as e:
         display.error(f"Erreur de démarrage: {e}")
-        return
+        return False
 
     from rich.panel import Panel
     from rich.text import Text
     import os
     
     actual_ws = workspace or os.getcwd()
-    is_remote = not actual_ws.startswith("/home/") and not actual_ws.startswith("/tmp/")
     
     info_text = Text()
     info_text.append("🚀 Mission : ", style="bold green")
@@ -40,10 +43,10 @@ def run_mission(client: AuroraClient, request: str, workspace: str = "", permiss
         display_req = display_req[:55] + "..."
         
     info_text.append(f"{display_req}\n")
-    info_text.append("📂 Confinement : ", style="bold blue")
+    info_text.append("Réception des fichiers : ", style="bold blue")
     info_text.append(f"{actual_ws}\n")
-    info_text.append("🔌 Exécution : ", style="bold magenta")
-    info_text.append(f"{'Locale (Mac/Win)' if is_remote else 'Distante (Linux)'} - Permissions: {permissions}\n\n")
+    info_text.append("Exécution sur le serveur : ", style="bold magenta")
+    info_text.append(f"{server_workspace or 'espace de travail Aurora'} - Permissions: {permissions}\n\n")
     info_text.append("Analyse de la requête en cours...", style="dim italic")
     
     display.console.print(Panel(info_text, title="[bold cyan]✧ Aurora-IA Initialisation[/bold cyan]", border_style="cyan"))
@@ -107,14 +110,7 @@ def run_mission(client: AuroraClient, request: str, workspace: str = "", permiss
                     cmd = token.replace("[EXECUTION BASH]:", "").strip()
                     display.console.print(f"\n[bold cyan]⚡[/bold cyan] [bold white]Système[/bold white] [dim]❯[/dim] [cyan]{cmd}[/cyan]")
                 else:
-                    # Indent raw token output slightly for aesthetics
-                    # If it has newlines, indent the next line
-                    lines = token.split("\n")
-                    for i, line in enumerate(lines):
-                        if i == len(lines) - 1:
-                            display.console.print(f"  [dim]{line}[/dim]", end="", highlight=False)
-                        else:
-                            display.console.print(f"  [dim]{line}[/dim]", highlight=False)
+                    display.console.print(token, end="", markup=False, highlight=False, soft_wrap=True)
                 
             elif etype == "file_diff":
                 if live_spinner:
@@ -146,38 +142,10 @@ def run_mission(client: AuroraClient, request: str, workspace: str = "", permiss
                 if live_spinner:
                     live_spinner.stop()
                     live_spinner = None
-                import base64
-                from pathlib import Path
-                filename = event.get("filename", "downloaded_file")
-                b64data = event.get("data", "")
-                
-                import platform
-                
-                # Détection Android (Termux)
-                if "com.termux" in os.environ.get("PREFIX", ""):
-                    out_dir = Path("/storage/emulated/0/Download")
-                    out_dir.mkdir(parents=True, exist_ok=True)
-                    out_path = out_dir / filename
-                # Détection iOS (a-Shell)
-                elif "APPDIR" in os.environ and "a-Shell" in os.environ["APPDIR"]:
-                    out_dir = Path.home()  # a-Shell home (Documents)
-                    out_dir.mkdir(parents=True, exist_ok=True)
-                    out_path = out_dir / filename
-                # Détection Mac/Windows/Linux (Comportement normal : dossier actuel)
-                else:
-                    actual_ws = workspace or os.getcwd()
-                    out_path = Path(actual_ws) / filename
-                if token_buffer:
-                    display.console.print("\n")
-                    token_buffer = ""
-                try:
-                    out_path.write_bytes(base64.b64decode(b64data))
-                    display.success(f"Fichier reçu et enregistré sur votre Mac : {out_path}")
-                except Exception as e:
-                    display.error(f"Erreur lors de l'enregistrement du fichier : {e}")
+                from aurora_cli.transfers import receive_file
+                out_path = receive_file(event, client, workspace)
+                display.success(f"Fichier reçu et vérifié : {out_path}")
 
-
-                    
             elif etype == "remote_command":
                 cmd = event.get("command", "")
                 cwd = event.get("cwd", "")
@@ -223,7 +191,7 @@ def run_mission(client: AuroraClient, request: str, workspace: str = "", permiss
                     live_spinner.stop()
                     live_spinner = None
                 display.error(event.get("message") or event.get("error", "Une erreur est survenue."))
-                break
+                return False
                 
             elif etype == "mission_complete":
                 if live_spinner:
@@ -233,7 +201,10 @@ def run_mission(client: AuroraClient, request: str, workspace: str = "", permiss
                     display.console.print("\n")
                     token_buffer = ""
                 display.mission_summary(event)
-                break
+                return not event.get("stopped", False)
+
+        display.error("Flux fermé sans confirmation de fin de mission.")
+        return False
                 
     except KeyboardInterrupt:
         display.console.print("\n")
@@ -241,11 +212,18 @@ def run_mission(client: AuroraClient, request: str, workspace: str = "", permiss
         try:
             result = client.mission_stop(mission_id)
             if result.get("ok"):
-                display.success("Mission arrêtée.")
+                display.info("Arrêt demandé." if result.get("status") == "stopping" else "Mission terminée.")
             else:
                 display.error(result.get("error", "Arrêt de la mission non confirmé."))
         except Exception as e:
             display.error(f"Erreur lors de l'arrêt: {e}")
+        return False
+    except Exception as e:
+        display.error(f"Mission interrompue : {e}")
+        return False
+    finally:
+        if live_spinner:
+            live_spinner.stop()
 
 
 def handle_temporary_agents(client: AuroraClient, agents: list[dict]) -> None:

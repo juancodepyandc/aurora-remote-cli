@@ -128,8 +128,11 @@ def run_interactive(client: AuroraClient) -> None:
         nonlocal current_mission_id
         if current_mission_id:
             try:
-                client.mission_stop(current_mission_id)
-                console.print("\n[yellow]Mission arrêtée.[/yellow]")
+                result = client.mission_stop(current_mission_id)
+                if not result.get("ok"):
+                    display.error(result.get("error", "Arrêt non confirmé."))
+                    return
+                console.print("\n[yellow]Arrêt demandé au serveur.[/yellow]")
             except Exception:
                 pass
             current_mission_id = ""
@@ -223,9 +226,12 @@ def run_interactive(client: AuroraClient) -> None:
                     console.print("[red]Moteur J.O.B.I.A. non disponible.[/red]")
             elif cmd == "/stop":
                 if current_mission_id:
-                    client.mission_stop(current_mission_id)
-                    current_mission_id = ""
-                    display.success("Mission arrêtée.")
+                    result = client.mission_stop(current_mission_id)
+                    if result.get("ok"):
+                        current_mission_id = ""
+                        display.info("Arrêt demandé au serveur.")
+                    else:
+                        display.error(result.get("error", "Arrêt non confirmé."))
                 else:
                     console.print("[dim]Aucune mission en cours.[/dim]")
             else:

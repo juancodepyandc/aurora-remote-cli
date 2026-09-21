@@ -69,26 +69,14 @@ class JOBIACore:
                             callback(task_id, {"reconnecting": True, "mission_id": mission_id,
                                                "attempt": event.get("attempt")})
                     elif evt_type == "file_transfer":
-                        fname = event.get("filename")
-                        b64_data = event.get("data")
-                        if fname and b64_data:
-                            try:
-                                import base64
-                                from pathlib import Path
-                                raw = base64.b64decode(b64_data)
-                                out_path = Path.cwd() / fname
-                                out_path.parent.mkdir(parents=True, exist_ok=True)
-                                out_path.write_bytes(raw)
-                                if callback:
-                                    callback(task_id, {
-                                        "file_transfer": True,
-                                        "filename": fname,
-                                        "path": str(out_path),
-                                        "size": len(raw),
-                                        "mission_id": mission_id
-                                    })
-                            except Exception as fe:
-                                logger.error(f"Error saving transferred file {fname}: {fe}")
+                        from aurora_cli.transfers import receive_file
+                        out_path = receive_file(event, client)
+                        if callback:
+                            callback(task_id, {
+                                "file_transfer": True, "filename": event["filename"],
+                                "path": str(out_path), "size": out_path.stat().st_size,
+                                "mission_id": mission_id,
+                            })
                     elif evt_type == "error":
                         return {"status": "error", "data": event.get("error") or event.get("message", "Mission échouée"),
                                 "partial_text": full_text, "mission_id": mission_id}
