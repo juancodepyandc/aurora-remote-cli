@@ -59,11 +59,14 @@ def main(ctx):
     """Aurora AI Agent — Remote CLI Client."""
     if ctx.invoked_subcommand is None:
         client = AuroraClient()
-        if not config.is_configured() or not client.ping():
-            display.error("Client non configuré ou serveur injoignable.")
-            display.info("Veuillez lancer: jobia connect")
-            return
-        run_interactive(client)
+        try:
+            if not config.is_configured() or not client.ping():
+                display.error("Client non configuré ou serveur injoignable.")
+                display.info("Veuillez lancer: jobia connect")
+                return
+            run_interactive(client)
+        finally:
+            client.close()
 
 
 @main.command()
@@ -151,32 +154,43 @@ def connect(server, api_key):
 @main.command()
 def status():
     """Show server status."""
+    client = AuroraClient()
     try:
-        display.banner(AuroraClient().status())
+        display.banner(client.status())
     except Exception as e:
         display.error(str(e))
+    finally:
+        client.close()
 
 
 @main.command()
 def doctor():
     """Run diagnostics."""
+    client = AuroraClient()
     try:
-        display.doctor_results(AuroraClient().doctor().get("checks", []))
+        display.doctor_results(client.doctor().get("checks", []))
     except Exception as e:
         display.error(str(e))
+    finally:
+        client.close()
 
 
 @main.command()
 @click.argument('level', required=False)
 def permissions(level):
     """Show or set permissions."""
+    if level:
+        level = level.upper()
+        if level not in config.PERMISSION_LEVELS:
+            display.error(f"Niveau inconnu : {level}. Niveaux autorisés : {', '.join(config.PERMISSION_LEVELS)}")
+            return
     client = AuroraClient()
     try:
         if level:
             res = client.permissions_set(level)
             if res.get("ok"):
                 display.success(f"Niveau global par défaut défini sur : {level}")
-                config.set_key("default_permissions", level.upper())
+                config.set_key("default_permissions", level)
             else:
                 display.error(res.get("error"))
         else:
@@ -184,6 +198,8 @@ def permissions(level):
                                       config.get("default_permissions", "AUTONOMOUS"))
     except Exception as e:
         display.error(str(e))
+    finally:
+        client.close()
 
 
 @main.command()
@@ -221,15 +237,23 @@ def agents_list():
         display.agents_table(off, dyn)
     except Exception as e:
         display.error(str(e))
+    finally:
+        client.close()
 
 @agents.command(name="disable")
 @click.argument("name")
 def agents_disable(name):
+    client = AuroraClient()
     try:
-        AuroraClient().agent_disable(name)
-        display.success(f"Agent {name} désactivé.")
+        res = client.agent_disable(name)
+        if res.get("ok"):
+            display.success(f"Agent {name} désactivé.")
+        else:
+            display.error(res.get("error", "Agent non désactivé."))
     except Exception as e:
         display.error(str(e))
+    finally:
+        client.close()
 
 
 # --- MCP Group ---
@@ -240,11 +264,15 @@ def mcp():
 
 @mcp.command(name="list")
 def mcp_list():
+    client = AuroraClient()
     try:
-        client = AuroraClient()
-        display.mcp_table(client.mcp_list().get("servers", []), client.mcp_tools().get("tools", []))
+        servers = client.mcp_list().get("servers", [])
+        tools = client.mcp_tools().get("tools", [])
+        display.mcp_table(servers, tools)
     except Exception as e:
         display.error(str(e))
+    finally:
+        client.close()
 
 
 # --- Skills Group ---
@@ -255,10 +283,13 @@ def skills():
 
 @skills.command(name="list")
 def skills_list():
+    client = AuroraClient()
     try:
-        display.skills_table(AuroraClient().skills_list().get("skills", []))
+        display.skills_table(client.skills_list().get("skills", []))
     except Exception as e:
         display.error(str(e))
+    finally:
+        client.close()
 
 
 if __name__ == '__main__':

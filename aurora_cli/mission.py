@@ -1,16 +1,39 @@
 """Mission tracking and display for Aurora CLI."""
 from __future__ import annotations
-import json
+import os
+import subprocess
 import time
+from pathlib import Path
 from urllib.parse import urlsplit
 
 from rich.live import Live
 from rich.spinner import Spinner
-from rich.console import Group
 from rich.text import Text
 
 from aurora_cli import display
 from aurora_cli.client import AuroraClient
+from aurora_cli.transfers import receive_file
+
+
+def _safe_target(root: Path, raw: str, for_write: bool = False) -> Path | None:
+    """Resolve a server-supplied path inside the workspace, reject traversal."""
+    if (not isinstance(raw, str) or not raw or "\x00" in raw
+            or "\\" in raw or ":" in raw or urlsplit(raw).scheme):
+        return None
+    if os.path.isabs(raw):
+        target = Path(raw)
+    elif any(part in ("", ".", "..") for part in raw.split("/")):
+        return None
+    else:
+        target = root.joinpath(*raw.split("/"))
+    if target.is_symlink():
+        return None
+    resolved = target.resolve()
+    if not resolved.is_relative_to(root):
+        return None
+    if for_write:
+        resolved.parent.mkdir(parents=True, exist_ok=True)
+    return resolved
 
 
 def run_mission(client: AuroraClient, request: str, workspace: str = "", permissions: str = "AUTONOMOUS", model: str = "", session_id: str = "", *, server_workspace: str | None = None) -> bool:
@@ -29,9 +52,7 @@ def run_mission(client: AuroraClient, request: str, workspace: str = "", permiss
         return False
 
     from rich.panel import Panel
-    from rich.text import Text
-    import os
-    
+
     actual_ws = workspace or os.getcwd()
     
     info_text = Text()
@@ -50,22 +71,19 @@ def run_mission(client: AuroraClient, request: str, workspace: str = "", permiss
     info_text.append("Analyse de la requête en cours...", style="dim italic")
     
     display.console.print(Panel(info_text, title="[bold cyan]✧ Aurora-IA Initialisation[/bold cyan]", border_style="cyan"))
-    
+
     current_step = ""
     start_time = time.time()
-    token_buffer = ""
-    
-    from rich.status import Status
-    live_spinner = None
+    tokens_printed = False
 
-    # UI state
-    from rich.live import Live
-    from rich.spinner import Spinner
-    from rich.text import Text
-    import re
-    
     live_spinner = None
     reflection_start = 0
+
+    def _separate_from_tokens() -> None:
+        nonlocal tokens_printed
+        if tokens_printed:
+            display.console.print("\n")
+            tokens_printed = False
 
     try:
         for event in client.mission_stream(mission_id):
@@ -94,9 +112,13 @@ def run_mission(client: AuroraClient, request: str, workspace: str = "", permiss
                 
             elif etype == "heartbeat":
                 if live_spinner:
-                    elapsed = event.get("elapsed", 0)
-                    mins = int(elapsed) // 60
-                    secs = int(elapsed) % 60
+                    elapsed = event.get("elapsed")
+                    try:
+                        elapsed_secs = int(elapsed) if elapsed is not None else 0
+                    except (TypeError, ValueError):
+                        elapsed_secs = 0
+                    mins = int(elapsed_secs) // 60
+                    secs = int(elapsed_secs) % 60
                     spin = Spinner("bouncingBar", text=Text(f"✧ Aurora | {current_step} [{mins:02d}:{secs:02d}]...", style="bold magenta"))
                     live_spinner.update(spin)
                     
@@ -111,26 +133,23 @@ def run_mission(client: AuroraClient, request: str, workspace: str = "", permiss
                     display.console.print(f"\n[bold cyan]⚡[/bold cyan] [bold white]Système[/bold white] [dim]❯[/dim] [cyan]{cmd}[/cyan]")
                 else:
                     display.console.print(token, end="", markup=False, highlight=False, soft_wrap=True)
+                    tokens_printed = True
                 
             elif etype == "file_diff":
                 if live_spinner:
                     live_spinner.stop()
                     live_spinner = None
+                _separate_from_tokens()
                 filename = event.get("filename", "unknown")
                 diff_lines = event.get("diff", [])
-                if token_buffer:
-                    display.console.print("\n")
-                    token_buffer = ""
                 display.code_diff(filename, diff_lines)
                 
             elif etype == "sudo_request":
                 if live_spinner:
                     live_spinner.stop()
                     live_spinner = None
+                _separate_from_tokens()
                 reason = event.get("reason", "Action nécessite des privilèges élevés")
-                if token_buffer:
-                    display.console.print("\n")
-                    token_buffer = ""
                 pwd = display.ask_password(f"{reason}. Mot de passe sudo :")
                 try:
                     client.post(f"/api/cli/mission/{mission_id}/input", data={"input_type": "password", "value": pwd})
@@ -142,8 +161,9 @@ def run_mission(client: AuroraClient, request: str, workspace: str = "", permiss
                 if live_spinner:
                     live_spinner.stop()
                     live_spinner = None
-                from aurora_cli.transfers import receive_file
-                out_path = receive_file(event, client, workspace)
+                _separate_from_tokens()
+                root = Path(workspace or os.getcwd()).resolve()
+                out_path = receive_file(event, client, root)
                 display.success(f"Fichier reçu et vérifié : {out_path}")
 
             elif etype == "remote_command":
@@ -151,10 +171,15 @@ def run_mission(client: AuroraClient, request: str, workspace: str = "", permiss
                 cwd = event.get("cwd", "")
                 display.console.print(f"\n[bold yellow]⚡ Exécution locale (Mac):[/bold yellow] [cyan]{cmd}[/cyan]")
                 try:
-                    import subprocess
-                    result = subprocess.run(cmd, shell=True, cwd=cwd, capture_output=True, text=True, timeout=120)
-                    out = result.stdout + "\n" + result.stderr
-                    if not out.strip(): out = "Commande réussie sans sortie."
+                    root = Path(workspace or os.getcwd()).resolve()
+                    safe_cwd = _safe_target(root, cwd) if cwd else root
+                    if safe_cwd is None:
+                        out = f"Chemin local refusé (hors espace de travail) : {cwd}"
+                    else:
+                        result = subprocess.run(cmd, shell=True, cwd=str(safe_cwd), capture_output=True, text=True, timeout=120)
+                        out = result.stdout + "\n" + result.stderr
+                        if not out.strip():
+                            out = "Commande réussie sans sortie."
                 except Exception as e:
                     out = f"Erreur d'exécution locale: {e}"
                 client.post(f"/api/cli/mission/{mission_id}/input", data={"input_type": "remote_command_result", "value": out})
@@ -163,8 +188,13 @@ def run_mission(client: AuroraClient, request: str, workspace: str = "", permiss
                 path = event.get("path", "")
                 display.console.print(f"\n[bold yellow]📖 Lecture locale (Mac):[/bold yellow] [dim]{path}[/dim]")
                 try:
-                    with open(path, "r", encoding="utf-8") as f:
-                        out = f.read()
+                    root = Path(workspace or os.getcwd()).resolve()
+                    safe_path = _safe_target(root, path)
+                    if safe_path is None:
+                        out = f"Chemin local refusé (hors espace de travail) : {path}"
+                    else:
+                        with open(safe_path, "r", encoding="utf-8") as f:
+                            out = f.read()
                 except Exception as e:
                     out = f"Erreur de lecture: {e}"
                 client.post(f"/api/cli/mission/{mission_id}/input", data={"input_type": "remote_read_result", "value": out})
@@ -174,11 +204,14 @@ def run_mission(client: AuroraClient, request: str, workspace: str = "", permiss
                 content = event.get("content", "")
                 display.console.print(f"\n[bold yellow]💾 Écriture locale (Mac):[/bold yellow] [dim]{path}[/dim]")
                 try:
-                    import os
-                    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
-                    with open(path, "w", encoding="utf-8") as f:
-                        f.write(content)
-                    out = "Fichier écrit avec succès sur le Mac."
+                    root = Path(workspace or os.getcwd()).resolve()
+                    safe_path = _safe_target(root, path, for_write=True)
+                    if safe_path is None:
+                        out = f"Chemin local refusé (hors espace de travail) : {path}"
+                    else:
+                        with open(safe_path, "w", encoding="utf-8") as f:
+                            f.write(content)
+                        out = "Fichier écrit avec succès sur le Mac."
                 except Exception as e:
                     out = f"Erreur d'écriture: {e}"
                 client.post(f"/api/cli/mission/{mission_id}/input", data={"input_type": "remote_write_result", "value": out})
@@ -197,9 +230,7 @@ def run_mission(client: AuroraClient, request: str, workspace: str = "", permiss
                 if live_spinner:
                     live_spinner.stop()
                     live_spinner = None
-                if token_buffer:
-                    display.console.print("\n")
-                    token_buffer = ""
+                _separate_from_tokens()
                 display.mission_summary(event)
                 return not event.get("stopped", False)
 

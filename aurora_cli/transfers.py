@@ -49,6 +49,7 @@ def receive_file(event: dict, client, workspace: str | Path = "") -> Path:
     if partial.is_symlink():
         raise ValueError("Invalid partial download path")
     if remote:
+        fresh_digest = None
         for attempt in range(4):
             offset = partial.stat().st_size if partial.exists() else 0
             if offset > size:
@@ -70,6 +71,7 @@ def receive_file(event: dict, client, workspace: str | Path = "") -> Path:
                     elif response.status_code == 200:
                         offset = 0
                         mode = "wb"
+                        fresh_digest = hashlib.sha256()
                     else:
                         raise ValueError("Unexpected download response")
                     with partial.open(mode) as writer:
@@ -78,6 +80,8 @@ def receive_file(event: dict, client, workspace: str | Path = "") -> Path:
                             if offset > size:
                                 raise ValueError("Download exceeds declared size")
                             writer.write(chunk)
+                            if fresh_digest:
+                                fresh_digest.update(chunk)
                     if offset != size:
                         raise httpx.ReadError("Incomplete artifact download")
                 break
@@ -94,7 +98,11 @@ def receive_file(event: dict, client, workspace: str | Path = "") -> Path:
     if size is not None and partial.stat().st_size != size:
         partial.unlink(missing_ok=True)
         raise ValueError("Transfer size mismatch")
-    if checksum and _digest(partial) != checksum:
+    if remote and fresh_digest is not None:
+        observed = fresh_digest.hexdigest()
+    else:
+        observed = _digest(partial)
+    if checksum and observed != checksum:
         partial.unlink(missing_ok=True)
         raise ValueError("Transfer checksum mismatch")
     partial.replace(target)

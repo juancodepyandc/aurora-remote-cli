@@ -77,7 +77,7 @@ def run_interactive(client: AuroraClient) -> None:
                 console.print(f"[bold green]✔ Contexte restauré : {session_id}[/bold green]\n")
             
         if not session_id:
-            session_data = client.session_create(permissions="AUTONOMOUS")
+            session_data = client.session_create(permissions=config.get("default_permissions", "AUTONOMOUS"))
             session_id = session_data.get("session", {}).get("id", "")
             if sessions:
                 console.print(f"[bold magenta]✨ Nouvelle session initiée : {session_id}[/bold magenta]\n")
@@ -183,7 +183,7 @@ def run_interactive(client: AuroraClient) -> None:
                 session_id = _cmd_sessions(client, session_id)
             elif cmd == "/fresh":
                 try:
-                    session_data = client.session_create(permissions="AUTONOMOUS")
+                    session_data = client.session_create(permissions=config.get("default_permissions", "AUTONOMOUS"))
                     session_id = session_data.get("session", {}).get("id", "")
                     console.print(f"\n[bold green]✔ Contexte réinitialisé. Nouvelle session : {session_id}[/bold green]\n")
                 except Exception as e:
@@ -193,35 +193,34 @@ def run_interactive(client: AuroraClient) -> None:
             elif cmd == "/mode":
                 if jobia_engine:
                     from rich.table import Table
-                    from rich.prompt import IntPrompt
-                    
-                    table = Table(title="[bold magenta]✧ Niveau d'Effort Cognitif & Routage Neuronal ✧[/bold magenta]", border_style="cyan", show_header=True, header_style="bold cyan", expand=True)
+                    from rich.prompt import Prompt
+
+                    modes = list(jobia_engine.MODE_TO_MODEL.keys())
+                    table = Table(title="[bold magenta]✧ Niveau d'Effort Cognitif & Routage Neuronal ✧[/bold magenta]",
+                                  border_style="cyan", show_header=True, header_style="bold cyan", expand=True)
                     table.add_column("ID", justify="center", style="bold yellow", width=4)
                     table.add_column("Mode / Effort", style="bold white", width=16)
                     table.add_column("Modèle IA Déployé", style="bold green", width=25)
-                    table.add_column("Description & Capacités", style="dim")
-                    
-                    table.add_row("1", "Pro (Défaut)", "Qwen3-Coder 80B", "Effort Maximal AGI : Raisonnement complet, coding et ComfyUI")
-                    table.add_row("2", "Équilibré", "Qwen3-Coder 30B", "Effort Élevé : Rapide et très performant en génération et code")
-                    table.add_row("3", "Deep R1", "DeepSeek-R1 32B", "Raisonnement Analytique : Chaîne de pensée mathématique et logique")
-                    table.add_row("4", "Cyber", "Qwen-Cyber 51B", "Sécurité & Audit : Reconnaissance et investigation")
-                    table.add_row("5", "Rapide", "Qwen3-VL 8B", "Effort Léger : Réponses courtes et instantanées")
-                    
+                    for idx, mode in enumerate(modes, 1):
+                        model = jobia_engine.MODE_TO_MODEL[mode] or "Suprême Serveur (défaut)"
+                        table.add_row(str(idx), mode.capitalize(), model)
+
                     console.print(table)
-                    
-                    choice = IntPrompt.ask("\n[bold cyan]Sélectionnez un ID de mode (1-5)[/bold cyan]", choices=["1", "2", "3", "4", "5"], show_choices=False)
-                    
-                    mode_map = {"1": "pro", "2": "balanced", "3": "deep", "4": "cyber", "5": "fast"}
-                    selected_mode = mode_map[str(choice)]
-                    
-                    with console.status("[bold magenta]Reconfiguration de l'effort cognitif...[/bold magenta]", spinner="dots12"):
-                        import time
-                        time.sleep(0.5)
-                        if jobia_engine.set_mode(selected_mode):
-                            model_name = jobia_engine.get_model() or "Suprême Serveur (80B)"
-                            console.print(f"[bold green]✔ Architecture verrouillée sur le mode : {selected_mode.upper()} [{model_name}][/bold green]")
-                        else:
-                            console.print("[red]✖ Mode non reconnu.[/red]")
+
+                    raw = Prompt.ask("\n[bold cyan]Mode (ID, nom, ou Entrée pour conserver le courant)[/bold cyan]", default="")
+                    if not raw.strip():
+                        console.print(f"[yellow]Mode conservé : {jobia_engine.mode}[/yellow]")
+                        continue
+                    if raw.strip().isdigit():
+                        idx = int(raw.strip())
+                        selected_mode = modes[idx - 1] if 1 <= idx <= len(modes) else ""
+                    else:
+                        selected_mode = raw.strip().lower()
+                    if jobia_engine.set_mode(selected_mode):
+                        model_name = jobia_engine.get_model() or "Suprême Serveur (défaut)"
+                        console.print(f"[bold green]✔ Architecture verrouillée sur le mode : {selected_mode.upper()} [{model_name}][/bold green]")
+                    else:
+                        console.print("[red]✖ Mode non reconnu.[/red]")
                 else:
                     console.print("[red]Moteur J.O.B.I.A. non disponible.[/red]")
             elif cmd == "/stop":
@@ -258,6 +257,9 @@ def run_interactive(client: AuroraClient) -> None:
                 task_result = {"text": "", "status": "error", "reconnecting": False, "transferred_files": []}
                 
                 def on_jobia_done(task_id, result):
+                    nonlocal current_mission_id
+                    if isinstance(result, dict) and result.get("mission_id"):
+                        current_mission_id = result["mission_id"]
                     if isinstance(result, dict) and result.get("reconnecting"):
                         task_result["reconnecting"] = True
                     elif isinstance(result, dict) and result.get("file_transfer"):
@@ -281,6 +283,8 @@ def run_interactive(client: AuroraClient) -> None:
                     else:
                         task_result["text"] = str(result)
                         done_event.set()
+                    if done_event.is_set():
+                        current_mission_id = ""
                 
                 console.print(f"\n[bold cyan]Routage AGI :[/bold cyan] [bold magenta]Transmission de la mission...[/bold magenta]")
                 task_id, route, past_ctx = jobia_engine.process_request(user_input, callback=on_jobia_done, client=client, session_id=session_id)
@@ -360,6 +364,7 @@ def _cmd_status(client: AuroraClient) -> None:
 
 
 def _cmd_permissions(client, user_input: str) -> None:
+    known = config.PERMISSION_LEVELS
     parts = user_input.split()
     if len(parts) > 1:
         level = parts[1].upper()
@@ -374,7 +379,11 @@ def _cmd_permissions(client, user_input: str) -> None:
         except Exception as e:
             display.error(str(e))
             return
-            
+
+    if level not in known:
+        display.error(f"Niveau inconnu : {level}. Niveaux autorisés : {', '.join(known)}")
+        return
+
     try:
         result = client.permissions_set(level)
         if result.get("ok"):

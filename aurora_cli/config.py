@@ -1,4 +1,4 @@
-"""Aurora CLI configuration — stored at ~/.aurora/config.json"""
+"""Aurora CLI configuration — stored at $XDG_CONFIG_HOME/aurora/config.json"""
 from __future__ import annotations
 import json
 import os
@@ -28,6 +28,10 @@ DEFAULT_CONFIG = {
     "language": "auto",
 }
 
+PERMISSION_LEVELS = ("SAFE", "STANDARD", "AUTONOMOUS", "FULL")
+
+_cached: tuple[str, int, int, dict[str, Any]] | None = None
+
 
 def ensure_dirs() -> None:
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
@@ -36,17 +40,32 @@ def ensure_dirs() -> None:
 
 def load() -> dict[str, Any]:
     ensure_dirs()
-    if CONFIG_FILE.exists():
-        try:
-            return {**DEFAULT_CONFIG, **json.loads(CONFIG_FILE.read_text("utf-8"))}
-        except Exception:
-            pass
-    return dict(DEFAULT_CONFIG)
+    if not CONFIG_FILE.exists():
+        return dict(DEFAULT_CONFIG)
+    try:
+        stamp = os.stat(CONFIG_FILE)
+        key = (str(CONFIG_FILE), stamp.st_mtime_ns, stamp.st_size)
+        global _cached
+        if _cached is not None and _cached[:3] == key:
+            return dict(_cached[3])
+    except OSError:
+        return dict(DEFAULT_CONFIG)
+    try:
+        raw = json.loads(CONFIG_FILE.read_text("utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return dict(DEFAULT_CONFIG)
+    merged = {**DEFAULT_CONFIG, **raw}
+    _cached = (*key, merged)
+    return dict(merged)
 
 
 def save(cfg: dict[str, Any]) -> None:
     ensure_dirs()
-    CONFIG_FILE.write_text(json.dumps(cfg, indent=2, ensure_ascii=False), "utf-8")
+    tmp = CONFIG_FILE.with_name(CONFIG_FILE.name + ".tmp")
+    tmp.write_text(json.dumps(cfg, indent=2, ensure_ascii=False), "utf-8")
+    os.replace(tmp, CONFIG_FILE)
+    global _cached
+    _cached = None
 
 
 def get(key: str, default: Any = None) -> Any:

@@ -14,7 +14,8 @@ def _sse_events(lines):
     """Decode complete SSE records; leave a truncated record for replay."""
     data = []
     event_id = None
-    for line in lines:
+    for raw in lines:
+        line = raw.rstrip("\r")
         if not line:
             if data:
                 event = json.loads("\n".join(data))
@@ -31,6 +32,15 @@ def _sse_events(lines):
                 data.append(value)
             elif field == "id":
                 event_id = value
+
+
+def _decode_json(response) -> dict:
+    """Read a dict response, tolerating non-JSON proxy bodies."""
+    try:
+        payload = response.json()
+    except (json.JSONDecodeError, ValueError):
+        return {"ok": False, "error": f"Invalid JSON response ({response.status_code})"}
+    return payload if isinstance(payload, dict) else {"ok": False, "error": "Unexpected non-object response"}
 
 
 class AuroraClient:
@@ -63,7 +73,7 @@ class AuroraClient:
         try:
             r = self._client.get(path, **kwargs)
             r.raise_for_status()
-            return r.json()
+            return _decode_json(r)
         except httpx.RequestError as e:
             return {"ok": False, "error": f"Connection error: {e}"}
         except httpx.HTTPStatusError as e:
@@ -73,7 +83,7 @@ class AuroraClient:
         try:
             r = self._client.post(path, json=data or {}, **kwargs)
             r.raise_for_status()
-            return r.json()
+            return _decode_json(r)
         except httpx.RequestError as e:
             return {"ok": False, "error": f"Connection error: {e}"}
         except httpx.HTTPStatusError as e:
@@ -83,7 +93,7 @@ class AuroraClient:
         try:
             r = self._client.delete(path, **kwargs)
             r.raise_for_status()
-            return r.json()
+            return _decode_json(r)
         except httpx.RequestError as e:
             return {"ok": False, "error": f"Connection error: {e}"}
         except httpx.HTTPStatusError as e:

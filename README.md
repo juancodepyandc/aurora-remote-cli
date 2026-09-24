@@ -1,114 +1,55 @@
 # Aurora Remote CLI
 
-Aurora Remote CLI est le client terminal officiel pour piloter l'instance **AuroraIA** centrale. Ce client léger permet à n'importe quel développeur ou collaborateur de se connecter au serveur Aurora (hébergé sur une machine distante puissante) sans avoir à installer les modèles lourds (Ollama, ComfyUI, etc.) sur son propre PC.
+Client Python léger pour piloter Aurora via HTTP et événements SSE. Le calcul des modèles reste sur le serveur Aurora.
 
-## 🚀 Fonctionnalités
+La référence complète se trouve dans `AuroraIA/ARCHITECTURE_MAITRE.md` : [ouvrir le maître dans une installation à dépôts voisins](../AuroraIA/ARCHITECTURE_MAITRE.md#cli). Lire aussi [AGENTS.md](AGENTS.md) avant une intervention.
 
-- **Interface Terminal Moderne** : Affichage riche (couleurs, tableaux, spinners) grâce à `rich`.
-- **Missions Autonomes (SSE)** : Streaming en temps réel des actions de l'IA (planification, outils, erreurs).
-- **Zéro Rétention de Privilèges** : L'IA demande les mots de passe (Sudo) localement, exécute, et oublie.
-- **Diffs de Code Intégrés** : Prévisualisation claire (vert/rouge) de toutes les modifications de fichiers.
-- **Multi-plateforme** : Compatible Linux, macOS (Zsh/Bash) et Windows (PowerShell).
+## Installation et connexion
 
-## 🛠️ Installation
-
-Le client nécessite **Python 3.10+**. Il pèse moins d'1 Mo.
-
-### Linux / macOS (Zsh & Bash)
+Créer un environnement client dédié, puis installer ce paquet. La configuration locale vérifiée utilise Python 3.12 ; le minimum déclaré dans pyproject.toml doit encore être harmonisé avec les versions effectivement testées.
 
 ```bash
-git clone https://github.com/juancodepyandc/aurora-remote-cli.git
-cd aurora-remote-cli
-chmod +x install.sh
-./install.sh
+python3 -m venv .venv
+.venv/bin/python -m pip install .
+.venv/bin/jobia --help
+.venv/bin/jobia connect --server https://ADRESSE_DU_SERVEUR
 ```
 
-### Windows (PowerShell)
+Sous Windows, les exécutables de l’environnement sont dans `.venv/Scripts`. Fournir uniquement une clé déjà autorisée par le bridge ; le client peut la demander sans l’afficher (`--api-key`, variable `AURORA_API_KEY` ou saisie masquée). Ne pas déposer de clé dans la documentation.
 
-```powershell
-git clone https://github.com/juancodepyandc/aurora-remote-cli.git
-cd aurora-remote-cli
-.\install.ps1
-```
+`connect` sans `--server` résout l’adresse dans l’ordre : argument explicite, variable `AURORA_SERVER_URL`, configuration enregistrée, puis découverte du tunnel publié. Il valide l’adresse découverte (HTTPS et hôte `trycloudflare.com` uniquement), enregistre l’appareil auprès du bridge et mémorise adresse et clé. Si le tunnel enregistré ne répond plus, il tente de redécouvrir l’adresse actuelle avant d’échouer.
 
-## Connexion
+La résolution DNS d’un hôte `trycloudflare.com` peut utiliser un secours DNS-over-HTTPS. Ce secours traite le DNS ; il ne corrige ni un serveur arrêté, ni une clé invalide, ni l’incompatibilité SSE du type de tunnel.
 
-L'administrateur doit vous fournir une clé déjà autorisée par le bridge. Le client la demande sans l'afficher et conserve sa configuration pour les connexions suivantes. L'enregistrement anonyme de nouvelles clés est refusé.
+## Configuration
 
-Exécutez simplement :
-```bash
-jobia connect
-```
-Pour un bridge précis, utilisez `jobia connect --server https://votre-bridge.example`.
-La variable `AURORA_API_KEY` permet aussi de transmettre la clé. Une clé existante
-reste utilisable ; une clé révoquée ne permet pas d'enregistrer une nouvelle clé.
+Le client lit `config.json` dans son répertoire de configuration (convention XDG), en migrant l’ancienne `~/.aurora/config.json` lorsqu’elle existe. Clés : `server_url`, `api_key`, `default_permissions` (défaut `AUTONOMOUS`), `default_workspace`, `theme`, `language`. `AURORA_SERVER_URL` et `AURORA_API_KEY` servent de surcharge d’environnement.
 
-Les flux de mission reprennent après une coupure avec `Last-Event-ID`, au maximum
-trois fois. Les événements déjà reçus ne sont pas réaffichés et la mission n'est
-pas relancée. Cette reprise nécessite la version correspondante du bridge et
-son historique en mémoire : elle ne couvre pas un redémarrage du bridge ou du
-client. Un résultat incomplet est affiché comme une erreur.
+## Commandes
 
-## 🎮 Utilisation
+`aurora` et `jobia` sont deux entrées du même paquet. Le mode sans sous-commande lance le REPL si la connexion est configurée et le serveur répond.
 
-### Mode Interactif (REPL)
+- `connect` : connexion, enregistrement de l’appareil et ouverture du REPL.
+- `status` : état du serveur (bridge, Ollama, ComfyUI, matériel, modèles, agents, skills, MCP, connexions).
+- `doctor` : contrôles déclaratifs du serveur.
+- `permissions [niveau]` : afficher ou définir le niveau par défaut (`SAFE`, `STANDARD`, `AUTONOMOUS`, `FULL`).
+- `run REQUÊTE` : mission autonome en une commande (`--model`, `--server-workspace`).
+- `agents list`, `agents disable <nom>` : gestion des agents.
+- `mcp list` : serveurs MCP et outils découverts.
+- `skills list` : skills chargés.
 
-```bash
-aurora
-```
-*Le mode interactif propose l'autocomplétion, et des commandes internes (commençant par `/`). Tapez `/help` pour voir toutes les commandes.*
+Le REPL accepte `/help`, `/status`, `/permissions`, `/agents`, `/tools`, `/models`, `/mcp`, `/skills`, `/connections`, `/session`, `/sessions`, `/fresh`, `/clear`, `/stop`, `/mode`, `/exit`. `/mode` choisit le niveau d’effort cognitif et le modèle si le moteur local J.O.B.I.A. est disponible.
 
-### Mode Mission Directe (One-shot)
+## Missions et livraison
 
-```bash
-aurora run "Analyse le projet React, trouve les fuites de mémoire et corrige les composants."
-```
+`run` démarre une mission, affiche sa progression et poursuit le suivi. Le client reprend le flux SSE avec `Last-Event-ID` après une coupure (reprises bornées, jamais de rejeu d’un POST), refuse un trou de séquence et n’annonce une mission terminée qu’à la réception de `mission_complete`.
 
-### Commandes Utiles
+Pendant le flux : `step_start`/`step_end`, tokens, `file_diff`, `sudo_request` (mot de passe demandé, transmis puis effacé localement), `file_transfer` (artefact réceptionné et vérifié), `remote_command`/`remote_read_file`/`remote_write_file` (traitement local, résultat renvoyé au serveur), `heartbeat`, `reconnecting` et `error`. Un Ctrl+C ou `/stop` demande l’arrêt au serveur.
 
-```bash
-aurora status          # Affiche l'état du serveur distant (GPU, modèles...)
-aurora doctor          # Lance un diagnostic complet de la connexion
-aurora agents          # Liste les agents officiels protégés et dynamiques
-```
+La réception d’un artefact est vérifiée : nom sûr, confinement au workspace, taille et SHA-256, reprise par plages (`Range`/`If-Range`), renommage d’un `.part` en fichier final uniquement après vérification.
 
----
-*Fait avec passion pour l'ingénierie logicielle autonome.*
+## Limites connues
 
-### Mobile : iOS / iPadOS (a-Shell)
+Les diagnostics ne constituent pas tous des tests de bout en bout. Le daemon doit être disponible pour les missions ; sans lui, le démarrage d’une mission renvoie une erreur. La reprise SSE survit à certaines coupures client, pas à un redémarrage du bridge. Le transport distant doit prendre en charge SSE ; ne pas supposer qu’un Quick Tunnel satisfait cette condition.
 
-Vous pouvez contrôler Aurora directement depuis votre iPhone ou iPad ! L'application [a-Shell](https://apps.apple.com/us/app/a-shell/id1473805438) ou a-Shell mini permet d'avoir un vrai terminal local.
-
-1. Téléchargez **a-Shell** sur l'App Store.
-2. Ouvrez l'application et tapez :
-```bash
-pip install build
-git clone https://github.com/juancodepyandc/aurora-remote-cli.git
-cd aurora-remote-cli
-pip install .
-```
-3. Connectez-vous avec `jobia connect`.
-*Note : Tous les fichiers générés par l'IA (images, sons, etc.) atterriront automatiquement dans le dossier local de l'application a-Shell (accessible via l'application Fichiers de votre iPhone).*
-
-### Mobile : Android (Termux)
-
-Vous pouvez piloter Aurora depuis un appareil Android grâce à [Termux](https://termux.dev/en/).
-
-1. Téléchargez **Termux** depuis [F-Droid](https://f-droid.org/packages/com.termux/) (La version du Play Store est obsolète).
-2. Ouvrez Termux et mettez à jour les paquets :
-```bash
-pkg update -y
-pkg install python git -y
-```
-3. Autorisez l'accès au stockage (pour enregistrer les images et fichiers) :
-```bash
-termux-setup-storage
-```
-4. Installez le client Aurora :
-```bash
-git clone https://github.com/juancodepyandc/aurora-remote-cli.git
-cd aurora-remote-cli
-pip install .
-```
-5. Connectez-vous avec `jobia connect`.
-*Note : Tous les fichiers générés atterriront directement dans votre dossier `Téléchargements` Android principal !*
+Ce README est générable depuis le maître. Le paquet conserve ce fichier pour ses métadonnées d’installation.
