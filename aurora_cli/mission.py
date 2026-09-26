@@ -176,7 +176,19 @@ def run_mission(client: AuroraClient, request: str, workspace: str = "", permiss
                     if safe_cwd is None:
                         out = f"Chemin local refusé (hors espace de travail) : {cwd}"
                     else:
-                        result = subprocess.run(cmd, shell=True, cwd=str(safe_cwd), capture_output=True, text=True, timeout=120)
+                        # iter32 SEC: exécution directe (sans shell) quand la
+                        # commande ne contient AUCUN opérateur shell — elle ne
+                        # passe donc pas par /bin/sh (pas d'injection de ; | &
+                        # ni de glob). Uniquement les commandes composées
+                        # (|, &&, ||, ;, >, <, $, `) passent par le shell,
+                        # strictement dans l'espace de travail vérifié.
+                        _shell_meta = any(op in cmd for op in ("|", "&&", "||", ";", ">", "<", "$(", "`"))
+                        if not _shell_meta:
+                            import shlex
+                            _parts = shlex.split(cmd)
+                            result = subprocess.run(_parts, cwd=str(safe_cwd), capture_output=True, text=True, timeout=120)
+                        else:
+                            result = subprocess.run(cmd, shell=True, cwd=str(safe_cwd), capture_output=True, text=True, timeout=120)
                         out = result.stdout + "\n" + result.stderr
                         if not out.strip():
                             out = "Commande réussie sans sortie."

@@ -63,7 +63,17 @@ def save(cfg: dict[str, Any]) -> None:
     ensure_dirs()
     tmp = CONFIG_FILE.with_name(CONFIG_FILE.name + ".tmp")
     tmp.write_text(json.dumps(cfg, indent=2, ensure_ascii=False), "utf-8")
+    # iter32 SEC: config.json contient api_key — restreindre aux permissions
+    # du propriétaire (0600). No-op sur Windows, critique sur Linux/macOS.
+    try:
+        os.chmod(tmp, 0o600)
+    except OSError:
+        pass
     os.replace(tmp, CONFIG_FILE)
+    try:
+        os.chmod(CONFIG_FILE, 0o600)
+    except OSError:
+        pass
     global _cached
     _cached = None
 
