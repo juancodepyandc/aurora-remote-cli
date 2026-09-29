@@ -22,6 +22,9 @@ def _xdg(var: str, fallback: str) -> Path:
 
 def data_dir() -> Path:
     """Where sessions, logs and caches live."""
+    override = os.environ.get(brand.env("data_dir"), "").strip()
+    if override:
+        return Path(override).expanduser()
     if sys.platform == "win32":
         base = os.environ.get("LOCALAPPDATA") or str(Path.home() / "AppData" / "Local")
         return Path(base) / brand.APP_SLUG

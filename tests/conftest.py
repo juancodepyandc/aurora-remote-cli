@@ -28,6 +28,7 @@ def isolated_config(tmp_path, monkeypatch):
 
     # locations reads the env vars at call time, so no cache to clear.
     assert locations.config_dir() == config_dir
+    assert locations.data_dir() == tmp_path / "data"
     return config_dir
 
 
