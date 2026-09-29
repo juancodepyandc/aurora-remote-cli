@@ -41,7 +41,7 @@ class JOBIACore:
         
         if not client:
             if callback:
-                callback(task_id, {"status": "error", "data": "Aucun client Aurora fourni au JOBIACore."})
+                callback(task_id, {"status": "error", "data": "Aucun client de pont fourni au noyau."})
             return task_id, "error", ""
             
         def worker_logic():

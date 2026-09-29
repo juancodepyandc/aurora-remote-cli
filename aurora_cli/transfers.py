@@ -4,11 +4,13 @@ from __future__ import annotations
 import base64
 import hashlib
 import os
-from pathlib import Path, PurePosixPath, PureWindowsPath
 import re
 import time
+from pathlib import Path, PurePosixPath, PureWindowsPath
 
 import httpx
+
+from aurora_cli import brand
 
 
 def _digest(path: Path) -> str:
@@ -45,7 +47,7 @@ def receive_file(event: dict, client, workspace: str | Path = "") -> Path:
     if checksum and target.is_file() and target.stat().st_size == size and _digest(target) == checksum:
         return target
     identity = hashlib.sha256((filename + checksum).encode()).hexdigest()
-    partial = target.parent / f".aurora-download-{identity}.part"
+    partial = target.parent / f".{brand.APP_SLUG}-download-{identity}.part"
     if partial.is_symlink():
         raise ValueError("Invalid partial download path")
     if remote:

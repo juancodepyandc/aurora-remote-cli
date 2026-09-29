@@ -1,4 +1,4 @@
-"""Mission tracking and display for Aurora CLI."""
+"""Mission tracking and progress display for the remote bridge."""
 from __future__ import annotations
 import os
 import subprocess
@@ -11,7 +11,7 @@ from rich.spinner import Spinner
 from rich.text import Text
 
 from aurora_cli import display
-from aurora_cli.client import AuroraClient
+from aurora_cli.bridge import Bridge
 from aurora_cli.transfers import receive_file
 
 
@@ -36,7 +36,7 @@ def _safe_target(root: Path, raw: str, for_write: bool = False) -> Path | None:
     return resolved
 
 
-def run_mission(client: AuroraClient, request: str, workspace: str = "", permissions: str = "AUTONOMOUS", model: str = "", session_id: str = "", *, server_workspace: str | None = None) -> bool:
+def run_mission(client: Bridge, request: str, workspace: str = "", permissions: str = "AUTONOMOUS", model: str = "", session_id: str = "", *, server_workspace: str | None = None) -> bool:
     """Start and monitor an autonomous mission."""
     if server_workspace is None:
         local_server = urlsplit(client.server_url).hostname in ("localhost", "127.0.0.1", "::1")
@@ -67,10 +67,10 @@ def run_mission(client: AuroraClient, request: str, workspace: str = "", permiss
     info_text.append("Réception des fichiers : ", style="bold blue")
     info_text.append(f"{actual_ws}\n")
     info_text.append("Exécution sur le serveur : ", style="bold magenta")
-    info_text.append(f"{server_workspace or 'espace de travail Aurora'} - Permissions: {permissions}\n\n")
+    info_text.append(f"{server_workspace or 'espace de travail du pont'} - Permissions: {permissions}\n\n")
     info_text.append("Analyse de la requête en cours...", style="dim italic")
     
-    display.console.print(Panel(info_text, title="[bold cyan]✧ Aurora-IA Initialisation[/bold cyan]", border_style="cyan"))
+    display.console.print(Panel(info_text, title="[bold cyan]✧ Initialisation du pont[/bold cyan]", border_style="cyan"))
 
     current_step = ""
     start_time = time.time()
@@ -96,7 +96,7 @@ def run_mission(client: AuroraClient, request: str, workspace: str = "", permiss
                     if live_spinner:
                         live_spinner.stop()
                     reflection_start = time.time()
-                    spin = Spinner("bouncingBar", text=Text(f"✧ Aurora | {step_name}...", style="bold magenta"))
+                    spin = Spinner("bouncingBar", text=Text(f"✧ Pont | {step_name}...", style="bold magenta"))
                     live_spinner = Live(spin, refresh_per_second=10, console=display.console, transient=True)
                     live_spinner.start()
                 
@@ -106,7 +106,7 @@ def run_mission(client: AuroraClient, request: str, workspace: str = "", permiss
                     live_spinner.stop()
                     live_spinner = None
                     elapsed_step = int(time.time() - reflection_start)
-                    display.console.print(f"[bold magenta]✧ Aurora[/bold magenta] [dim]| {step_name} ({elapsed_step}s)[/dim]")
+                    display.console.print(f"[bold magenta]✧ Pont[/bold magenta] [dim]| {step_name} ({elapsed_step}s)[/dim]")
                 elif "Action:" in step_name:
                     pass # Handled by the tokens usually, or we can ignore
                 
@@ -119,7 +119,7 @@ def run_mission(client: AuroraClient, request: str, workspace: str = "", permiss
                         elapsed_secs = 0
                     mins = int(elapsed_secs) // 60
                     secs = int(elapsed_secs) % 60
-                    spin = Spinner("bouncingBar", text=Text(f"✧ Aurora | {current_step} [{mins:02d}:{secs:02d}]...", style="bold magenta"))
+                    spin = Spinner("bouncingBar", text=Text(f"✧ Pont | {current_step} [{mins:02d}:{secs:02d}]...", style="bold magenta"))
                     live_spinner.update(spin)
                     
             elif etype == "token":
@@ -269,7 +269,7 @@ def run_mission(client: AuroraClient, request: str, workspace: str = "", permiss
             live_spinner.stop()
 
 
-def handle_temporary_agents(client: AuroraClient, agents: list[dict]) -> None:
+def handle_temporary_agents(client: Bridge, agents: list[dict]) -> None:
     """Prompt user to save or delete temporary agents created during the mission."""
     display.console.print(f"\n[bold]Agents temporaires créés : {len(agents)}[/bold]")
     for a in agents:

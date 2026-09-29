@@ -1,2 +1,15 @@
 __pycache__/
 *.py[cod]
+
+# Build and packaging artifacts
+build/
+dist/
+*.egg-info/
+
+# macOS
+.DS_Store
+
+.venv/
+.pytest_cache/
+.claude/
+*.md

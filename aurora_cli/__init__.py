@@ -1,2 +1,2 @@
-"""Aurora CLI — Remote AI Agent Client."""
-__version__ = "1.0.0"
+"""JOBIA — control local and remote models from one terminal."""
+__version__ = "1.2.0"

@@ -1,4 +1,4 @@
-"""Interactive REPL mode for Aurora CLI."""
+"""Interactive REPL for the remote bridge."""
 from __future__ import annotations
 import signal
 import sys
@@ -11,9 +11,9 @@ from prompt_toolkit.completion import WordCompleter
 from rich.console import Console
 from rich.markdown import Markdown
 
-from aurora_cli import config
-from aurora_cli.client import AuroraClient
-from aurora_cli import display
+from aurora_cli import brand, config, display
+from aurora_cli.core import capabilities, locations
+from aurora_cli.bridge import Bridge
 try:
     from aurora_cli.core.jobia import JOBIACore
     jobia_engine = JOBIACore()
@@ -25,37 +25,40 @@ agi_engine = None
 console = Console()
 
 INTERNAL_COMMANDS = {
-    "/help": "Show available commands",
-    "/status": "Show server status",
-    "/permissions": "Show/set permission levels",
-    "/agents": "Show all agents",
-    "/tools": "Show available tools",
-    "/models": "Show available models",
-    "/mcp": "Show MCP servers and tools",
-    "/skills": "Show loaded skills",
-    "/connections": "Show service connections",
-    "/files": "Show files changed in current session",
-    "/sources": "Show web sources consulted",
-    "/session": "Show current session info",
-    "/sessions": "List all sessions",
-    "/clear": "Clear the terminal",
-    "/stop": "Stop current task",
-    "/exit": "Exit Aurora",
-    "/mode": "Niveau d'effort cognitif et modèle (pro, balanced, deep, cyber, fast)",
+    "/help": "Lister les commandes",
+    "/status": "État du pont",
+    "/permissions": "Voir ou régler les permissions",
+    "/agents": "Lister les agents",
+    "/tools": "Lister les outils",
+    "/models": "Lister les modèles du pont",
+    "/local": "Lister les modèles disponibles sur cette machine",
+    "/mcp": "Serveurs MCP et leurs outils",
+    "/skills": "Compétences chargées",
+    "/connections": "Connexions aux services",
+    "/files": "Fichiers modifiés dans la session",
+    "/sources": "Sources web consultées",
+    "/session": "Informations de la session courante",
+    "/sessions": "Lister toutes les sessions",
+    "/theme": "Changer de thème pour cette session",
+    "/clear": "Effacer le terminal",
+    "/stop": "Arrêter la tâche en cours",
+    "/exit": "Quitter",
+    "/mode": "Niveau d'effort et modèle (pro, balanced, deep, fast)",
 }
 
 COMMAND_COMPLETER = WordCompleter(list(INTERNAL_COMMANDS.keys()), sentence=True)
 
 
-def run_interactive(client: AuroraClient) -> None:
+def run_interactive(client: Bridge) -> None:
     """Main interactive REPL loop."""
-    # Show banner
+    caps = display.view.caps
+    theme = display.view.theme
     try:
         status = client.status()
         display.banner(status)
     except Exception as e:
-        display.error(f"Cannot connect to Aurora server: {e}")
-        console.print("[dim]Run 'jobia connect' to configure the server connection.[/dim]")
+        display.error(f"Pont injoignable : {e}")
+        display.hint(f"Lancez « {brand.APP_COMMANDS[0]} connect » pour enregistrer un pont distant.")
         return
 
     # Create or Resume Session
@@ -85,14 +88,14 @@ def run_interactive(client: AuroraClient) -> None:
         session_id = ""
 
     messages: list[dict] = []
-    history_file = str(config.HISTORY_FILE)
-    config.ensure_dirs()
+    history_file = str(locations.history_file())
+    locations.ensure_dirs()
     from prompt_toolkit.styles import Style
     from prompt_toolkit.lexers import PygmentsLexer
     from pygments.lexer import RegexLexer, bygroups
     from pygments.token import Keyword, String, Text
     
-    class AuroraLexer(RegexLexer):
+    class SlashLexer(RegexLexer):
         tokens = {
             'root': [
                 (r'(^/\w+)(\s+)(.*)$', bygroups(Keyword, Text, String)),
@@ -101,23 +104,15 @@ def run_interactive(client: AuroraClient) -> None:
             ]
         }
     
-    # Style cyberpunk / moderne pour le menu déroulant (autocomplétion)
-    custom_style = Style.from_dict({
-        'completion-menu': 'bg:#1e1e1e #00ffff',
-        'completion-menu.completion.current': 'bg:#00ffff #000000 bold',
-        'completion-menu.completion': 'bg:#1e1e1e #00aaaa',
-        'scrollbar.background': 'bg:#222222',
-        'scrollbar.button': 'bg:#00ffff',
-        'prompt': '#00ffff bold',
-        'keyword': '#ff00ff bold', # Magenta pour /commande
-        'string': '#ffff00',       # Jaune pour les arguments
-    })
+    # Completion menu colours are derived from the active palette, so the
+    # dropdown matches the rest of the interface in every theme.
+    custom_style = Style.from_dict(theme.prompt_toolkit_style(caps))
 
     prompt_session: PromptSession = PromptSession(
         history=FileHistory(history_file),
         completer=COMMAND_COMPLETER,
         style=custom_style,
-        lexer=PygmentsLexer(AuroraLexer),
+        lexer=PygmentsLexer(SlashLexer),
         complete_while_typing=True
     )
 
@@ -145,7 +140,9 @@ def run_interactive(client: AuroraClient) -> None:
 
     while True:
         try:
-            user_input = prompt_session.prompt("NEXUS > ", ).strip()
+            theme = display.view.theme
+            prompt_session.style = Style.from_dict(theme.prompt_toolkit_style(caps))
+            user_input = prompt_session.prompt(theme.prompt_text(caps)).strip()
         except (EOFError, KeyboardInterrupt):
             console.print("\n[dim]Au revoir.[/dim]")
             break
@@ -171,6 +168,10 @@ def run_interactive(client: AuroraClient) -> None:
                 _cmd_tools(client)
             elif cmd == "/models":
                 _cmd_models(client)
+            elif cmd == "/local":
+                _cmd_local_models()
+            elif cmd == "/theme":
+                _cmd_theme(theme)
             elif cmd == "/mcp":
                 _cmd_mcp(client)
             elif cmd == "/skills":
@@ -355,7 +356,7 @@ def _show_help() -> None:
     console.print()
 
 
-def _cmd_status(client: AuroraClient) -> None:
+def _cmd_status(client: Bridge) -> None:
     try:
         data = client.status()
         display.status_display(data)
@@ -394,7 +395,7 @@ def _cmd_permissions(client, user_input: str) -> None:
         display.error(str(e))
 
 
-def _cmd_agents(client: AuroraClient) -> None:
+def _cmd_agents(client: Bridge) -> None:
     try:
         off = client.agents_official()
         dyn = client.agents_dynamic()
@@ -403,7 +404,7 @@ def _cmd_agents(client: AuroraClient) -> None:
         display.error(str(e))
 
 
-def _cmd_tools(client: AuroraClient) -> None:
+def _cmd_tools(client: Bridge) -> None:
     try:
         data = client.tools()
         display.tools_table(data.get("tools", []))
@@ -411,7 +412,7 @@ def _cmd_tools(client: AuroraClient) -> None:
         display.error(str(e))
 
 
-def _cmd_models(client: AuroraClient) -> None:
+def _cmd_models(client: Bridge) -> None:
     try:
         data = client.models()
         display.models_table(data.get("models", []))
@@ -419,7 +420,38 @@ def _cmd_models(client: AuroraClient) -> None:
         display.error(str(e))
 
 
-def _cmd_mcp(client: AuroraClient) -> None:
+def _cmd_local_models() -> None:
+    """List the models this machine can serve, without contacting the bridge."""
+    from aurora_cli.core.discovery import scan
+
+    display.hint("Analyse de cette machine…")
+    result = scan(deep=True)
+    display.providers_table(result.providers)
+    loose = result.loose_models
+    if loose:
+        display.hint("")
+        display.models_table(loose)
+    if not result.any_provider and not loose:
+        display.hint("Aucun runtime local détecté. Lancez Ollama, LM Studio ou llama-server.")
+
+
+def _cmd_theme(theme) -> None:
+    """Switch theme for this session only, without touching the config file."""
+    from aurora_cli import themes
+
+    display.hint(themes.describe())
+    choice = console.input(display.mark("accent", "Thème : ")).strip()
+    if not choice:
+        return
+    if not themes.is_known(choice):
+        display.error(f"Thème inconnu : {choice}")
+        return
+    new_id, origin = display.view.use_theme(choice)
+    display.success(f"Thème de session : {new_id} ({origin})")
+    display.hint("Il ne sera pas enregistré. Utilisez --theme pour le rendre permanent.")
+
+
+def _cmd_mcp(client: Bridge) -> None:
     try:
         servers = client.mcp_list()
         tools = client.mcp_tools()
@@ -428,7 +460,7 @@ def _cmd_mcp(client: AuroraClient) -> None:
         display.error(str(e))
 
 
-def _cmd_skills(client: AuroraClient) -> None:
+def _cmd_skills(client: Bridge) -> None:
     try:
         data = client.skills_list()
         display.skills_table(data.get("skills", []))
@@ -436,7 +468,7 @@ def _cmd_skills(client: AuroraClient) -> None:
         display.error(str(e))
 
 
-def _cmd_connections(client: AuroraClient) -> None:
+def _cmd_connections(client: Bridge) -> None:
     try:
         data = client.connections_list()
         display.connections_table(data.get("connections", []))
@@ -444,7 +476,7 @@ def _cmd_connections(client: AuroraClient) -> None:
         display.error(str(e))
 
 
-def _cmd_sessions(client: AuroraClient, current_session_id: str = "") -> str:
+def _cmd_sessions(client: Bridge, current_session_id: str = "") -> str:
     try:
         data = client.session_list()
         sessions = data.get("sessions", [])
