@@ -12,6 +12,19 @@ from .machine import profile
 
 def generate(prompt, result):
     machine = profile()
+    if machine.free_ram_gb < 10:
+        from .bootstrap import start_ollama
+        try:
+            start_ollama()
+            subprocess.run(["ollama", "ps"], capture_output=True, text=True,
+                           timeout=5, check=False)
+            from .resource_governor import release_ollama_models
+            released = release_ollama_models()
+            if released:
+                display.info(f"Mémoire libérée automatiquement : {len(released)} modèle(s) local(aux).")
+                machine = profile()
+        except Exception as exc:
+            display.hint(f"Gestion automatique de la mémoire indisponible : {exc}")
     # Only complete diffusion pipelines are loadable by this adapter. A loose
     # checkpoint or a LoRA must never be passed off as an executable pipeline.
     roots = [fetcher.hf_target_dir(a) for a in catalog.for_agent(get('image'))]
@@ -31,8 +44,6 @@ def generate(prompt, result):
         if artifact is None:
             display.warning('Aucun modèle image adapté à cette machine.')
             return False
-        if not click.confirm(f'Installer {artifact.ref} (~{(artifact.bytes or 0)/1024**3:.1f} Go) et le moteur image isolé ?', default=False):
-            return False
         consent_for_engine = True
         ensure_hf()
         plan, _ = fetcher.install(artifact, profile(), job=prompt, progress=display.hint)
@@ -44,8 +55,6 @@ def generate(prompt, result):
     python = engine / ('Scripts/python.exe' if os.name == 'nt' else 'bin/python')
     marker = engine / 'ready'
     if not python.exists() or not marker.exists():
-        if not consent_for_engine and not click.confirm('Installer les dépendances image (PyTorch/Diffusers, plusieurs Go possibles) ?', default=False):
-            return False
         python = python_engine('images', ['torch', 'diffusers', 'transformers', 'accelerate', 'safetensors', 'Pillow'])
         marker.touch()
     output = locations.data_dir() / 'outputs' / f'image-{uuid.uuid4().hex[:12]}.png'

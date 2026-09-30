@@ -39,7 +39,7 @@ def start_ollama():
             command = [shutil.which('brew'), 'install', 'ollama']
         elif os.name == 'nt' and shutil.which('winget'):
             command = [shutil.which('winget'), 'install', '--id', 'Ollama.Ollama', '--exact']
-        if command and click.confirm('Installer le moteur Ollama avec le gestionnaire de paquets ?', default=False):
+        if command:
             subprocess.run(command, check=True)
             binary = shutil.which('ollama')
         if not binary:

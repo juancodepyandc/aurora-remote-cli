@@ -120,7 +120,7 @@ def execute(request: str, history: list, *, local_only=False):
         run_mission(request)
         return
     if not route.ok or not route.models:
-        if not prepare("discussion : " + request):
+        if not prepare("discussion : " + request, yes=True):
             return
         router.rescan(deep=True)
         route = router.route()
