@@ -4,18 +4,21 @@
 Usage:
     python generate_3d.py --image input.png --output mesh.glb [--paint]
 
-Requires the Hunyuan3D venv at ~/.local/share/jobia/models/hunyuan3d-2.1-mac-rocm/venv.
+Le moteur Hunyuan3D est préparé automatiquement dans le répertoire de données JOBIA.
 """
 from __future__ import annotations
 
 import argparse
 import os
+import platform
 import sys
 import time
 from pathlib import Path
 
-HUNYUAN_ROOT = Path.home() / ".local/share/jobia/models/hunyuan3d-2.1-mac-rocm"
-HUNYUAN_VENV = HUNYUAN_ROOT / "venv/bin/python"
+from aurora_cli.core.bootstrap import ensure_3d_engine
+
+HUNYUAN_ROOT = ensure_3d_engine()
+HUNYUAN_VENV = HUNYUAN_ROOT / ("venv/Scripts/python.exe" if os.name == "nt" else "venv/bin/python")
 HUNYUAN_REPO = HUNYUAN_ROOT / "Hunyuan3D-2.1"
 
 
@@ -34,13 +37,18 @@ def main() -> int:
     output_path = Path(args.output).expanduser().resolve()
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
+    device = os.environ.get("JOBIA_DEVICE", "").strip().lower() or (
+        "cuda" if os.environ.get("CUDA_VISIBLE_DEVICES", "").strip() not in ("", "-1")
+        else "mps" if platform.system() == "Darwin" and platform.machine() in {"arm64", "aarch64"}
+        else "cpu")
+
     if not image_path.exists():
         print(f"ERROR: image not found: {image_path}", file=sys.stderr)
         return 1
 
     script = f'''
 import sys, os, time
-os.environ["HY3D_BACKEND"] = "mps"
+os.environ["HY3D_BACKEND"] = "{device}"
 sys.path.insert(0, "{HUNYUAN_ROOT}")
 sys.path.insert(0, "{HUNYUAN_REPO}/hy3dshape")
 sys.path.insert(0, "{HUNYUAN_REPO}/hy3dpaint")
@@ -81,7 +89,7 @@ pipeline = Hunyuan3DDiTFlowMatchingPipeline.from_pretrained(
     subfolder="hunyuan3d-dit-v2-1",
     use_safetensors=False,
     variant="fp16",
-    device="mps",
+    device="{device}",
     dtype="float16",
 )
 if hasattr(pipeline, "dtype") and isinstance(pipeline.dtype, str):
