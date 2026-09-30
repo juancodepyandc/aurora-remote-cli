@@ -100,14 +100,12 @@ def ensure_3d_engine():
     if not stamp.exists() and requirements.is_file():
         subprocess.run([str(python), "-m", "pip", "install", "--upgrade", "pip", "setuptools", "wheel"],
                        check=True, timeout=600)
-        # CUDA/Blender-only packages cannot be installed on a Mac CPU/Metal
-        # host. Keep the portable runtime requirements and let the machine
-        # profile choose acceleration at execution time.
+        # Keep the upstream requirement set as the source of truth. The
+        # adaptive resolver below removes only packages that pip proves cannot
+        # be installed on this OS/architecture/interpreter.
         filtered = root / "requirements.jobia.txt"
-        blocked = ("cupy-cuda", "deepspeed", "bpy") if sys.platform == "darwin" else ("cupy-cuda", "bpy")
         lines = [line for line in requirements.read_text().splitlines()
-                 if not any(line.strip().lower().startswith(item) for item in blocked)
-                 and not line.startswith("--extra-index-url")]
+                 if not line.startswith("--extra-index-url")]
         filtered.write_text("\n".join(lines) + "\n")
         _install_requirements_adaptively(python, filtered)
     if not stamp.exists() and ((repo / "pyproject.toml").is_file() or (repo / "setup.py").is_file()):
