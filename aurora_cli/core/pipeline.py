@@ -17,7 +17,7 @@ from pathlib import Path
 
 from . import catalog, fetcher
 from .agents import get
-from .bootstrap import ensure_hf, python_engine, start_ollama
+from .bootstrap import ensure_3d_engine, ensure_hf, python_engine, start_ollama
 from .machine import profile
 
 
@@ -43,7 +43,7 @@ class PipelineResult:
     log: str = ""
 
 
-def stage_validate_mesh(mesh_path: Path) -> PipelineStage:
+def stage_validate_mesh(mesh_path: Path, *, require_textures: bool = False) -> PipelineStage:
     """Validate the delivered GLB before marking a complex job complete."""
     stage = PipelineStage(name="mesh_quality_gate", provider="local-validator")
     try:
@@ -54,6 +54,10 @@ def stage_validate_mesh(mesh_path: Path) -> PipelineStage:
         declared = int.from_bytes(data[8:12], "little")
         if version != 2 or declared != len(data):
             raise ValueError("GLB tronqué ou version inconnue")
+        if require_textures:
+            payload = data[12:].lower()
+            if b'"images"' not in payload or b'"textures"' not in payload:
+                raise ValueError("GLB valide mais sans textures PBR embarquées")
         stage.status = "done"
         stage.output = mesh_path
         stage.log = f"GLB valide · {len(data) / 1024 ** 2:.1f} Mo"
@@ -148,6 +152,10 @@ def ensure_model(model_name: str, capability: str):
         engine = python_engine("images", ["torch", "diffusers", "transformers",
                                            "accelerate", "safetensors", "Pillow"])
         return plan.target, engine
+    if capability == "3d":
+        root = ensure_3d_engine()
+        python = root / ("venv/Scripts/python.exe" if os.name == "nt" else "venv/bin/python")
+        return root, python
     return find_model(artifact.ref, capability=capability) or (plan.target, Path(sys.executable))
 
 
@@ -342,6 +350,10 @@ def stage_generate_3d(
             if child.is_dir() and "hunyuan" in child.name.lower():
                 repo = child
                 break
+    if texture and not (repo / "hy3dpaint").is_dir():
+        stage.status = "failed"
+        stage.log = "Texture PBR demandée mais le module hy3dpaint est absent du moteur 3D."
+        return stage
     device = os.environ.get("JOBIA_DEVICE", "").strip().lower() or (
         "cuda" if os.environ.get("CUDA_VISIBLE_DEVICES", "").strip() not in ("", "-1")
         else "mps" if platform.system() == "Darwin" and platform.machine() in {"arm64", "aarch64"}
@@ -353,7 +365,7 @@ def stage_generate_3d(
 
     script = f'''
 import sys, os, time
-os.environ["HY3D_BACKEND"] = "mps"
+os.environ["HY3D_BACKEND"] = {json.dumps(device)}
 os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
 sys.path.insert(0, {root_literal})
 sys.path.insert(0, {json.dumps(str(repo / "hy3dshape"))})
@@ -489,7 +501,7 @@ def run_pipeline(
                                        texture=texture)
         stages.append(mesh_stage)
         if mesh_stage.status == "done":
-            gate = stage_validate_mesh(mesh_path)
+            gate = stage_validate_mesh(mesh_path, require_textures=texture)
             stages.append(gate)
             if gate.status != "done":
                 continue

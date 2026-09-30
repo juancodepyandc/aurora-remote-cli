@@ -12,6 +12,30 @@ import httpx
 from . import locations
 
 
+def ensure_3d_engine():
+    """Prepare the Hunyuan runtime under JOBIA data, adapted to this host."""
+    root = locations.data_dir() / "models" / "hunyuan3d-2.1"
+    repo = root / "Hunyuan3D-2.1"
+    python = root / ("venv/Scripts/python.exe" if os.name == "nt" else "venv/bin/python")
+    root.mkdir(parents=True, exist_ok=True)
+    if not repo.exists():
+        subprocess.run(["git", "clone", "--depth", "1",
+                        "https://github.com/Tencent-Hunyuan/Hunyuan3D-2.1.git",
+                        str(repo)], check=True, timeout=900)
+    if not python.exists():
+        venv.EnvBuilder(with_pip=True).create(root / "venv")
+    stamp = root / ".jobia-ready"
+    requirements = repo / "requirements.txt"
+    if not stamp.exists() and requirements.is_file():
+        subprocess.run([str(python), "-m", "pip", "install", "-r", str(requirements)],
+                       check=True, timeout=1800)
+    if not stamp.exists() and ((repo / "pyproject.toml").is_file() or (repo / "setup.py").is_file()):
+        subprocess.run([str(python), "-m", "pip", "install", "-e", str(repo)],
+                       check=True, timeout=1800)
+    stamp.touch()
+    return root
+
+
 def python_engine(name, packages):
     root = locations.data_dir() / 'engines' / name
     python = root / ('Scripts/python.exe' if os.name == 'nt' else 'bin/python')

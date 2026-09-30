@@ -67,6 +67,9 @@ def generate_mesh(
     """
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
+    if paint and not engine.can_paint:
+        return False, "Texture PBR demandée mais le module hy3dpaint est absent du moteur 3D."
+
     device = os.environ.get("JOBIA_DEVICE", "").strip().lower()
     if not device:
         device = "cuda" if os.environ.get("CUDA_VISIBLE_DEVICES", "").strip() not in ("", "-1") else "cpu"
