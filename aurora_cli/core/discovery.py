@@ -55,8 +55,9 @@ MIN_MODEL_BYTES = 1_000_000
 #: Cap on how many files one directory walk yields.
 MAX_FILES = 4000
 
-#: Cap on walk depth below each search root.
-MAX_DEPTH = 4
+#: Cap on walk depth below each search root. Deep enough to find pipelines
+#: installed under weights/ or nested project directories (e.g. Hunyuan3D).
+MAX_DEPTH = 6
 
 #: Known runtimes: executable names, default port, flavour, human label.
 KNOWN_RUNTIMES: tuple[dict, ...] = (
@@ -292,7 +293,8 @@ STAGE_CONFIG_MARKERS = ("config.yaml", "config.json")
 
 #: Substrings in a Diffusers ``_class_name`` that mean "this makes 3D".
 _3D_CLASS_MARKERS = ("mesh", "3d", "shape", "geometry", "hunyuan3d", "triposr",
-                     "trellis", "instantmesh", "imagecraft")
+                      "trellis", "instantmesh", "imagecraft", "shap-e", "point-e",
+                      "pointe", "lrm", "zero123", "unique3d", "wonder3d")
 
 #: Markers of the *texturing* half of a 3D project. A Hunyuan checkout holds
 #: both a shape pipeline and a paint-PBR one, and both are "3D" as far as a
@@ -302,15 +304,28 @@ _3D_CLASS_MARKERS = ("mesh", "3d", "shape", "geometry", "hunyuan3d", "triposr",
 #: because only the generator is installed. Tested before the generic 3D
 #: markers, since "paintpbr" also contains no 3D marker but "hunyuan3d" does.
 _3D_TEXTURE_MARKERS = ("paintpbr", "paint_pbr", "texture", "texgen", "unetpaint",
-                       "texturemap", "pbr")
+                        "texturemap", "pbr")
 
 #: Substrings that mean "encodes images/vision", not "generates text".
 _VISION_CLASS_MARKERS = ("dinov2", "vision", "clipimage", "imageencoder",
-                         "siglip", "resnet", "dinov3", "convnext")
+                          "siglip", "resnet", "dinov3", "convnext")
+
+#: Substrings that mean "generates images from text".
+_IMAGE_CLASS_MARKERS = ("stable-diffusion", "stablediffusion", "flux", "sdxl",
+                        "sd15", "sd21", "dalle", "midjourney", "kandinsky",
+                        "deepfloyd", "unclip", "versatile", "sd3")
+
+#: Substrings that mean "generates video".
+_VIDEO_CLASS_MARKERS = ("animate", "animatediff", "video", "svd", "cogvideo",
+                        "modelscope", "ltx", "open-sora", "opensora")
+
+#: Substrings that mean "generates audio/speech".
+_AUDIO_CLASS_MARKERS = ("whisper", "bark", "tts", "speech", "musicgen",
+                        "audioldm", "stable-audio")
 
 
 def _classify_pipeline(class_name: str, component_names: list[str],
-                       dirname: str = "") -> str:
+                        dirname: str = "") -> str:
     """Map a Diffusers class name, or a directory name, to a JOBIA capability.
 
     Separators are stripped before matching so one marker covers every
@@ -330,6 +345,15 @@ def _classify_pipeline(class_name: str, component_names: list[str],
     for marker in _3D_CLASS_MARKERS:
         if marker in haystack:
             return "3d"
+    for marker in _IMAGE_CLASS_MARKERS:
+        if marker in haystack:
+            return "image"
+    for marker in _VIDEO_CLASS_MARKERS:
+        if marker in haystack:
+            return "video"
+    for marker in _AUDIO_CLASS_MARKERS:
+        if marker in haystack:
+            return "audio"
     for marker in _VISION_CLASS_MARKERS:
         if marker in haystack:
             return "vision"

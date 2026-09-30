@@ -155,10 +155,20 @@ def model_search_roots() -> list[Path]:
     add(("koboldcpp", home() / "koboldcpp" / "models"))
     add(("koboldcpp", home() / ".cache" / "koboldcpp"))
 
+    # --- JOBIA's own model store ---
+    add(("jobia", data_dir() / "models"))
+
     # --- Project-local, so a checkout with its own models is found ---
     add(("projet", Path.cwd() / "models"))
     add(("projet", Path.cwd() / "weights"))
     add(("projet", Path.cwd() / ".jobia" / "models"))
+
+    # --- Broad home-directory scan for models in non-standard locations ---
+    # Many users install pipelines (Hunyuan3D, ComfyUI, etc.) outside the
+    # well-known cache dirs. These roots catch them without scanning all of $HOME.
+    for sub in ("Desktop", "Documents", "Downloads", "models", "weights",
+                "AI", "ai-models", "checkpoints", "ComfyUI"):
+        add(("home", home() / sub))
 
     # --- Explicit overrides: JOBIA_MODEL_ROOTS is how a user points JOBIA at a
     # model tree it cannot guess, e.g. a 3D pipeline living outside the cwd.

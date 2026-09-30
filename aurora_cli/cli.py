@@ -270,14 +270,14 @@ def theme_cmd(name):
 
 
 @main.command()
-@click.option("--deep", is_flag=True, help="Also walk model caches for GGUF/ONNX files.")
+@click.option("--shallow", is_flag=True, help="Skip the filesystem walk (faster, misses on-disk models).")
 @click.option("--provider", default="", help="Only report providers matching this name.")
-def models(deep, provider):
+def models(shallow, provider):
     """List every model found on this machine."""
     from aurora_cli.core.discovery import scan
 
     display.header("Modèles détectés")
-    result = scan(deep=deep)
+    result = scan(deep=not shallow)
     everything = [m for p in result.providers for m in p.models] + result.loose_models
     selected = everything
     if provider:
@@ -389,6 +389,76 @@ def ask(request, tier, as_json, verbose):
         display.hint(f"Pour commencer : jobia provision-install {first.agent_id}{forced}")
     else:
         display.success("Rien à télécharger pour cette demande.")
+
+    # If a 3D engine is available locally, offer to run it.
+    from aurora_cli.core.engine3d import find_hunyuan3d
+    engine = find_hunyuan3d()
+    if engine and engine.available:
+        display.hint(f"Moteur 3D local détecté : {engine.name} — "
+                     f"jobia generate-3d --image <fichier> --output <fichier.glb>")
+
+
+@main.command(name="create-3d")
+@click.argument("character")
+@click.option("--output", default=None, help="Output directory (default: JOBIA data outputs)")
+@click.option("--prompt", default=None, help="Override the image generation prompt")
+def create_3d(character, output, prompt):
+    """Full autonomous pipeline: generate image → VLM check → 3D mesh.
+
+    Example: jobia create-3d "Natsu version combattant"
+    """
+    from aurora_cli.core.pipeline import run_pipeline
+
+    from aurora_cli.core.locations import data_dir
+    output_dir = Path(output).expanduser() if output else data_dir() / "outputs" / "3d" / character.replace(" ", "_")
+
+    display.header(f"Pipeline 3D : {character}")
+    display.hint(f"Sortie : {output_dir}")
+    display.hint("Étapes : génération image → vérification VLM → mesh 3D")
+
+    result = run_pipeline(character, output_dir, image_prompt=prompt)
+
+    if result.success:
+        display.success(f"Mesh 3D généré : {result.final_output}")
+        display.hint(f"Image de référence : {result.stages[0].output if result.stages else 'N/A'}")
+    else:
+        display.error("Le pipeline a échoué.")
+        display.hint(result.log[-500:])
+
+
+@main.command(name="generate-3d")
+@click.option("--image", required=True, help="Source image (PNG/JPG)")
+@click.option("--output", required=True, help="Output .glb path")
+@click.option("--paint", is_flag=True, help="Apply PBR texturing")
+def generate_3d(image, output, paint):
+    """Generate a 3D mesh from an image using the local Hunyuan3D pipeline."""
+    from aurora_cli.core.engine3d import find_hunyuan3d, generate_mesh
+
+    engine = find_hunyuan3d()
+    if not engine or not engine.available:
+        display.error("Hunyuan3D non trouvé localement.")
+        display.hint("JOBIA ne trouve pas encore le moteur 3D adapté ; utilise create-3d pour le préparer automatiquement.")
+        return
+
+    image_path = Path(image).expanduser().resolve()
+    output_path = Path(output).expanduser().resolve()
+
+    if not image_path.exists():
+        display.error(f"Image introuvable : {image_path}")
+        return
+
+    display.header(f"Génération 3D : {image_path.name}")
+    display.hint(f"Moteur : {engine.name}")
+    display.hint(f"Sortie : {output_path}")
+    display.hint("Génération en cours... (peut prendre plusieurs minutes)")
+
+    success, log = generate_mesh(engine, image_path, output_path, paint=paint)
+
+    if success:
+        display.success(f"Mesh généré : {output_path}")
+    else:
+        display.error("La génération a échoué.")
+        display.hint(log[-500:])
 
 
 @main.command()

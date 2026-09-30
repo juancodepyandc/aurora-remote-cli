@@ -95,6 +95,19 @@ def execute(request: str, history: list, *, local_only=False):
                      [m for p in result.providers for m in p.models] + result.loose_models)
     media = any(s.agent.capability not in {"llm", "code"} for s in plan.steps)
     mode = "local" if local_only else config.get("mode", "auto")
+    if any(s.agent.id in {"3d", "3d-texture"} for s in plan.steps):
+        if mode != "remote" or not config.is_configured():
+            from .core import locations
+            from .core.pipeline import run_pipeline
+            output_dir = locations.data_dir() / "outputs" / "3d" / "autonomous"
+            display.info("Pipeline autonome : image → contrôle → forme 3D → texture PBR → validation.")
+            result_3d = run_pipeline(request, output_dir, texture=True)
+            if result_3d.success:
+                display.success(f"Résultat 3D validé : {result_3d.final_output}")
+            else:
+                display.error("Le pipeline 3D n'a pas atteint son gate qualité.")
+                display.hint(result_3d.log[-800:])
+            return
     if media and mode != "remote" and all(s.agent.id == "image" for s in plan.steps):
         from aurora_cli.core.images import generate
         if generate(request, result):

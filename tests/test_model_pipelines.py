@@ -99,6 +99,25 @@ def test_pipeline_weights_are_not_listed_twice(tmp_path, monkeypatch):
     assert names[0].endswith("hunyuan3d-paintpbr-v2-1")
 
 
+def test_mesh_quality_gate_rejects_truncated_glb(tmp_path):
+    from aurora_cli.core.pipeline import stage_validate_mesh
+
+    path = tmp_path / "broken.glb"
+    path.write_bytes(b"glTF" + (2).to_bytes(4, "little") + (40).to_bytes(4, "little") + b"x" * 8)
+    gate = stage_validate_mesh(path)
+    assert gate.status == "failed"
+    assert "tronqué" in gate.log
+
+
+def test_mesh_quality_gate_accepts_complete_glb(tmp_path):
+    from aurora_cli.core.pipeline import stage_validate_mesh
+
+    path = tmp_path / "ok.glb"
+    path.write_bytes(b"glTF" + (2).to_bytes(4, "little") + (20).to_bytes(4, "little") + b"x" * 8)
+    gate = stage_validate_mesh(path)
+    assert gate.status == "done"
+
+
 def test_ckpt_counts_as_a_weight_extension():
     """A Hunyuan DiT ships as .ckpt; missing it hid 6.9 GB of real weights."""
     assert ".ckpt" in discovery.MODEL_SUFFIXES
