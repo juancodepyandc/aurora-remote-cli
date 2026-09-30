@@ -134,6 +134,18 @@ def find_model(model_name: str, *, capability: str = "") -> tuple[Path, Path] | 
 def ensure_model(model_name: str, capability: str):
     """Find or provision a role model using the measured host profile."""
     found = find_model(model_name, capability=capability)
+    # Always use JOBIA's managed runtime for executable pipelines. A cache hit
+    # can be only weights (or a stale system interpreter without torch).
+    if capability == "image":
+        engine = python_engine("images", ["torch", "diffusers", "transformers",
+                                           "accelerate", "safetensors", "Pillow"])
+        if found:
+            return found[0], engine
+    if capability == "3d":
+        root = ensure_3d_engine()
+        python = root / ("venv/Scripts/python.exe" if os.name == "nt" else "venv/bin/python")
+        if found:
+            return root, python
     if found:
         return found
     agent = get(capability) or get("3d" if capability == "3d" else "image")
@@ -149,12 +161,8 @@ def ensure_model(model_name: str, capability: str):
     plan, _ = fetcher.install(artifact, profile(), agent=agent.id,
                               job=f"pipeline:{capability}")
     if capability == "image":
-        engine = python_engine("images", ["torch", "diffusers", "transformers",
-                                           "accelerate", "safetensors", "Pillow"])
         return plan.target, engine
     if capability == "3d":
-        root = ensure_3d_engine()
-        python = root / ("venv/Scripts/python.exe" if os.name == "nt" else "venv/bin/python")
         return root, python
     return find_model(artifact.ref, capability=capability) or (plan.target, Path(sys.executable))
 
@@ -213,7 +221,12 @@ def stage_generate_image(
     """Generate an image using a local diffusion model."""
     stage = PipelineStage(name="image_generation", provider=model_name)
 
-    found = ensure_model(model_name, "image")
+    try:
+        found = ensure_model(model_name, "image")
+    except Exception as exc:
+        stage.status = "failed"
+        stage.log = f"Préparation automatique du moteur image impossible : {exc}"
+        return stage
     if not found:
         stage.status = "failed"
         stage.log = f"Model {model_name} not found. Install it first."
@@ -224,6 +237,11 @@ def stage_generate_image(
     prompt_literal = json.dumps(prompt)
     model_literal = json.dumps(str(model_root))
     output_literal = json.dumps(str(output_path))
+    device = os.environ.get("JOBIA_DEVICE", "").strip().lower() or (
+        "cuda" if os.environ.get("CUDA_VISIBLE_DEVICES", "").strip() not in ("", "-1")
+        else "mps" if platform.system() == "Darwin" and platform.machine() in {"arm64", "aarch64"}
+        else "cpu")
+    dtype = "float16" if device in {"cuda", "mps"} else "float32"
 
     script = f'''
 import torch
@@ -231,9 +249,9 @@ from diffusers import StableDiffusionXLPipeline
 
 pipe = StableDiffusionXLPipeline.from_pretrained(
     {model_literal},
-    torch_dtype=torch.float16,
+    torch_dtype=getattr(torch, {json.dumps(dtype)}),
     variant="fp16",
-).to("mps")
+).to({json.dumps(device)})
 
 image = pipe(
     prompt={prompt_literal},
@@ -275,7 +293,12 @@ def stage_verify_image(
     """Verify the generated image matches the request using a VLM."""
     stage = PipelineStage(name="vlm_verification", provider=model_name)
 
-    start_ollama()
+    try:
+        start_ollama()
+    except Exception as exc:
+        stage.status = "failed"
+        stage.log = f"Préparation automatique du VLM impossible : {exc}"
+        return stage
     if not find_ollama_model(model_name):
         stage.status = "running"
         stage.log = f"Installing {model_name} into Ollama..."
@@ -333,7 +356,12 @@ def stage_generate_3d(
     """Generate a 3D mesh from an image using a local pipeline."""
     stage = PipelineStage(name="3d_generation", provider=model_name)
 
-    found = ensure_model(model_name, "3d")
+    try:
+        found = ensure_model(model_name, "3d")
+    except Exception as exc:
+        stage.status = "failed"
+        stage.log = f"Préparation automatique du moteur 3D impossible : {exc}"
+        return stage
     if not found:
         stage.status = "failed"
         stage.log = f"Model {model_name} not found. Install it first."

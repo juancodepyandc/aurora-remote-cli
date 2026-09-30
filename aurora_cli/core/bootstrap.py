@@ -32,6 +32,13 @@ def ensure_3d_engine():
     if not stamp.exists() and ((repo / "pyproject.toml").is_file() or (repo / "setup.py").is_file()):
         subprocess.run([str(python), "-m", "pip", "install", "-e", str(repo)],
                        check=True, timeout=1800)
+    # A previous interrupted install may have left the readiness marker while
+    # the core runtime is absent. Repair that state before returning.
+    torch_check = subprocess.run([str(python), "-c", "import torch"],
+                                 capture_output=True)
+    if torch_check.returncode != 0:
+        subprocess.run([str(python), "-m", "pip", "install", "torch"],
+                       check=True, timeout=1800)
     stamp.touch()
     return root
 
