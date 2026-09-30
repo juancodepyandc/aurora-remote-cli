@@ -12,5 +12,12 @@ fi
 mkdir -p "$HOME/.local/bin"
 ln -sf "$JOBIA_ROOT/.venv/bin/jobia" "$HOME/.local/bin/jobia"
 ln -sf "$JOBIA_ROOT/.venv/bin/jbia" "$HOME/.local/bin/jbia"
+for BIN_DIR in /opt/homebrew/bin /usr/local/bin; do
+  if [ -d "$BIN_DIR" ] && [ -w "$BIN_DIR" ]; then
+    ln -sf "$JOBIA_ROOT/.venv/bin/jobia" "$BIN_DIR/jobia"
+    ln -sf "$JOBIA_ROOT/.venv/bin/jbia" "$BIN_DIR/jbia"
+    break
+  fi
+done
 "$HOME/.local/bin/jobia" --version >/dev/null
 echo 'JOBIA installé et vérifié. Tu peux maintenant lancer : jobia'
