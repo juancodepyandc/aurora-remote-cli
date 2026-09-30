@@ -505,7 +505,12 @@ def run_pipeline(
     output_dir = Path(output_dir).expanduser().resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    prompt = image_prompt or f"{character_desc}, full body, white background, high detail, collectible figurine style, toy photography"
+    prompt = image_prompt or (
+        f"{character_desc}. Preserve the exact requested identity and recognizable costume, "
+        "full body, centered character, neutral studio background, clean silhouette, "
+        "front three-quarter view, high detail, realistic materials, suitable as a "
+        "single-view 3D reconstruction reference."
+    )
     image_path = output_dir / "reference.png"
     mesh_path = output_dir / "model.glb"
 

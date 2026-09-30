@@ -24,8 +24,10 @@ def main():
     else:
         pipe.to(device)
     turbo = 'turbo' in args.model.lower()
-    image = pipe(prompt=args.prompt, num_inference_steps=4 if turbo else 25,
-                 guidance_scale=0.0 if turbo else 7.0, height=512, width=512).images[0]
+    # Four turbo steps often produces an incoherent silhouette. Eight steps
+    # remain quick while giving named characters and armour enough structure.
+    image = pipe(prompt=args.prompt, num_inference_steps=8 if turbo else 30,
+                 guidance_scale=1.0 if turbo else 7.0, height=768, width=768).images[0]
     image.save(args.output)
 
 
