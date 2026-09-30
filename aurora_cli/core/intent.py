@@ -206,6 +206,14 @@ def match_agents(request: str) -> list[tuple[Agent, str]]:
             keyword = pair[1]
             if agent_id not in found or len(keyword) > len(found[agent_id][1]):
                 found[agent_id] = pair
+        # A request such as "génère un modèle 3D" contains both an action
+        # (which also matches the image agent) and a specialised deliverable.
+        # Keep the 3D role instead of letting the generic image action hide it.
+        for agent in agents_mod.AGENTS:
+            if agent.id == "3d":
+                hit, keyword = _match(agent, text)
+                if hit and (agent.id not in found or len(keyword) > len(found[agent.id][1])):
+                    found[agent.id] = (agent, keyword)
     return sorted(found.values(), key=lambda pair: -len(pair[1]))
 
 
