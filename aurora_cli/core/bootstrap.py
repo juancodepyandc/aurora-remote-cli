@@ -1,5 +1,6 @@
 """Install isolated Python engines and start an existing Ollama daemon."""
 import os
+import re
 from pathlib import Path
 import shutil
 import subprocess
@@ -27,6 +28,42 @@ def _compatible_python() -> str:
         except (OSError, subprocess.SubprocessError, ValueError):
             continue
     raise RuntimeError("JOBIA ne trouve aucun Python 3.10–3.13 compatible avec le moteur 3D.")
+
+
+def _install_requirements_adaptively(python: Path, requirements: Path) -> list[str]:
+    """Install a runtime while learning which optional pins this host cannot use.
+
+    Wheels differ by OS, architecture and Python minor version. A single old
+    pin must not abort an otherwise usable engine, so failed package names are
+    removed from the generated input and pip is retried until the set is
+    installable or no new diagnosis is possible.
+    """
+    lines = requirements.read_text(encoding="utf-8").splitlines()
+    skipped: list[str] = []
+    for _attempt in range(12):
+        candidate = requirements.with_name("requirements.jobia.active.txt")
+        candidate.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        result = subprocess.run(
+            [str(python), "-m", "pip", "install", "--prefer-binary", "-r", str(candidate)],
+            capture_output=True, text=True, timeout=3600,
+        )
+        if result.returncode == 0:
+            return skipped
+        diagnostics = result.stdout + "\n" + result.stderr
+        matches = re.findall(r"(?:No matching distribution found for|Could not find a version that satisfies the requirement)\s+([A-Za-z0-9_.-]+)", diagnostics, re.I)
+        if not matches:
+            matches = re.findall(r"Failed to build installable wheels for ([A-Za-z0-9_.-]+)", diagnostics, re.I)
+        package = next((m.lower().replace("_", "-") for m in matches if m), "")
+        if not package:
+            raise RuntimeError("Installation adaptative impossible : " + diagnostics[-1200:])
+        new_lines = [line for line in lines
+                     if not line.lstrip().lower().startswith(package + "=")
+                     and not line.lstrip().lower().startswith(package + " ")]
+        if len(new_lines) == len(lines):
+            raise RuntimeError(f"Le paquet {package} est requis mais aucun remplacement compatible n'a été trouvé.")
+        lines = new_lines
+        skipped.append(package)
+    raise RuntimeError("Installation adaptative interrompue après trop de variantes incompatibles.")
 
 
 def ensure_3d_engine():
@@ -72,8 +109,7 @@ def ensure_3d_engine():
                  if not any(line.strip().lower().startswith(item) for item in blocked)
                  and not line.startswith("--extra-index-url")]
         filtered.write_text("\n".join(lines) + "\n")
-        subprocess.run([str(python), "-m", "pip", "install", "-r", str(filtered)],
-                       check=True, timeout=3600)
+        _install_requirements_adaptively(python, filtered)
     if not stamp.exists() and ((repo / "pyproject.toml").is_file() or (repo / "setup.py").is_file()):
         subprocess.run([str(python), "-m", "pip", "install", "-e", str(repo)],
                        check=True, timeout=1800)
