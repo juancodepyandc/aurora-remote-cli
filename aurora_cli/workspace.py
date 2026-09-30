@@ -1,6 +1,7 @@
 """Interactive terminal workspace; discovered capabilities drive execution."""
 from __future__ import annotations
 
+from pathlib import Path
 
 import click
 from rich import box
@@ -108,7 +109,13 @@ def execute(request: str, history: list, *, local_only=False):
             display.warning("Le PC fixe ne répond pas ; reprise automatique en local.")
         from .core import locations
         from .core.pipeline import run_pipeline
-        output_dir = locations.data_dir() / "outputs" / "3d" / "autonomous"
+        # Honour a natural destination such as "dans le dossier Documents"
+        # without forcing a flag or a machine-specific absolute path.
+        destination = locations.data_dir() / "outputs" / "3d" / "autonomous"
+        request_lower = request.lower()
+        if "documents" in request_lower or "document" in request_lower:
+            destination = Path.home() / "Documents" / "JOBIA" / "3d"
+        output_dir = destination
         display.info("Pipeline autonome : image → contrôle → forme 3D → texture PBR → validation.")
         result_3d = run_pipeline(request, output_dir, texture=True)
         if result_3d.success:
