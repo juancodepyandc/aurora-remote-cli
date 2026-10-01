@@ -1,0 +1,67 @@
+# Research profiles: what "better" means for a capability, and how to look.
+#
+# Read by aurora_cli/research.py. Adding a capability, or changing what counts
+# as a good candidate for it, is an edit here rather than a code change.
+# Nothing in this file is a hardcoded answer to "which model is best" — it only
+# says where to look and what cannot be run on this machine.
+
+[capabilities.3d]
+# The Hub task tag that means "turn an image into a 3D asset".
+filter = "image-to-3d"
+sort = "downloads"
+# Refuse anything that cannot be downloaded and run here. A repo whose size the
+# Hub will not report is also refused: unbounded is not the same as small.
+max_download_gb = 40
+weight_suffixes = [".safetensors", ".ckpt", ".bin", ".gguf"]
+# Checkpoints, adapters and mirrors of other people's finetunes are noise in a
+# search for a base capability.
+exclude_substrings = ["lora", "ckpt-", "-test", "dummy", "nsfw"]
+
+# Which implemented runner can drive a given repo. A repo with no entry here is
+# still proposed, but its adapter is empty, so the probe fails loudly and the
+# decision log says "no runner" instead of a score being invented.
+# Executable recipes are resolved by exact ID through adapters.toml.
+# Unknown architectures remain research candidates, never runnable guesses.
+
+[capabilities.image]
+filter = "text-to-image"
+sort = "downloads"
+max_download_gb = 40
+weight_suffixes = [".safetensors", ".bin"]
+exclude_substrings = ["lora", "-test", "dummy"]
+
+[capabilities.llm]
+filter = "text-generation"
+sort = "downloads"
+max_download_gb = 40
+weight_suffixes = [".safetensors", ".gguf"]
+exclude_substrings = ["lora", "-test", "dummy"]
+
+[capabilities.vision]
+filter = "image-text-to-text"
+sort = "downloads"
+max_download_gb = 40
+weight_suffixes = [".safetensors", ".gguf"]
+exclude_substrings = ["lora", "-test", "dummy"]
+
+[capabilities.audio]
+filter = "automatic-speech-recognition"
+sort = "downloads"
+max_download_gb = 10
+weight_suffixes = [".safetensors", ".bin"]
+exclude_substrings = ["-test", "dummy"]
+
+[capabilities.tts]
+filter = "text-to-speech"
+sort = "downloads"
+max_download_gb = 10
+weight_suffixes = [".safetensors", ".bin"]
+exclude_substrings = ["-test", "dummy"]
+
+# Failures this profile has actually hit, with the fix. Consulted by
+# HuggingFaceResearcher.explain() so a recurring failure is diagnosed rather
+# than re-researched from scratch every time.
+[capabilities.3d.known_failures]
+"invalid low watermark ratio" = "torch ships default_low_watermark_ratio=1.4 but validates it as <=1.0; set PYTORCH_MPS_LOW_WATERMARK_RATIO=1.0"
+"invalid buffer size" = "a single Metal buffer was requested larger than the device allows; lower the paint preset resolution or the view count"
+"bpy" = "not needed: the bundled mesh_io writes GLB directly, so texturing works without Blender"

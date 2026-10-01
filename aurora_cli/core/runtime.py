@@ -65,7 +65,8 @@ class LocalRuntime:
     def stream(self, model: str, messages: list[dict], *,
                temperature: float = 0.7, top_p: float = 0.95,
                max_tokens: int = 2048, stop: list[str] | None = None,
-               system: str = "", timeout: float = 600.0) -> Iterator[StreamChunk]:
+               system: str = "", timeout: float = 600.0,
+               context_length: int = 0) -> Iterator[StreamChunk]:
         """Yield answer increments. Raises :class:`RuntimeError_` on failure."""
         if not model:
             raise RuntimeError_("Aucun modèle sélectionné.")
@@ -73,7 +74,7 @@ class LocalRuntime:
             raise RuntimeError_(f"{self.info.label} est injoignable ({self.info.detail})")
         if self.info.flavour is LocalFlavour.OLLAMA:
             yield from self._stream_ollama(model, messages, temperature,
-                                           top_p, max_tokens, system, timeout)
+                                           top_p, max_tokens, system, timeout, context_length)
         else:
             yield from self._stream_openai(model, messages, temperature,
                                            top_p, max_tokens, stop, system, timeout)
@@ -81,17 +82,24 @@ class LocalRuntime:
     def complete(self, model: str, messages: list[dict], **options) -> str:
         """Non-streaming convenience wrapper."""
         chunks = []
+        done = False
         for chunk in self.stream(model, messages, **options):
             if chunk.error:
                 raise RuntimeError_(chunk.error)
             chunks.append(chunk.text)
+            if chunk.done:
+                done = True
+                if (chunk.meta.get('finish') or chunk.meta.get('done_reason')) in {'length', 'max_tokens'}:
+                    raise RuntimeError_('Réponse tronquée par la limite de tokens.')
+        if not done:
+            raise RuntimeError_('Flux interrompu avant confirmation de fin.')
         return "".join(chunks)
 
     # --- Ollama ----------------------------------------------------------
 
     def _stream_ollama(self, model: str, messages: list[dict], temperature: float,
                        top_p: float, max_tokens: int, system: str,
-                       timeout: float) -> Iterator[StreamChunk]:
+                       timeout: float, context_length: int = 0) -> Iterator[StreamChunk]:
         import httpx
 
         payload_messages = list(messages)
@@ -107,6 +115,8 @@ class LocalRuntime:
                 "num_predict": max_tokens,
             },
         }
+        if context_length:
+            body['options']['num_ctx'] = context_length
         try:
             with httpx.stream("POST", f"{self.info.base_url}/api/chat",
                               json=body, headers=self._headers(),
@@ -131,8 +141,10 @@ class LocalRuntime:
                         yield StreamChunk(done=True, meta={
                             "total_duration": event.get("total_duration", 0),
                             "eval_count": event.get("eval_count", 0),
+                            "done_reason": event.get("done_reason", "stop"),
                         })
                         return
+                raise RuntimeError_("Ollama : flux interrompu sans confirmation de fin.")
         except httpx.HTTPError as exc:
             raise RuntimeError_(f"Ollama : {exc}") from exc
 
@@ -193,7 +205,7 @@ class LocalRuntime:
                         if choice.get("finish_reason"):
                             yield StreamChunk(done=True, meta={"finish": choice["finish_reason"]})
                             return
-                yield StreamChunk(done=True)
+                raise RuntimeError_(f"{self.info.label} : flux interrompu sans confirmation de fin.")
         except httpx.HTTPError as exc:
             raise RuntimeError_(f"{self.info.label} : {exc}") from exc
 

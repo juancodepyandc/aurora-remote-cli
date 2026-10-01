@@ -1,24 +1,23 @@
-"""Universal autonomous pipeline: discover → generate → verify → deliver.
-
-No hardcoded paths. No machine-specific assumptions. Works on any OS,
-any hardware, any installed model. If something is missing, JOBIA
-installs it automatically.
-"""
+"""Resumable local image/mesh execution with explicit delivery gates."""
 from __future__ import annotations
 
 import json
+import hashlib
 import os
-import platform
+import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Callable
 
 from . import catalog, fetcher
 from .agents import get
 from .bootstrap import ensure_3d_engine, ensure_hf, python_engine, start_ollama
 from .machine import profile
+from .glb_validation import validate_glb
 
 
 @dataclass
@@ -31,6 +30,7 @@ class PipelineStage:
     output: Path | None = None
     log: str = ""
     duration_s: float = 0.0
+    error_kind: str = ""
 
 
 @dataclass
@@ -41,29 +41,134 @@ class PipelineResult:
     stages: list[PipelineStage] = field(default_factory=list)
     final_output: Path | None = None
     log: str = ""
+    checkpoint: Path | None = None
+
+
+def stage_import_reference(source: Path, destination: Path, *, expected_sha256: str) -> PipelineStage:
+    """Snapshot and actually decode a user image; never call a generative model."""
+    stage = PipelineStage('reference_input', 'local-image-decoder')
+    started = time.monotonic()
+    temporary = None
+    try:
+        if destination.exists():
+            if _digest(destination) != expected_sha256:
+                raise ValueError('La copie de référence a été modifiée ; reconstruction interrompue.')
+        else:
+            with tempfile.NamedTemporaryFile(prefix='reference-input-', suffix='.tmp',
+                                             dir=destination.parent, delete=False) as handle:
+                temporary = Path(handle.name)
+            shutil.copyfile(source, temporary)
+            if _digest(temporary) != expected_sha256:
+                raise ValueError('L’image d’entrée a changé pendant sa copie ; relance la demande.')
+            temporary.replace(destination)
+            temporary = None
+        python = python_engine('images', ['Pillow'])
+        worker = Path(__file__).with_name('image_worker.py')
+        proc = subprocess.run([str(python), str(worker), '--inspect-image', str(destination)],
+                              capture_output=True, text=True, timeout=60)
+        if proc.returncode:
+            raise ValueError('Image fournie illisible ou non prise en charge : ' +
+                             (proc.stderr or proc.stdout)[-2000:])
+        metadata = json.loads(proc.stdout)
+        if (not isinstance(metadata, dict) or type(metadata.get('width')) is not int
+                or type(metadata.get('height')) is not int
+                or min(metadata['width'], metadata['height']) <= 0):
+            raise ValueError('Le décodeur n’a pas confirmé les dimensions de l’image.')
+        if _digest(destination) != expected_sha256:
+            raise ValueError('L’image de référence a changé pendant sa validation.')
+        stage.status, stage.output = 'done', destination
+        stage.log = json.dumps(dict(source=str(source), sha256=expected_sha256, image=metadata,
+            authority='user_input', generated=False), ensure_ascii=False)
+    except Exception as exc:
+        stage.status, stage.error_kind = 'failed', 'input_validation'
+        stage.log = str(exc) + ' Aucune image de remplacement ne sera générée.'
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+    stage.duration_s = time.monotonic() - started
+    return stage
 
 
 def stage_validate_mesh(mesh_path: Path, *, require_textures: bool = False) -> PipelineStage:
     """Validate the delivered GLB before marking a complex job complete."""
     stage = PipelineStage(name="mesh_quality_gate", provider="local-validator")
     try:
-        data = mesh_path.read_bytes()
-        if len(data) < 20 or data[:4] != b"glTF":
-            raise ValueError("GLB header absent")
-        version = int.from_bytes(data[4:8], "little")
-        declared = int.from_bytes(data[8:12], "little")
-        if version != 2 or declared != len(data):
-            raise ValueError("GLB tronqué ou version inconnue")
-        if require_textures:
-            payload = data[12:].lower()
-            if b'"images"' not in payload or b'"textures"' not in payload:
-                raise ValueError("GLB valide mais sans textures PBR embarquées")
+        stage.log = validate_glb(mesh_path, require_textures=require_textures)
         stage.status = "done"
         stage.output = mesh_path
-        stage.log = f"GLB valide · {len(data) / 1024 ** 2:.1f} Mo"
-    except (OSError, ValueError) as exc:
+    except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError) as exc:
         stage.status = "failed"
         stage.log = str(exc)
+        stage.error_kind = "validation"
+    return stage
+
+
+def stage_verify_mesh(reference: Path, mesh: Path, *, prepared: tuple[Path, Path],
+                      require_textures: bool = True) -> PipelineStage:
+    """Measure actual textured views in the engine environment before delivery."""
+    from aurora_cli.evolution import load_policy
+    settings = load_policy().get('delivery_3d', {})
+    root, python = prepared
+    stage = PipelineStage('mesh_visual_gate', 'local-renderer')
+    t0 = time.monotonic()
+    try:
+        thresholds = mesh.with_suffix('.thresholds.json')
+        _save_manifest(thresholds, {
+            'min_bbox_fill': float(settings.get('min_bbox_fill', 0.05)),
+            'min_silhouette_iou': float(settings.get('min_silhouette_iou', 0.35)),
+        })
+        report = mesh.with_suffix('.fidelity.json')
+        foreground = mesh.with_name(mesh.stem + '.input-rgba.png')
+        command = [str(python), str(Path(__file__).with_name('fidelity.py')),
+                   '--reference', str(foreground if foreground.is_file() else reference),
+                   '--mesh', str(mesh), '--engine-root', str(root),
+                   '--thresholds', str(thresholds), '--size', str(settings.get('render_size', 256)),
+                   '--output', str(report)]
+        proc = subprocess.run(command, capture_output=True, text=True,
+                              timeout=float(settings.get('timeout_s', 600)))
+        if not report.is_file():
+            raise RuntimeError('Contrôle visuel indisponible : ' + (proc.stderr or proc.stdout)[-2000:])
+        measured = json.loads(report.read_text(encoding='utf-8'))
+        stage.output = report
+        if proc.returncode or measured.get('verdict') != 'plausible':
+            raise RuntimeError('Rendu 3D refusé : ' + json.dumps(measured, ensure_ascii=False))
+        placement = (measured.get('texture_placement') or {}).get('verdict')
+        if require_textures and settings.get('require_placed_texture', True) and placement != 'placed':
+            raise RuntimeError(f'Texture non validée ({placement or "non mesurée"}). Diagnostics : {report}')
+        measured.update(mesh_sha256=_digest(mesh), reference_sha256=_digest(reference))
+        _save_manifest(report, measured)
+        stage.status, stage.output = 'done', report
+        stage.log = json.dumps(measured, ensure_ascii=False)
+    except (OSError, ValueError, RuntimeError, subprocess.TimeoutExpired) as exc:
+        stage.status, stage.error_kind, stage.log = 'failed', 'visual_validation', str(exc)
+    stage.duration_s = time.monotonic() - t0
+    return stage
+
+
+def stage_verify_mesh_subject(visual_report: Path, description: str, *, model_name: str,
+                              reference: Path | None = None) -> PipelineStage:
+    """Check the actual delivered geometry/materials, not just the source image."""
+    stage = PipelineStage('mesh_semantic_gate', model_name)
+    try:
+        measured = json.loads(visual_report.read_text(encoding='utf-8'))
+        preview = Path(measured['contact_sheet'])
+        if not preview.resolve().is_relative_to(visual_report.parent.resolve()) or not preview.is_file():
+            raise ValueError('Rendu de vérification absent ou hors du dossier de travail')
+        stage = stage_verify_image(preview, description + (
+            '\nThis contact sheet shows the SAME single 3D object from several camera angles, '
+            'not a requested collage or multiple subjects. Inspect ALL visible angles for '
+            'missing geometry, missing or misplaced textures and inconsistent features. '
+            'Do not reject the diagnostic view labels or the multiplicity of camera views.'),
+            model_name=model_name, reference_image=reference)
+        stage.name = 'mesh_semantic_gate'
+        measured['semantic_review'] = dict(status=stage.status, provider=model_name,
+            verdict=json.loads(stage.log) if stage.error_kind in {'', 'mismatch'} else stage.log,
+            preview_sha256=_digest(preview))
+        _save_manifest(visual_report, measured)
+        if stage.status == 'done':
+            stage.output = visual_report
+    except (OSError, ValueError, KeyError, IndexError, TypeError) as exc:
+        stage.status, stage.error_kind, stage.log = 'failed', 'visual_validation', str(exc)
     return stage
 
 
@@ -71,112 +176,162 @@ def stage_validate_mesh(mesh_path: Path, *, require_textures: bool = False) -> P
 
 
 def find_model(model_name: str, *, capability: str = "") -> tuple[Path, Path] | None:
-    """Find a model installation anywhere on the system.
+    """Find the exact model directory or HF snapshot, never a substring match."""
+    from .locations import model_search_roots
 
-    Searches all known cache locations, not just hardcoded paths.
-    Returns ``(model_root, venv_python)`` or None.
-
-    Prefers full installations (with venv) over bare HF cache entries.
-    Falls back to the Hunyuan3D venv (which has torch + diffusers) when a
-    model has no venv of its own.
-    """
-    from aurora_cli.core.locations import model_search_roots
-
-    # Normalize the model name for directory matching
-    normalized = model_name.lower().replace("/", "--").replace("_", "-")
-    # Also try without org prefix (e.g. "hunyuan3d-2.1" from "tencent/Hunyuan3D-2.1")
-    parts = normalized.split("--")
-    alt_normalized = parts[-1] if len(parts) > 1 else normalized
-
-    # Find the Hunyuan3D venv as a fallback (it has torch + diffusers)
-    fallback_venv = Path(sys.executable)
+    requested = Path(model_name).expanduser()
+    candidates = [requested] if requested.is_dir() else []
+    expected = model_name.casefold().replace("/", "--")
     for _runtime, root in model_search_roots():
-        candidate = root / ("venv/Scripts/python.exe" if os.name == "nt" else "venv/bin/python")
-        if candidate.exists():
-            fallback_venv = candidate
-            break
-
-    # First pass: look for full installations with venv (JOBIA models dir, etc.)
-    for runtime, root in model_search_roots():
         if not root.is_dir():
             continue
-        # Skip HF cache — those are bare weights without a venv
-        if "huggingface" in root.name.lower() or ".cache" in str(root).lower():
+        try:
+            entries = [root, *root.iterdir()]
+        except OSError:
             continue
-        for child in root.iterdir():
-            if not child.is_dir():
-                continue
-            child_norm = child.name.lower().replace("/", "--")
-            if normalized in child_norm or alt_normalized in child_norm:
-                venv = child / "venv/bin/python"
-                if venv.exists():
-                    return child, venv
-                # No venv — use the Hunyuan3D venv which has torch + diffusers
-                return child, fallback_venv
-
-    # Second pass: accept any match, use system python
-    for runtime, root in model_search_roots():
-        if not root.is_dir():
+        for child in entries:
+            normalized = child.name.casefold().removeprefix("models--")
+            if child.is_dir() and normalized == expected:
+                candidates.append(child)
+                snapshots = child / "snapshots"
+                if snapshots.is_dir():
+                    candidates.extend(sorted(snapshots.iterdir(), reverse=True))
+    for candidate in candidates:
+        if capability == "image" and not (candidate / "model_index.json").is_file():
             continue
-        # Skip HF cache in second pass too
-        if "huggingface" in root.name.lower() or ".cache" in str(root).lower():
-            continue
-        for child in root.iterdir():
-            if not child.is_dir():
-                continue
-            child_norm = child.name.lower().replace("/", "--")
-            if normalized in child_norm or alt_normalized in child_norm:
-                return child, fallback_venv
-
+        python = candidate / ("venv/Scripts/python.exe" if os.name == "nt" else "venv/bin/python")
+        return candidate, python if python.is_file() else Path(sys.executable)
     return None
 
 
-def ensure_model(model_name: str, capability: str):
-    """Find or provision a role model using the measured host profile."""
-    found = find_model(model_name, capability=capability)
+def ensure_model(model_name: str, capability: str, *, model_dir: Path | None = None):
+    """Provision exactly the selected model; never substitute another role tier."""
+    from aurora_cli.adapters import AdapterRegistry
+    runner, reason = AdapterRegistry().resolve(capability, model_name)
+    if capability in {'image', '3d', 'audio', 'tts'}:
+        if runner is None:
+            raise RuntimeError(reason)
+        if reason := runner.incompatibility(profile()):
+            raise RuntimeError(reason)
+    found = find_model(str(model_dir) if model_dir is not None else model_name, capability=capability)
+    if model_dir is not None and found is None:
+        raise RuntimeError('Le dossier local sélectionné est absent ou incomplet ; aucun remplacement silencieux.')
     # Always use JOBIA's managed runtime for executable pipelines. A cache hit
     # can be only weights (or a stale system interpreter without torch).
     if capability == "image":
-        engine = python_engine("images", ["torch", "diffusers", "transformers",
-                                           "accelerate", "safetensors", "Pillow"])
+        engine = python_engine("images", list(runner.packages) or [
+            "torch", "diffusers", "transformers", "accelerate", "safetensors", "Pillow"])
+        if found:
+            return found[0], engine
+    if capability in {'audio', 'tts'}:
+        engine = python_engine('audio', list(runner.packages))
         if found:
             return found[0], engine
     if capability == "3d":
+        if runner.provisioner == 'native':
+            from .native_runtime import ensure_native
+            return ensure_native(runner, model_name)
+        if runner.provisioner != 'hunyuan':
+            raise RuntimeError(f'Provisionneur non implémenté : {runner.provisioner}')
         root = ensure_3d_engine()
         python = root / ("venv/Scripts/python.exe" if os.name == "nt" else "venv/bin/python")
-        if found:
-            return root, python
+        # The 3D adapter owns model loading and its components. A different
+        # catalogue tier is not interchangeable with this engine.
+        return root, python
     if found:
         return found
-    agent = get(capability) or get("3d" if capability == "3d" else "image")
+    agent = get({'tts': 'speech', 'llm': 'resume', 'text': 'resume'}.get(capability, capability))
     if agent is None:
         return None
-    artifact = catalog.resolve(agent, profile(), catalog.recommended_tier(agent, profile()))
+    artifact = next((a for a in catalog.ARTIFACTS if a.ref == model_name), None)
     if artifact is None:
-        return None
+        artifact = catalog.Artifact(agent.id, 'explicit',
+            'ollama' if agent.capability in {'llm', 'vision', 'code'} else 'huggingface', model_name, model_name)
     if artifact.runtime == "huggingface":
         ensure_hf()
     elif artifact.runtime == "ollama":
         start_ollama()
     plan, _ = fetcher.install(artifact, profile(), agent=agent.id,
                               job=f"pipeline:{capability}")
-    if capability == "image":
+    if capability in {'image', 'audio', 'tts'}:
         return plan.target, engine
-    if capability == "3d":
-        return root, python
     return find_model(artifact.ref, capability=capability) or (plan.target, Path(sys.executable))
+
+
+def select_image_model() -> str:
+    """Prefer a valid evaluated metric, then compatible catalogue preferences."""
+    from types import SimpleNamespace
+    from aurora_cli.engine_manager import EngineRegistry
+    from aurora_cli.evolution import EvolutionLoop
+
+    loop = EvolutionLoop(SimpleNamespace(registry=EngineRegistry()))
+    candidate = loop.recommendation("image")
+    from .model_selection import choose
+    return choose('image', machine=profile(), proven=candidate).artifact.ref
+
+
+def select_3d_model(*, texture=True, excluded=(), context='') -> str:
+    from .model_selection import choose
+    return choose('3d', machine=profile(), require_textures=texture, excluded=excluded, context=context).artifact.ref
+
+
+def alternative_image_model(excluded: set[str]) -> str | None:
+    """Try another declared compatible recipe after measured visual rejection.
+
+    Catalogue tiers are a preference, not proof of semantic superiority. The
+    replacement must still pass the same visual checks for this exact request.
+    """
+    from .model_selection import choices
+    candidates, _ = choices('image', machine=profile(), excluded=excluded)
+    return candidates[0].artifact.ref if candidates else None
+
+
+def visual_corrections(verdict: str) -> str:
+    """Send corrective observations, not the entire JSON and successful checks."""
+    try:
+        data = json.loads(verdict)
+        issues = [issue for issue in data.get('issues', []) if isinstance(issue, str)]
+        failed = [check.get('evidence', '') for check in data.get('checks', [])
+                  if isinstance(check, dict) and check.get('passed') is False]
+        return '\n'.join(dict.fromkeys(issues + failed)) or data.get('reason', verdict)
+    except (ValueError, TypeError, AttributeError):
+        return verdict
 
 
 def find_ollama() -> str | None:
     """Check if Ollama is running."""
     try:
         import httpx
-        resp = httpx.get("http://127.0.0.1:11434/api/tags", timeout=2.0)
+        resp = httpx.get(f"{_ollama_url()}/api/tags", timeout=2.0)
         if resp.status_code == 200:
-            return "http://127.0.0.1:11434"
+            return _ollama_url()
     except Exception:
         pass
     return None
+
+
+def select_vision_model() -> str:
+    """Resolve a visual reviewer from declared budgets, not a fixed legacy tag."""
+    from .model_selection import choose
+    return choose('vision', machine=profile()).artifact.ref
+
+
+def _ollama_url() -> str:
+    url = os.environ.get("OLLAMA_HOST", "http://127.0.0.1:11434").rstrip("/")
+    return url if "://" in url else "http://" + url
+
+
+def _release_ollama_model(model_name: str) -> None:
+    """Release only the model used by this job, between memory-heavy stages."""
+    try:
+        import httpx
+        httpx.post(f"{_ollama_url()}/api/generate",
+                   json={"model": model_name, "keep_alive": 0, "stream": False},
+                   timeout=30.0).raise_for_status()
+    except Exception:
+        # Resource planning still measures actual memory after this operation.
+        # A daemon refusing unload must not be recorded as memory reclaimed.
+        pass
 
 
 def find_ollama_model(model_name: str) -> bool:
@@ -189,7 +344,7 @@ def find_ollama_model(model_name: str) -> bool:
         resp = httpx.get(f"{ollama}/api/tags", timeout=5.0)
         if resp.status_code == 200:
             models = resp.json().get("models", [])
-            return any(model_name in m.get("name", "") for m in models)
+            return any(m.get("name", "") in {model_name, model_name + ":latest"} for m in models)
     except Exception:
         pass
     return False
@@ -200,11 +355,11 @@ def install_ollama_model(model_name: str) -> bool:
     try:
         import httpx
         resp = httpx.post(
-            "http://127.0.0.1:11434/api/pull",
-            json={"name": model_name},
+            f"{_ollama_url()}/api/pull",
+            json={"name": model_name, "stream": False},
             timeout=600.0,
         )
-        return resp.status_code == 200
+        return resp.status_code == 200 and not resp.json().get("error")
     except Exception:
         return False
 
@@ -216,87 +371,107 @@ def stage_generate_image(
     prompt: str,
     output_path: Path,
     *,
-    model_name: str = "stabilityai/sdxl-turbo",
+    model_name: str | None = None,
+    model_spec: str | None = None,
+    seed: int = 0,
+    negative_prompt: str = "",
+    prepared: tuple[Path, Path] | None = None,
 ) -> PipelineStage:
     """Generate an image using a local diffusion model."""
-    stage = PipelineStage(name="image_generation", provider=model_name)
+    from aurora_cli.adapters import AdapterRegistry
+
+    stage = PipelineStage(name="image_generation", provider=model_name or "auto")
 
     try:
-        found = ensure_model(model_name, "image")
+        model_name = model_name or select_image_model()
+        stage.provider = model_spec or model_name
+        adapters = AdapterRegistry()
+        runner, reason = adapters.resolve("image", model_spec or model_name)
+        if runner is None:
+            raise RuntimeError(reason)
+        found = prepared or ensure_model(model_name, "image")
     except Exception as exc:
         stage.status = "failed"
+        stage.error_kind = "preparation"
         stage.log = f"Préparation automatique du moteur image impossible : {exc}"
         return stage
     if not found:
         stage.status = "failed"
+        stage.error_kind = "preparation"
         stage.log = f"Model {model_name} not found. Install it first."
         return stage
 
     model_root, venv_python = found
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    prompt_literal = json.dumps(prompt)
-    model_literal = json.dumps(str(model_root))
-    output_literal = json.dumps(str(output_path))
-    device = os.environ.get("JOBIA_DEVICE", "").strip().lower() or (
-        "cuda" if os.environ.get("CUDA_VISIBLE_DEVICES", "").strip() not in ("", "-1")
-        else "mps" if platform.system() == "Darwin" and platform.machine() in {"arm64", "aarch64"}
-        else "cpu")
-    dtype = "float16" if device in {"cuda", "mps"} else "float32"
-
-    script = f'''
-import torch
-from diffusers import StableDiffusionXLPipeline
-
-pipe = StableDiffusionXLPipeline.from_pretrained(
-    {model_literal},
-    torch_dtype=getattr(torch, {json.dumps(dtype)}),
-    variant="fp16",
-).to({json.dumps(device)})
-
-image = pipe(
-    prompt={prompt_literal},
-    num_inference_steps=4,
-    guidance_scale=0.0,
-).images[0]
-
-image.save({output_literal})
-print("[image] saved", flush=True)
-'''
-
     t0 = time.time()
     try:
+        command = adapters.build(
+            runner, interpreter=venv_python, worker=Path(__file__).with_name("image_worker.py"),
+            model_dir=model_root, prompt=prompt, output=output_path, seed=seed,
+            negative=negative_prompt, model_spec=model_spec or model_name,
+        )
         result = subprocess.run(
-            [str(venv_python), "-c", script],
-            capture_output=True, text=True, timeout=300,
+            command,
+            capture_output=True, text=True, timeout=1800,
+            env=os.environ | runner.environment(),
         )
         stage.duration_s = time.time() - t0
         stage.log = result.stdout + result.stderr
-        if result.returncode == 0 and output_path.exists():
+        if result.returncode == 0 and output_path.is_file() and output_path.stat().st_size > 0:
             stage.status = "done"
             stage.output = output_path
         else:
             stage.status = "failed"
+            stage.error_kind = "execution"
     except Exception as exc:
         stage.duration_s = time.time() - t0
         stage.status = "failed"
+        stage.error_kind = "execution"
         stage.log = str(exc)
 
     return stage
+
+
+def prepare_review_image(image_path: Path, max_dimension: int) -> Path:
+    """Run image preprocessing in its isolated Pillow runtime, never the CLI."""
+    preview = image_path.with_name(image_path.stem + '.review.png')
+    receipt = preview.with_suffix('.json')
+    signature = dict(source_sha256=_digest(image_path), max_dimension=max_dimension,
+                     worker_sha256=_digest(Path(__file__).with_name('image_worker.py')))
+    try:
+        saved = json.loads(receipt.read_text(encoding='utf-8'))
+        if (preview.is_file() and saved.get('signature') == signature
+                and saved.get('sha256') == _digest(preview)):
+            return preview
+    except (OSError, ValueError):
+        pass
+    python = python_engine('images', ['Pillow'])
+    process = subprocess.run([str(python), str(Path(__file__).with_name('image_worker.py')),
+        '--prepare-review', str(image_path), str(preview), '--max-dimension', str(max_dimension)],
+        capture_output=True, text=True, timeout=60)
+    if process.returncode or not preview.is_file():
+        raise RuntimeError('Préparation de la revue visuelle impossible : ' + process.stderr[-1000:])
+    _save_manifest(receipt, dict(signature=signature, sha256=_digest(preview)))
+    return preview
 
 
 def stage_verify_image(
     image_path: Path,
     character_desc: str,
     *,
-    model_name: str = "llava",
+    model_name: str | None = None,
+    reference_image: Path | None = None,
 ) -> PipelineStage:
     """Verify the generated image matches the request using a VLM."""
-    stage = PipelineStage(name="vlm_verification", provider=model_name)
+    stage = PipelineStage(name="vlm_verification", provider=model_name or 'auto')
 
     try:
+        model_name = model_name or select_vision_model()
+        stage.provider = model_name
         start_ollama()
     except Exception as exc:
         stage.status = "failed"
+        stage.error_kind = 'preparation'
         stage.log = f"Préparation automatique du VLM impossible : {exc}"
         return stage
     if not find_ollama_model(model_name):
@@ -304,44 +479,124 @@ def stage_verify_image(
         stage.log = f"Installing {model_name} into Ollama..."
         if not install_ollama_model(model_name):
             stage.status = "failed"
+            stage.error_kind = 'preparation'
             stage.log = f"Failed to install {model_name}"
             return stage
 
     import httpx
     import base64
 
-    img_b64 = base64.b64encode(image_path.read_bytes()).decode()
-    prompt = f"""Look at this image. Does it depict {character_desc}?
-Answer in JSON only: {{"match": true/false, "reason": "brief explanation"}}"""
+    prompt = f"""Evaluate this generated image against the user's requested subject and criteria:
+{character_desc}
+Check requested identity and features, completeness, and internal spatial/anatomical consistency.
+Imaginative designs and requested transformations are allowed; do not reject invention just
+because it has no canonical appearance. Do reject contradictory, missing essential features
+and conspicuous visual artifacts. Report what is actually visible, not inferred intentions.
+Do not infer that any file was delivered or that a 3D mesh was created from the image.
+If a required identity cannot be established, reject the image. Return JSON only:
+{{"match": true/false, "reason": "visible evidence and necessary corrections",
+"checks": [{{"aspect": "specific requested feature", "passed": true/false,
+"evidence": "visible observation"}}], "issues": ["observed inconsistency"]}}
+Include at least three distinct checks. match must be false if any check fails or issues remain.
+issues must be [] when no issue is observed; never put "no issues" in the issues list."""
 
     t0 = time.time()
     try:
-        resp = httpx.post(
-            "http://127.0.0.1:11434/api/generate",
-            json={
+        from aurora_cli.evolution import load_policy
+        settings = load_policy().get('visual_review', {})
+        review_image = prepare_review_image(image_path, int(settings.get('max_dimension', 512)))
+        img_b64 = base64.b64encode(review_image.read_bytes()).decode()
+        images = [img_b64]
+        if reference_image is not None:
+            reviewed_reference = prepare_review_image(reference_image, int(settings.get('max_dimension', 512)))
+            images.insert(0, base64.b64encode(reviewed_reference.read_bytes()).decode())
+            prompt += ('\nTwo image inputs are provided. The FIRST is the accepted reference design; '
+                       'the SECOND is the actual 3D output in its diagnostic camera views. '
+                       'Evaluate the SECOND image, comparing identity, required features and material '
+                       'placement against the FIRST. Allow camera and lighting differences, not '
+                       'missing parts, unrelated color regions or broken facial/limb features.')
+        payload = {
                 "model": model_name,
-                "prompt": prompt,
-                "images": [img_b64],
+                "messages": [{'role': 'user', 'content': prompt, 'images': images}],
                 "stream": False,
-                "format": "json",
-            },
-            timeout=120.0,
-        )
-        stage.duration_s = time.time() - t0
-        resp.raise_for_status()
-        data = resp.json()
-        text = data.get("response", "")
-        try:
-            result = json.loads(text)
-            stage.status = "done"
-            stage.log = result.get("reason", "")
-        except json.JSONDecodeError:
-            stage.status = "done"
-            stage.log = text[:200]
+                "think": False,
+                "format": {
+                    'type': 'object', 'properties': {
+                        'match': {'type': 'boolean'}, 'reason': {'type': 'string'},
+                        'checks': {'type': 'array', 'minItems': 3, 'items': {'type': 'object',
+                            'properties': {'aspect': {'type': 'string'}, 'passed': {'type': 'boolean'},
+                                           'evidence': {'type': 'string'}},
+                            'required': ['aspect', 'passed', 'evidence']}},
+                        'issues': {'type': 'array', 'items': {'type': 'string'}},
+                    }, 'required': ['match', 'reason', 'checks', 'issues'],
+                },
+                'options': {'temperature': 0,
+                            'num_ctx': int(settings.get('context_tokens', 8192))},
+        }
+        invalid = []
+        attempts = max(1, int(settings.get('max_attempts', 2)))
+        for attempt in range(attempts):
+            payload['options']['num_predict'] = min(
+                int(settings.get('output_tokens', 2048)) * (attempt + 1),
+                int(settings.get('max_output_tokens', 4096)))
+            payload['messages'][0]['content'] = prompt + ('\nYour last response was incomplete or invalid. '
+                'Return a COMPLETE concise JSON object, with short observations and no preamble.'
+                if attempt else '\nKeep each observation concise; return a complete JSON object.')
+            resp = httpx.post(f"{_ollama_url()}/api/chat", json=payload,
+                              timeout=float(settings.get('timeout_s', 180)))
+            resp.raise_for_status()
+            data = resp.json()
+            text = (data.get('message') or {}).get('content', data.get('response', ''))
+            try:
+                if data.get('done') is not True or data.get('done_reason') == 'length':
+                    raise ValueError('Le moteur a renvoyé un verdict incomplet ou tronqué')
+                result = json.loads(text)
+                if not isinstance(result, dict) or type(result.get("match")) is not bool:
+                    raise ValueError("Le verdict VLM doit contenir un booléen match")
+                if not isinstance(result.get("reason"), str) or not result["reason"].strip():
+                    raise ValueError("Le verdict VLM ne contient aucune justification")
+                checks = result.get('checks')
+                if not isinstance(checks, list) or len(checks) < 3 or any(
+                    not isinstance(check, dict) or type(check.get('passed')) is not bool
+                    or not isinstance(check.get('aspect'), str) or not check['aspect'].strip()
+                    or not isinstance(check.get('evidence'), str) or not check['evidence'].strip()
+                    for check in checks
+                ):
+                    raise ValueError('Verdict sans observations visuelles détaillées')
+                if len({check['aspect'].strip().casefold() for check in checks}) < 3:
+                    raise ValueError('Les observations visuelles doivent être distinctes')
+                if (not isinstance(result.get('issues'), list)
+                        or any(not isinstance(issue, str) or not issue.strip() for issue in result['issues'])):
+                    raise ValueError('Le contrôle des incohérences est absent ou invalide')
+                if any(not check['passed'] for check in checks) or result['issues']:
+                    result['match'] = False
+                stage.status = "done" if result["match"] is True else "failed"
+                stage.error_kind = "" if result["match"] is True else "mismatch"
+                if invalid:
+                    result['verification_recovery'] = invalid
+                result['review_input'] = dict(source_sha256=_digest(image_path),
+                    reviewed_sha256=_digest(review_image), max_dimension=int(settings.get('max_dimension', 512)))
+                if reference_image is not None:
+                    result['review_input']['comparison_reference_sha256'] = _digest(reference_image)
+                result['execution'] = {key: data.get(key) for key in
+                    ('done_reason', 'prompt_eval_count', 'eval_count', 'total_duration')}
+                stage.log = json.dumps(result, ensure_ascii=False)
+                break
+            except (json.JSONDecodeError, ValueError, TypeError) as exc:
+                invalid.append({'attempt': attempt + 1, 'error': str(exc),
+                                'done': data.get('done'), 'done_reason': data.get('done_reason'),
+                                'response': text[:2000]})
+        else:
+            stage.status, stage.error_kind = 'failed', 'invalid_verdict'
+            stage.log = 'Contrôle visuel invalide : ' + json.dumps(invalid, ensure_ascii=False)
     except Exception as exc:
         stage.duration_s = time.time() - t0
         stage.status = "failed"
+        stage.error_kind = "verification"
         stage.log = str(exc)
+    finally:
+        stage.duration_s = time.time() - t0
+        _release_ollama_model(model_name)
 
     return stage
 
@@ -352,139 +607,75 @@ def stage_generate_3d(
     *,
     model_name: str = "tencent/Hunyuan3D-2.1",
     texture: bool = True,
+    prepared: tuple[Path, Path] | None = None,
 ) -> PipelineStage:
-    """Generate a 3D mesh from an image using a local pipeline."""
+    """Use the shared engine adapter; an installed directory is not a result."""
+    from .engine3d import Engine3D, generate_mesh
+
     stage = PipelineStage(name="3d_generation", provider=model_name)
-
+    t0 = time.monotonic()
     try:
-        found = ensure_model(model_name, "3d")
-    except Exception as exc:
-        stage.status = "failed"
-        stage.log = f"Préparation automatique du moteur 3D impossible : {exc}"
-        return stage
-    if not found:
-        stage.status = "failed"
-        stage.log = f"Model {model_name} not found. Install it first."
-        return stage
-
-    model_root, venv_python = found
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-
-    # Find the actual repo inside the model root
-    repo = model_root / "Hunyuan3D-2.1"
-    if not repo.exists():
-        # Try to find it
-        for child in model_root.iterdir():
-            if child.is_dir() and "hunyuan" in child.name.lower():
-                repo = child
-                break
-    if texture and not (repo / "hy3dpaint").is_dir():
-        stage.status = "failed"
-        stage.log = "Texture PBR demandée mais le module hy3dpaint est absent du moteur 3D."
-        return stage
-    device = os.environ.get("JOBIA_DEVICE", "").strip().lower() or (
-        "cuda" if os.environ.get("CUDA_VISIBLE_DEVICES", "").strip() not in ("", "-1")
-        else "mps" if platform.system() == "Darwin" and platform.machine() in {"arm64", "aarch64"}
-        else "cpu")
-    root_literal = json.dumps(str(model_root))
-    repo_literal = json.dumps(str(repo))
-    image_literal = json.dumps(str(image_path))
-    output_literal = json.dumps(str(output_path))
-
-    script = f'''
-import sys, os, time
-os.environ["HY3D_BACKEND"] = {json.dumps(device)}
-os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
-sys.path.insert(0, {root_literal})
-sys.path.insert(0, {json.dumps(str(repo / "hy3dshape"))})
-sys.path.insert(0, {json.dumps(str(repo / "hy3dpaint"))})
-os.chdir({repo_literal})
-
-import torch
-_orig_to = torch.nn.Module.to
-def _patched_to(self, *args, **kwargs):
-    if "dtype" in kwargs and isinstance(kwargs["dtype"], str):
-        kwargs["dtype"] = {{"float16": torch.float16, "float32": torch.float32,
-                           "bfloat16": torch.bfloat16}}.get(kwargs["dtype"], torch.float32)
-    args = list(args)
-    for i, arg in enumerate(args):
-        if isinstance(arg, str) and arg in ("float16", "float32", "bfloat16"):
-            args[i] = {{"float16": torch.float16, "float32": torch.float32,
-                        "bfloat16": torch.bfloat16}}[arg]
-    return _orig_to(self, *args, **kwargs)
-torch.nn.Module.to = _patched_to
-
-import backend as backend_mod
-import compat_patches
-BACKEND = backend_mod.detect()
-compat_patches.apply(BACKEND)
-print(f"[init] {{backend_mod.describe(BACKEND)}}", flush=True)
-
-from PIL import Image
-from hy3dshape.rembg import BackgroundRemover
-from hy3dshape.pipelines import Hunyuan3DDiTFlowMatchingPipeline
-
-image = Image.open({image_literal}).convert("RGBA")
-if image.mode == "RGB":
-    rembg = BackgroundRemover()
-    image = rembg(image)
-
-print("[shape] loading DiT pipeline...", flush=True)
-pipeline = Hunyuan3DDiTFlowMatchingPipeline.from_pretrained(
-    "tencent/Hunyuan3D-2.1",
-    subfolder="hunyuan3d-dit-v2-1",
-    use_safetensors=False,
-    variant="fp16",
-    device="{device}",
-    dtype="float16",
-)
-if hasattr(pipeline, "dtype") and isinstance(pipeline.dtype, str):
-    pipeline.dtype = {{"float16": torch.float16, "float32": torch.float32,
-                       "bfloat16": torch.bfloat16}}.get(pipeline.dtype, torch.float32)
-print("[shape] generating mesh...", flush=True)
-t0 = time.time()
-mesh = pipeline(image=image)[0]
-print(f"[shape] done in {{time.time()-t0:.1f}}s", flush=True)
-
-mesh.export({output_literal})
-print(f"[output] {output_literal}", flush=True)
-'''
-
-    if texture and (repo / "hy3dpaint").is_dir():
-        script += f'''
-print("[paint] loading adaptive PBR pipeline...", flush=True)
-from textureGenPipeline import Hunyuan3DPaintPipeline, Hunyuan3DPaintConfig
-conf = Hunyuan3DPaintConfig(6, 512)
-conf.realesrgan_ckpt_path = "hy3dpaint/ckpt/RealESRGAN_x4plus.pth"
-conf.multiview_cfg_path = "hy3dpaint/cfgs/hunyuan-paint-pbr.yaml"
-conf.custom_pipeline = "hy3dpaint/hunyuanpaintpbr"
-Hunyuan3DPaintPipeline(conf)(mesh_path={output_literal}, image_path={image_literal},
-                            output_mesh_path={output_literal})
-print("[paint] done", flush=True)
-'''
-
-    t0 = time.time()
-    try:
-        result = subprocess.run(
-            [str(venv_python), "-c", script],
-            capture_output=True, text=True, timeout=1800,
-        )
-        stage.duration_s = time.time() - t0
-        stage.log = result.stdout + result.stderr
-        if result.returncode == 0 and output_path.exists():
-            stage.status = "done"
-            stage.output = output_path
+        found = prepared or ensure_model(model_name, "3d")
+        if not found:
+            raise RuntimeError(f"Moteur absent pour {model_name}")
+        root, python = found
+        from aurora_cli.adapters import AdapterRegistry
+        runner, reason = AdapterRegistry().resolve('3d', model_name)
+        if runner is None:
+            raise RuntimeError(reason)
+        if runner.provisioner == 'native':
+            repo, can_paint = root / 'repo', runner.texturing and (root / 'runtime.json').is_file()
         else:
-            stage.status = "failed"
+            repo = root if (root / "hy3dshape").is_dir() else root / "Hunyuan3D-2.1"
+            can_paint = (repo / 'hy3dpaint').is_dir()
+        engine = Engine3D(model_name, root, python, repo, can_paint)
+        success, stage.log = generate_mesh(engine, image_path, output_path,
+                                          paint=texture, model_ref=model_name)
+        stage.status = "done" if success and output_path.is_file() else "failed"
+        stage.output = output_path if stage.status == "done" else None
+        if stage.status == "failed":
+            stage.error_kind = "execution"
     except Exception as exc:
-        stage.duration_s = time.time() - t0
         stage.status = "failed"
+        stage.error_kind = "preparation" if prepared is None else "execution"
         stage.log = str(exc)
-
+    stage.duration_s = time.monotonic() - t0
     return stage
 
 
-# --- Pipeline orchestration -------------------------------------------------
+def _digest(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b''):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _visual_contract() -> str:
+    from aurora_cli.evolution import load_policy
+    payload = (Path(__file__).with_name('fidelity.py').read_bytes()
+               + Path(__file__).with_name('portable_rasterizer.py').read_bytes()
+               + Path(__file__).with_name('texture_placement.py').read_bytes()
+               + Path(__file__).read_bytes()
+               + json.dumps({key: load_policy().get(key, {}) for key in
+                             ('delivery_3d', 'visual_review', 'texture_placement')},
+                            sort_keys=True).encode())
+    return hashlib.sha256(payload).hexdigest()
+
+
+def _reference_contract() -> str:
+    import inspect
+    from aurora_cli.evolution import load_policy
+    payload = (inspect.getsource(stage_verify_image).encode()
+               + inspect.getsource(prepare_review_image).encode()
+               + json.dumps(load_policy().get('visual_review', {}), sort_keys=True).encode())
+    return hashlib.sha256(payload).hexdigest()
+
+
+def _save_manifest(path: Path, data: dict) -> None:
+    temp = path.with_suffix(".tmp")
+    temp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    temp.replace(path)
 
 
 def run_pipeline(
@@ -492,61 +683,379 @@ def run_pipeline(
     output_dir: Path,
     *,
     image_prompt: str | None = None,
-    image_model: str = "stabilityai/sdxl-turbo",
-    vlm_model: str = "llava",
-    model_3d: str = "tencent/Hunyuan3D-2.1",
+    input_image: Path | None = None,
+    image_model: str | None = None,
+    vlm_model: str | None = None,
+    model_3d: str | None = None,
     texture: bool = True,
     max_retries: int = 2,
+    progress: Callable[[PipelineStage], None] | None = None,
 ) -> PipelineResult:
-    """Run the full pipeline: image → VLM check → 3D mesh.
+    """Run/resume a job, retaining accepted stages and evidence across failures.
 
-    Discovers models dynamically. Installs missing ones automatically.
+    Installation recovery belongs to the runtime manager. An unchanged setup
+    error is never retried by regenerating a reference image. Semantic rejection
+    gets a new seed and critique; accepted references survive mesh failures.
     """
-    output_dir = Path(output_dir).expanduser().resolve()
+    from .request_spec import parse_creation_request
+    from .reference_brief import build_reference_brief
+
+    request = parse_creation_request(character_desc, output_dir, input_image=input_image)
+    subject, output_dir = request.subject, request.output_dir
     output_dir.mkdir(parents=True, exist_ok=True)
-
-    prompt = image_prompt or (
-        f"{character_desc}. Preserve the exact requested identity and recognizable costume, "
-        "full body, centered character, neutral studio background, clean silhouette, "
-        "front three-quarter view, high detail, realistic materials, suitable as a "
-        "single-view 3D reconstruction reference."
-    )
-    image_path = output_dir / "reference.png"
-    mesh_path = output_dir / "model.glb"
-
+    input_identity, input_error = None, None
+    if request.input_image is not None:
+        try:
+            if not request.input_image.is_file():
+                raise ValueError(f'Image d’entrée introuvable : {request.input_image}')
+            input_identity = dict(path=str(request.input_image), sha256=_digest(request.input_image))
+            if image_prompt is not None or image_model is not None:
+                raise ValueError('Une image fournie ne peut pas être remplacée par un prompt ou un moteur image.')
+        except (OSError, ValueError) as exc:
+            input_error = str(exc)
+            input_identity = input_identity or dict(path=str(request.input_image), sha256=None)
+    selection_error = None
+    automatic_3d = model_3d is None
+    try:
+        model_3d = model_3d or select_3d_model(texture=texture, context=input_identity['sha256'] if input_identity else subject)
+    except Exception as exc:
+        selection_error, model_3d = str(exc), 'auto'
+    vision_error = None
+    try:
+        vlm_model = vlm_model or ('auto' if input_error else select_vision_model())
+    except Exception as exc:
+        vision_error, vlm_model = str(exc), 'auto'
+    identity = dict(subject=subject, image_prompt=image_prompt, image_model=image_model,
+                    input_image=input_identity,
+                    vlm_model=vlm_model if vlm_model != 'auto' else 'auto',
+                    model_3d='auto' if automatic_3d else model_3d, texture=texture, version=7)
+    key = hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()[:16]
+    job_dir = output_dir / ".jobia" / key
+    job_dir.mkdir(parents=True, exist_ok=True)
+    checkpoint = job_dir / "job.json"
+    try:
+        saved = json.loads(checkpoint.read_text(encoding="utf-8"))
+        state = saved if isinstance(saved, dict) and saved.get("identity") == identity else {}
+    except (OSError, ValueError):
+        state = {}
+    if not state:
+        state = dict(identity=identity, status="pending", stages=[], next_attempt=1)
     stages: list[PipelineStage] = []
 
-    for attempt in range(max_retries):
-        # Stage 1: Generate image
-        img_stage = stage_generate_image(prompt + ("; improve fidelity and anatomy" if attempt else ""), image_path, model_name=image_model)
-        stages.append(img_stage)
-        if img_stage.status != "done":
-            continue
+    def report(stage):
+        stages.append(stage)
+        sequence = len(state["stages"]) + 1
+        log_path = job_dir / f"{sequence:04d}-{stage.name}.log"
+        log_path.write_text(stage.log, encoding="utf-8")
+        state["stages"].append(dict(name=stage.name, provider=stage.provider, status=stage.status,
+                                    output=str(stage.output) if stage.output else None,
+                                    error_kind=stage.error_kind, duration_s=stage.duration_s,
+                                    log=str(log_path)))
+        _save_manifest(checkpoint, state)
+        if progress:
+            progress(stage)
+        return log_path
 
-        # Stage 2: Verify with VLM
-        vlm_stage = stage_verify_image(image_path, character_desc, model_name=vlm_model)
-        stages.append(vlm_stage)
-        if vlm_stage.status != "done":
-            continue
+    def pending(name, provider, message):
+        state["status"] = name
+        _save_manifest(checkpoint, state)
+        if progress:
+            progress(PipelineStage(name, provider, "running", log=message))
 
-        # Stage 3: Generate 3D mesh
-        mesh_stage = stage_generate_3d(image_path, mesh_path, model_name=model_3d,
-                                       texture=texture)
-        stages.append(mesh_stage)
-        if mesh_stage.status == "done":
+    def result(success=False, output=None):
+        state["status"] = "completed" if success else "waiting_for_recovery"
+        _save_manifest(checkpoint, state)
+        return PipelineResult(success, stages, output, "\n".join(s.log for s in stages), checkpoint)
+
+    image_path = None
+    if input_error:
+        report(PipelineStage('reference_input', 'local-image-decoder', 'failed',
+            error_kind='input_validation', log=input_error + ' Aucune image de remplacement ne sera générée.'))
+        return result()
+    if request.input_image is not None:
+        pending('reference_input', 'local-image-decoder',
+                'Lecture de l’image fournie : copie fidèle, sans nouvelle génération ni brief inventé.')
+        imported = stage_import_reference(request.input_image,
+            job_dir / ('reference-input' + (request.input_image.suffix.lower() or '.img')),
+            expected_sha256=input_identity['sha256'])
+        proof = report(imported)
+        if imported.status != 'done':
+            return result()
+        image_path = imported.output
+        state['accepted_reference'] = dict(kind='user_input', source=input_identity['path'],
+            filename=image_path.name, sha256=input_identity['sha256'],
+            validation_report=str(proof.relative_to(job_dir)), validation_report_sha256=_digest(proof))
+        # Old generated candidates are never an alternative to this input.
+        state.pop('pending_reference', None)
+        _save_manifest(checkpoint, state)
+
+    delivered = state.get("delivered")
+    if delivered:
+        path = output_dir / delivered["filename"]
+        proof = job_dir / (delivered.get('visual_report') or 'missing-proof')
+        if (path.is_file() and _digest(path) == delivered.get("sha256")
+                and delivered.get('visual_contract') == _visual_contract()
+                and proof.resolve().is_relative_to(job_dir.resolve()) and proof.is_file()
+                and _digest(proof) == delivered.get('visual_report_sha256')):
+            gate = stage_validate_mesh(path, require_textures=texture)
+            report(gate)
+            if gate.status == "done":
+                return result(True, path)
+
+    if vision_error:
+        report(PipelineStage('vlm_preparation', 'auto', 'failed', log=vision_error,
+                             error_kind='preparation'))
+        return result()
+
+    if selection_error:
+        report(PipelineStage('3d_preparation', 'auto', 'failed', log=selection_error,
+                             error_kind='preparation'))
+        return result()
+
+    pending("3d_preparation", model_3d, "Vérification du moteur 3D avant la reconstruction."
+            if request.input_image is not None else "Vérification du moteur 3D avant de générer la référence.")
+    try:
+        prepared = ensure_model(model_3d, "3d")
+        if prepared is None:
+            raise RuntimeError(f"Moteur 3D absent pour {model_3d}")
+        report(PipelineStage("3d_preparation", model_3d, "done",
+                             log="Moteur 3D préparé."))
+    except Exception as exc:
+        report(PipelineStage("3d_preparation", model_3d, "failed", log=str(exc),
+                             error_kind="preparation"))
+        return result()
+
+    accepted = state.get("accepted_reference")
+    image_path = job_dir / accepted["filename"] if accepted else None
+    if image_path and (not image_path.resolve().is_relative_to(job_dir.resolve())
+                       or not image_path.is_file() or _digest(image_path) != accepted.get("sha256")):
+        image_path = None
+        state.pop("accepted_reference", None)
+    if image_path and request.input_image is None:
+        proof = job_dir / (accepted.get('review_report') or 'missing-reference-proof')
+        if (accepted.get('review_contract') != _reference_contract()
+                or not proof.resolve().is_relative_to(job_dir.resolve()) or not proof.is_file()
+                or _digest(proof) != accepted.get('review_report_sha256')):
+            state['pending_reference'] = dict(filename=accepted['filename'], sha256=accepted['sha256'])
+            state.pop('accepted_reference', None)
+            image_path = None
+    if request.input_image is not None and image_path is None:
+        report(PipelineStage('reference_input', 'local-image-decoder', 'failed',
+            error_kind='input_validation', log='Copie de référence absente ou modifiée. '
+            'Aucune image de remplacement ne sera générée.'))
+        return result()
+    if image_path:
+        if request.input_image is None:
+            report(PipelineStage("reference_reuse", vlm_model, "done", output=image_path,
+                                 log="Référence déjà acceptée réutilisée après vérification de son empreinte."))
+        else:
+            subject = ('Reconstruct the supplied reference image as a 3D asset. Preserve its visible '
+                       'subject, silhouette, accessories, colours and material placement. '
+                       'The reference image is authoritative; do not substitute an invented identity '
+                       'or demand a canonical character or body parts outside the image. '
+                       'Additional user instructions: ' + subject)
+    else:
+        pending("reference_brief", "local-model", "Analyse du sujet et des critères visuels.")
+        try:
+            brief = state.get("reference_brief")
+            if brief is None:
+                brief = build_reference_brief(subject)
+                state["reference_brief"] = brief
+                _save_manifest(checkpoint, state)
+                if brief.get("model") and find_ollama_model(brief["model"]):
+                    _release_ollama_model(brief["model"])
+            selected_image_model = state.get("selected_image_model") or image_model or select_image_model()
+            state["selected_image_model"] = selected_image_model
+            report(PipelineStage("reference_brief", brief.get("model", "local-model"), "done",
+                                 log=json.dumps(brief, ensure_ascii=False)))
+        except Exception as exc:
+            report(PipelineStage("reference_brief", "local-model", "failed", log=str(exc),
+                                 error_kind="preparation"))
+            return result()
+        prompt = image_prompt or brief["prompt"]
+        description = (subject + "\nIdentity: " + brief["identity"] + "\nVisual criteria:\n"
+                       + '\nRequired: the user-specified features, recognisable base identity and requested variant. '
+                         'Unspecified creative details may vary; do not demand guessed extra costume or props.'
+                       + '\nOne isolated subject on a plain neutral backdrop. No environment, scenery, '
+                         'decorations floating around the subject, or large ground plane. '
+                         'A requested base may be attached to the subject, not an entire floor.')
+        feedback = state.get("reference_feedback", "")
+        used_image_models = set(state.get('used_image_models', [selected_image_model]))
+
+        def verify_reference(candidate):
+            pending("vlm_verification", vlm_model, "Contrôle de la référence contre la demande.")
+            check = stage_verify_image(candidate, description, model_name=vlm_model)
+            proof = report(check)
+            if check.status == 'done':
+                state['accepted_reference'] = dict(filename=str(candidate.relative_to(job_dir)),
+                    sha256=_digest(candidate), review_contract=_reference_contract(),
+                    review_report=str(proof.relative_to(job_dir)), review_report_sha256=_digest(proof))
+                state.pop('pending_reference', None)
+            elif check.error_kind == 'mismatch':
+                state['reference_feedback'] = check.log
+                state.pop('pending_reference', None)
+            _save_manifest(checkpoint, state)
+            return check
+
+        # A broken reviewer is not evidence that the image is wrong. Keep and
+        # recheck it after a repair instead of paying for another generation.
+        pending_reference = state.get('pending_reference')
+        if pending_reference:
+            candidate = job_dir / pending_reference['filename']
+            if (candidate.resolve().is_relative_to(job_dir.resolve()) and candidate.is_file()
+                    and _digest(candidate) == pending_reference.get('sha256')):
+                check = verify_reference(candidate)
+                if check.status == 'done':
+                    image_path = candidate
+                elif check.error_kind != 'mismatch':
+                    return result()
+                feedback = state.get('reference_feedback', '')
+            else:
+                state.pop('pending_reference', None)
+        for _ in range(max(1, max_retries)):
+            if image_path is not None:
+                break
+            feedback_hash = hashlib.sha256(feedback.encode()).hexdigest() if feedback else ''
+            if (feedback and image_prompt is None
+                    and state.get('reference_repair_feedback_sha256') != feedback_hash):
+                pending('reference_repair', 'local-model', 'Révision du brief d’après les défauts réellement observés.')
+                try:
+                    corrected = build_reference_brief(subject, previous=brief,
+                                                      feedback=visual_corrections(feedback))
+                    state.setdefault('reference_brief_history', []).append(brief)
+                    brief = corrected
+                    prompt = brief['prompt']
+                    state.update(reference_brief=brief, reference_repair_feedback_sha256=feedback_hash)
+                    if brief.get('model') and find_ollama_model(brief['model']):
+                        _release_ollama_model(brief['model'])
+                    report(PipelineStage('reference_repair', brief.get('model', 'local-model'), 'done',
+                                         log=json.dumps(brief, ensure_ascii=False)))
+                except Exception as exc:
+                    report(PipelineStage('reference_repair', 'local-model', 'failed',
+                                         error_kind='preparation', log=str(exc)))
+                    return result()
+            attempt = int(state["next_attempt"])
+            state["next_attempt"] = attempt + 1
+            attempt_dir = job_dir / f"attempt-{attempt:04d}"
+            attempt_dir.mkdir()
+            candidate = attempt_dir / "reference.png"
+            # A revised brief already incorporates the critique. Re-appending
+            # it can reintroduce rejected objects and exceed the image context.
+            correction = ("\nCorrect these rejected visual details: " + visual_corrections(feedback)
+                if feedback and (image_prompt is not None
+                    or state.get('reference_repair_feedback_sha256') != feedback_hash) else '')
+            pending("image_generation", selected_image_model, f"Référence visuelle, tentative {attempt}.")
+            image_stage = stage_generate_image(prompt + correction, candidate,
+                model_name=selected_image_model, seed=attempt,
+                negative_prompt='scenery, environment, ground plane, floating decorations, patterned background')
+            report(image_stage)
+            if image_stage.status != "done":
+                # Repeating the same installation or execution without a repair
+                # is not progress. Runtime diagnostics and partial files remain.
+                return result()
+            state['pending_reference'] = dict(filename=str(candidate.relative_to(job_dir)),
+                                             sha256=_digest(candidate))
+            _save_manifest(checkpoint, state)
+            check = verify_reference(candidate)
+            if check.status == "done":
+                image_path = candidate
+                break
+            if check.error_kind != "mismatch":
+                return result()
+            feedback = check.log
+            state["reference_feedback"] = feedback
+            if image_model is None:
+                alternative = alternative_image_model(used_image_models)
+                if alternative:
+                    report(PipelineStage('image_recipe_change', alternative, 'done', log=(
+                        f'Référence refusée avec {selected_image_model}. Essai de {alternative} : '
+                        'recette compatible, installation si nécessaire, qualité encore à vérifier.')))
+                    selected_image_model = alternative
+                    used_image_models.add(alternative)
+                    state.update(selected_image_model=alternative, used_image_models=sorted(used_image_models))
+            _save_manifest(checkpoint, state)
+        if image_path is None:
+            return result()
+
+    from .model_selection import remember_failure
+    from aurora_cli.evolution import load_policy
+    recipe_limit = max(1, int(load_policy().get('delivery_3d', {}).get('max_recipe_attempts', 2)))
+    used_recipes = set()
+    for recipe_index in range(recipe_limit if automatic_3d else 1):
+        used_recipes.add(model_3d)
+        # Each recipe keeps separate shape checkpoints and the SAME reference.
+        attempt = int(state['next_attempt'])
+        state['next_attempt'] = attempt + 1
+        mesh_dir = job_dir / f'attempt-{attempt:04d}'
+        mesh_dir.mkdir()
+        mesh_path = mesh_dir / 'model.glb'
+        previous_mesh = state.get('mesh_attempts', {}).get(model_3d)
+        if previous_mesh:
+            previous_dir = (job_dir / previous_mesh).resolve()
+            if previous_dir.is_relative_to(job_dir.resolve()):
+                for name in ('model.shape.glb', 'model.shape.state.json', 'model.shape.latents.pt',
+                             'model.shape.latents.json', 'shape.glb', 'shape.state.json'):
+                    source = previous_dir / name
+                    if source.is_file():
+                        shutil.copyfile(source, mesh_dir / name)
+        state.setdefault('mesh_attempts', {})[model_3d] = mesh_dir.name
+        state['last_mesh_attempt'] = mesh_dir.name
+        pending('3d_generation', model_3d, 'Reconstruction et texturation depuis la référence acceptée.')
+        mesh = stage_generate_3d(image_path, mesh_path, model_name=model_3d,
+                                 texture=texture, prepared=prepared)
+        report(mesh)
+        failed = mesh if mesh.status != 'done' else None
+        if failed is None:
             gate = stage_validate_mesh(mesh_path, require_textures=texture)
-            stages.append(gate)
-            if gate.status != "done":
-                continue
-            return PipelineResult(
-                success=True,
-                stages=stages,
-                final_output=mesh_path,
-                log="\n".join(s.log for s in stages),
-            )
-
-    return PipelineResult(
-        success=False,
-        stages=stages,
-        log="\n".join(s.log for s in stages),
-    )
+            report(gate)
+            failed = gate if gate.status != 'done' else None
+        if failed is None:
+            pending('mesh_visual_gate', 'local-renderer', 'Contrôle des rendus et du placement des textures.')
+            visual = stage_verify_mesh(image_path, mesh_path, prepared=prepared, require_textures=texture)
+            report(visual)
+            # A visual failure still gets the semantic evidence when available.
+            if visual.output is not None:
+                pending('mesh_semantic_gate', vlm_model, 'Contrôle du sujet sur le rendu 3D réel.')
+                semantic = stage_verify_mesh_subject(visual.output, subject, model_name=vlm_model, reference=image_path)
+                report(semantic)
+                failed = visual if visual.status != 'done' else semantic if semantic.status != 'done' else None
+            else:
+                failed = PipelineStage('mesh_semantic_gate', vlm_model, 'failed',
+                    log='Rapport visuel absent', error_kind='visual_validation')
+                report(failed)
+        if failed is None:
+            break
+        remember_failure('3d', model_3d, failed.log, context=_digest(image_path),
+            infrastructure=any(word in failed.log.lower() for word in ('out of memory', 'cuda unavailable', 'no module named')))
+        if not automatic_3d or recipe_index + 1 == recipe_limit:
+            return result()
+        try:
+            replacement = select_3d_model(texture=texture, excluded=used_recipes, context=_digest(image_path))
+        except RuntimeError:
+            return result()
+        report(PipelineStage('3d_recipe_change', replacement, 'done', log=(
+            f'Échec de {model_3d}. Essai de {replacement} avec la référence conservée ; '
+            'la nouvelle recette doit passer les mêmes contrôles.')))
+        model_3d = replacement
+        pending('3d_preparation', model_3d, 'Préparation du moteur de remplacement.')
+        try:
+            prepared = ensure_model(model_3d, '3d')
+            if prepared is None:
+                raise RuntimeError('Moteur de remplacement absent.')
+            report(PipelineStage('3d_preparation', model_3d, 'done', log='Moteur de remplacement préparé.'))
+        except Exception as exc:
+            report(PipelineStage('3d_preparation', model_3d, 'failed', error_kind='preparation', log=str(exc)))
+            return result()
+    target = output_dir / f"model-{key}.glb"
+    # The public destination is updated only after validation. Attempt artefacts
+    # remain beside their evidence, including earlier failed runs.
+    if target.exists() and state.get("delivered", {}).get("sha256") != _digest(target):
+        target = output_dir / f"model-{key}-{attempt}.glb"
+    temporary = target.with_suffix(".glb.tmp")
+    shutil.copyfile(mesh_path, temporary)
+    temporary.replace(target)
+    state["delivered"] = dict(filename=target.name, sha256=_digest(target),
+                              visual_contract=_visual_contract(),
+                              visual_report=str(visual.output.relative_to(job_dir)),
+                              visual_report_sha256=_digest(visual.output))
+    return result(True, target)

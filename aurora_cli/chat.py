@@ -19,7 +19,8 @@ HELP = (
     ("/model", "lister les modèles joignables"),
     ("/provider", "lister les sources locales"),
     ("/context", "relire l'historique"),
-    ("/clear", "vider l'historique"),
+    ("/clear", "effacer l'écran sans perdre le contexte"),
+    ("/new", "nouvelle conversation, ancienne archivée"),
     ("/theme", "changer de thème pour cette session"),
     ("/quit", "quitter"),
 )
@@ -69,7 +70,10 @@ def run_local_chat(model: str = "") -> int:
     display.success(f"Session locale · {route.target} · {chosen}")
     display.hint(f"Thème {theme.id} ({origin}) · /? pour l'aide, /quit pour sortir.")
 
-    history: list[dict[str, str]] = []
+    from .core.conversation import Conversation, respond_with_fallback
+    history = Conversation.open()
+    if history:
+        display.hint(f"Conversation reprise : {len(history) // 2} échange(s).")
 
     while True:
         try:
@@ -92,14 +96,17 @@ def run_local_chat(model: str = "") -> int:
             _print_help()
             continue
         if message == "/clear":
-            history.clear()
-            display.success("Historique vidé.")
+            view.console.clear()
+            continue
+        if message == "/new":
+            history = history.new()
+            display.success("Nouvelle conversation ; précédente archivée.")
             continue
         if message == "/context":
             if not history:
                 display.hint("Historique vide.")
-            for entry in history[-12:]:
-                display.kv(entry["role"], entry["content"][:80])
+            for entry in history:
+                display.kv(entry["role"], entry["content"])
             continue
         if message == "/provider":
             display.providers_table(router.result.providers)
@@ -126,18 +133,14 @@ def run_local_chat(model: str = "") -> int:
             display.hint("Relancez avec --theme <id> pour en choisir un.")
             continue
 
-        history.append({"role": "user", "content": message})
         started = time.monotonic()
         chunks: list[str] = []
         try:
             with display.thinking("génération", started):
-                for chunk in route.runtime.stream(chosen, history):
-                    if chunk.error:
-                        raise RuntimeError(chunk.error)
-                    if chunk.text:
-                        chunks.append(chunk.text)
-                        sys.stdout.write(chunk.text)
-                        sys.stdout.flush()
+                for text in respond_with_fallback(route.runtime, chosen, history, message, models=route.models):
+                    chunks.append(text)
+                    sys.stdout.write(text)
+                    sys.stdout.flush()
         except KeyboardInterrupt:
             display.hint("")
             display.warning("Interrompu.")
@@ -151,7 +154,6 @@ def run_local_chat(model: str = "") -> int:
         print()
         answer = "".join(chunks).strip()
         if answer:
-            history.append({"role": "assistant", "content": answer})
             display.hint(f"{len(chunks)} fragment(s) · {len(answer)} caractères")
         else:
             display.warning("Réponse vide.")

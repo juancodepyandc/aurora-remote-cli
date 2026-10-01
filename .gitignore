@@ -13,3 +13,8 @@ dist/
 .pytest_cache/
 .claude/
 *.md
+!ARCHITECTURE_ADAPTATIVE.md
+
+# Machine-local generation evidence and installation receipts
+/application/output/
+/install-receipt.json

@@ -85,7 +85,7 @@ def test_source_rejects_private_or_irrelevant_files(path):
 
 
 def test_runtime_errors_are_not_saved_as_answers(monkeypatch):
-    runtime = SimpleNamespace(stream=lambda *a: iter([StreamChunk(error='out of memory')]))
+    runtime = SimpleNamespace(stream=lambda *a, **kw: iter([StreamChunk(error='out of memory')]))
     route = SimpleNamespace(kind='local', ok=True, models=[ModelInfo(name='qwen')],
                             runtime=runtime, target='Ollama')
     router = SimpleNamespace(note_remote=lambda x: None, route=lambda: route, pick_model=lambda **kw: 'qwen')
@@ -106,6 +106,46 @@ def test_close_refuses_self_before_confirm(monkeypatch):
     with pytest.raises(ValueError):
         apps.close_app(os.getpid())
     confirm.assert_not_called()
+
+
+def test_remote_bridge_never_receives_the_local_archive_uuid(monkeypatch):
+    from aurora_cli import bridge, mission
+    calls = []
+    monkeypatch.setattr(bridge, 'Bridge', lambda: 'bridge-client')
+    monkeypatch.setattr(mission, 'run_mission', lambda client, request, **kwargs:
+                        calls.append((client, request, kwargs)) or True)
+    history = SimpleNamespace(session_id='local-only-uuid', state={})
+    assert workspace._remote_mission('request', history)
+    assert calls[0][0] == 'bridge-client' and calls[0][2]['session_id'] == ''
+
+
+@pytest.mark.parametrize('mode', ['local', 'auto'])
+def test_workspace_input_image_uses_direct_local_pipeline_and_explicit_ui(monkeypatch, tmp_path, mode):
+    from aurora_cli.core import pipeline
+    from aurora_cli.core.agents import get
+    source = tmp_path / 'input with spaces.png'
+    source.write_bytes(b'fixture for routing only')
+    monkeypatch.setattr(workspace, 'scan', lambda **kw: ScanResult(providers=[], loose_models=[]))
+    monkeypatch.setattr(workspace, 'profile', lambda: object())
+    monkeypatch.setattr(workspace, 'recommend', lambda *a: SimpleNamespace(
+        steps=[SimpleNamespace(agent=get('3d'))]))
+    monkeypatch.setattr(workspace.config, 'get', lambda *a: mode)
+    monkeypatch.setattr(workspace.config, 'is_configured', lambda: True)
+    monkeypatch.setattr(workspace, '_remote_mission', lambda *a:
+                        pytest.fail('A local input cannot be sent as a path-only remote request'))
+    messages, calls = [], []
+    for method in ('info', 'hint', 'warning', 'success'):
+        monkeypatch.setattr(workspace.display, method, messages.append)
+    monkeypatch.setattr(pipeline, 'run_pipeline', lambda request, output_dir, **kw:
+        calls.append((request, output_dir, kw)) or pipeline.PipelineResult(False))
+    request = f'génère moi cette image en modèle 3d : "{source}"'
+    history = []
+    workspace.execute(request, history)
+    assert calls[0][0] == request
+    assert any(f'Image d’entrée : {source}' == message for message in messages)
+    assert any('Image fournie → forme 3D' in message for message in messages)
+    assert not any('Préparation → référence vérifiée' in message for message in messages)
+    assert history[-1]['content'].startswith('3D : non livrée')
 
 
 def test_same_repository_preserves_both_component_subsets():
@@ -134,25 +174,26 @@ def test_conversation_has_a_real_installable_catalogue():
 
 def test_local_image_adapter_reuses_pipeline_and_checks_output(monkeypatch, tmp_path):
     from aurora_cli.core import images
-    from aurora_cli.core import locations
     model = tmp_path / 'existing-sdxl'
     model.mkdir()
     (model / 'model_index.json').write_text('{}')
-    engine = locations.data_dir() / 'engines' / 'images'
-    engine.mkdir(parents=True)
-    import os
-    python = engine / ('Scripts/python.exe' if os.name == 'nt' else 'bin/python')
-    python.parent.mkdir()
-    python.touch()
-    (engine / 'ready').touch()
     monkeypatch.setattr(images, 'profile', lambda: SimpleNamespace(free_ram_gb=20))
     install = Mock(side_effect=AssertionError('must reuse existing model'))
     monkeypatch.setattr(images.fetcher, 'install', install)
-    def worker(command, **kwargs):
-        from pathlib import Path
-        assert command[2] == str(model)
-        Path(command[4]).write_bytes(b'test-output')
-    monkeypatch.setattr(images.subprocess, 'run', worker)
-    result = ScanResult(providers=[], loose_models=[ModelInfo(name='sdxl', capability='image', path=str(model))])
+    from pathlib import Path
+    from aurora_cli.core import pipeline, request_spec
+    monkeypatch.setattr(request_spec.locations, 'data_dir', lambda: tmp_path / 'data')
+    spec = 'stabilityai/stable-diffusion-xl-base-1.0'
+    monkeypatch.setattr(pipeline, 'select_image_model', lambda: spec)
+    monkeypatch.setattr(pipeline, 'ensure_model', lambda name, capability, **kw: (kw['model_dir'], Path('python')))
+    def worker(prompt, output, **kwargs):
+        assert kwargs['prepared'][0] == model
+        assert kwargs['model_spec'] == spec
+        output.write_bytes(b'test-output')
+        return pipeline.PipelineStage('image_generation', 'fixture', 'done', output=output)
+    monkeypatch.setattr(pipeline, 'stage_generate_image', worker)
+    monkeypatch.setattr(pipeline, 'stage_verify_image', lambda *a, **kw:
+                        pipeline.PipelineStage('vlm_verification', 'fixture', 'done'))
+    result = ScanResult(providers=[], loose_models=[ModelInfo(name=spec, capability='image', path=str(model))])
     assert images.generate('a bicycle', result)
     install.assert_not_called()

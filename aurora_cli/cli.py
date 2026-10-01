@@ -15,6 +15,7 @@ import json
 import platform
 import shutil
 import socket
+import sys
 from pathlib import Path
 
 import click
@@ -65,17 +66,34 @@ socket.getaddrinfo = _patched_getaddrinfo
 
 import click  # noqa: E402,F811  (re-imported after the resolver shim on purpose)
 
-from rich.traceback import install as install_rich_traceback  # noqa: E402
-
 from aurora_cli import __version__, brand, config, display, themes  # noqa: E402
-from aurora_cli.bridge import Bridge  # noqa: E402
 from aurora_cli.core import capabilities, locations  # noqa: E402
 from aurora_cli.core.providers import human_size  # noqa: E402
 
-install_rich_traceback(console=display.view.console, extra_lines=1)
+
+def _excepthook(exc_type, exc, tb):
+    """Pretty tracebacks, paid for only when something actually breaks.
+
+    Installing rich.traceback eagerly cost ~17 ms of import time on every single
+    command, including `--version`, for a feature that only runs on a crash.
+    """
+    try:
+        from rich.traceback import install as install_rich_traceback
+
+        install_rich_traceback(console=display.view.console, extra_lines=1)
+    except Exception:
+        return sys.__excepthook__(exc_type, exc, tb)
+    return sys.__excepthook__(exc_type, exc, tb)
 
 
-def _client(**kwargs) -> Bridge:
+sys.excepthook = _excepthook
+
+
+def _client(**kwargs):
+    """The bridge client. Imported here because httpx is ~18 ms of import time
+    that only the commands which actually talk to a bridge should pay for."""
+    from aurora_cli.bridge import Bridge
+
     return Bridge(**kwargs)
 
 
@@ -219,11 +237,14 @@ def doctor():
 def permissions(level):
     """Show or set the bridge permission level."""
     if level:
-        config.set("permission_level", level)
-        display.success(f"Niveau de permission : {level}")
+        normalized = level.upper()
+        if normalized not in config.PERMISSION_LEVELS:
+            raise click.ClickException('Niveau inconnu. Valeurs : ' + ', '.join(config.PERMISSION_LEVELS))
+        config.set("default_permissions", normalized)
+        display.success(f"Niveau de permission : {normalized}")
         return
-    display.kv("Niveau", config.get("permission_level", "interactif"))
-    display.hint("Niveaux : auto | full | ask | read | off")
+    display.kv("Niveau", config.get("default_permissions", "SAFE"))
+    display.hint("Niveaux : " + ' | '.join(config.PERMISSION_LEVELS))
 
 
 @main.command()
@@ -233,8 +254,9 @@ def permissions(level):
 def run(request, model, server_workspace):
     """Send one request to the remote bridge."""
     from aurora_cli.mission import run_mission
-
-    run_mission(request, model=model, server_workspace=server_workspace)
+    from aurora_cli.bridge import Bridge
+    run_mission(Bridge(), request, model=model, server_workspace=server_workspace,
+                permissions=config.get('default_permissions', 'SAFE'))
 
 
 # --- Local commands -------------------------------------------------------
@@ -399,38 +421,49 @@ def ask(request, tier, as_json, verbose):
 
 
 @main.command(name="create-3d")
-@click.argument("character")
-@click.option("--output", default=None, help="Output directory (default: JOBIA data outputs)")
-@click.option("--prompt", default=None, help="Override the image generation prompt")
-def create_3d(character, output, prompt):
-    """Full autonomous pipeline: generate image → VLM check → 3D mesh.
+@click.argument("prompt")
+@click.option("--output", default=None, help="Delivery directory (otherwise inferred from the request)")
+@click.option("--safe-mode", is_flag=True, help="Force CPU mode (slower)")
+@click.option("--max-retries", default=2, help="Max retries for VLM rejection")
+@click.option("--no-texture", is_flag=True, help="Skip PBR texturing (faster)")
+def create_3d(prompt, output, safe_mode, max_retries, no_texture):
+    """Run or resume the same checked 3D pipeline as the JOBIA workspace."""
+    import os
+    from .core.pipeline import run_pipeline
+    from .core.request_spec import parse_creation_request
+    from .workspace import show_pipeline_stage
+    spec = parse_creation_request(prompt, Path(output) if output else None)
 
-    Example: jobia create-3d "Natsu version combattant"
-    """
-    from aurora_cli.core.pipeline import run_pipeline
-
-    from aurora_cli.core.locations import data_dir
-    output_dir = Path(output).expanduser() if output else data_dir() / "outputs" / "3d" / character.replace(" ", "_")
-
-    display.header(f"Pipeline 3D : {character}")
-    display.hint(f"Sortie : {output_dir}")
-    display.hint("Étapes : génération image → vérification VLM → mesh 3D")
-
-    result = run_pipeline(character, output_dir, image_prompt=prompt)
+    display.header(f"Pipeline 3D autonome : {prompt}")
+    if safe_mode:
+        display.hint("Mode sûr activé (CPU only, sans GPU)")
+    display.hint(f"Destination : {spec.output_dir}")
+    previous_device = os.environ.get("JOBIA_DEVICE")
+    try:
+        if safe_mode:
+            os.environ["JOBIA_DEVICE"] = "cpu"
+        result = run_pipeline(prompt, spec.output_dir, max_retries=max_retries,
+                              texture=not no_texture, progress=show_pipeline_stage)
+    finally:
+        if previous_device is None:
+            os.environ.pop("JOBIA_DEVICE", None)
+        else:
+            os.environ["JOBIA_DEVICE"] = previous_device
 
     if result.success:
         display.success(f"Mesh 3D généré : {result.final_output}")
-        display.hint(f"Image de référence : {result.stages[0].output if result.stages else 'N/A'}")
+        display.hint(f"Dossier : {result.final_output.parent}")
+        display.hint(f"Temps total : {sum(s.duration_s for s in result.stages):.1f}s")
     else:
-        display.error("Le pipeline a échoué.")
-        display.hint(result.log[-500:])
+        display.warning(f"Travail conservé, sans livraison validée. Diagnostic : {result.checkpoint}")
+        raise SystemExit(1)
 
 
 @main.command(name="generate-3d")
 @click.option("--image", required=True, help="Source image (PNG/JPG)")
 @click.option("--output", required=True, help="Output .glb path")
-@click.option("--paint", is_flag=True, help="Apply PBR texturing")
-def generate_3d(image, output, paint):
+@click.option("--no-texture", is_flag=True, help="Skip PBR texturing (geometry only)")
+def generate_3d(image, output, no_texture):
     """Generate a 3D mesh from an image using the local Hunyuan3D pipeline."""
     from aurora_cli.core.engine3d import find_hunyuan3d, generate_mesh
 
@@ -449,10 +482,11 @@ def generate_3d(image, output, paint):
 
     display.header(f"Génération 3D : {image_path.name}")
     display.hint(f"Moteur : {engine.name}")
+    display.hint(f"Texture PBR : {'oui' if not no_texture else 'non'}")
     display.hint(f"Sortie : {output_path}")
     display.hint("Génération en cours... (peut prendre plusieurs minutes)")
 
-    success, log = generate_mesh(engine, image_path, output_path, paint=paint)
+    success, log = generate_mesh(engine, image_path, output_path, paint=not no_texture)
 
     if success:
         display.success(f"Mesh généré : {output_path}")
@@ -842,6 +876,314 @@ def _safe_to_remove(record) -> bool:
     return not path.is_symlink() and path.resolve() != root and path.resolve().is_relative_to(root)
 
 
+# --- Engine Lifecycle Commands ---
+
+
+@main.command(name="adapters")
+@click.option("--capability", default=None, help="Only report this capability")
+@click.option("--check-spec", multiple=True,
+              help="Report whether a model spec has a runner; repeatable")
+def adapters(capability, check_spec):
+    """Show the declared runners, and which model specs have none.
+
+    Read-only. This is the honest picture of what this machine can actually
+    execute: a spec with no runner is a capability that does not work here, and
+    the command says so by name instead of leaving it to be discovered.
+    """
+    from aurora_cli.adapters import AdapterRegistry
+
+    registry = AdapterRegistry()
+    display.header("Runners déclarés")
+    for entry in registry.describe():
+        scope = ", ".join(entry["specs"]) or "n'importe quel spec"
+        display.print(f"  {entry['id']} [{entry['capability']}] {'texture ' if entry['texturing'] else ''}")
+        display.hint(f"    specs : {scope}")
+        display.hint(f"    fournit : {', '.join(entry['provides'])}")
+    if check_spec:
+        display.header("Specs sans runner")
+        for spec in check_spec:
+            cap = capability or "3d"
+            runner, reason = registry.resolve(cap, spec)
+            if runner:
+                display.success(f"{spec} -> {runner.id}")
+            else:
+                display.hint(f"{spec} : {reason}")
+    return
+
+
+@main.command(name="run")
+@click.option("--capability", "caps", multiple=True,
+              help="Capability to improve; repeatable. Defaults to 3d.")
+@click.option("--fixture", type=click.Path(exists=True, dir_okay=False),
+              help="Image used as the 3D probe fixture")
+@click.option("--no-research", is_flag=True, help="Only consider installed engines")
+@click.option("--goal", default="", help="Task prompt used to compare candidates")
+@click.option("--receipt", type=click.Path(dir_okay=False),
+              default=None, help="Where to write the JSON run report")
+def run(caps, fixture, no_research, goal, receipt):
+    """Drive bounded, evidence-based improvement, unattended.
+
+    Never asks a question and never waits. Each pass re-probes every capability
+    using what the previous pass learned, and the run stops when a full pass
+    promotes nothing within the available candidate set. Bounds come from
+    policies/quality.toml so the loop cannot spin forever.
+    """
+    from aurora_cli.autonomous import run_autonomous
+
+    capabilities = list(caps) or ["3d"]
+    researcher = None
+    if not no_research:
+        try:
+            from aurora_cli.research import HuggingFaceResearcher
+
+            researcher = HuggingFaceResearcher()
+        except Exception as exc:
+            display.hint(f"Recherche indisponible ({exc}) : moteurs locaux uniquement.")
+
+    requests = []
+    for capability in capabilities:
+        from aurora_cli.capability_probe import evaluation_profile
+
+        try:
+            evaluation = evaluation_profile(capability)
+        except ValueError as exc:
+            raise click.ClickException(str(exc)) from exc
+        if evaluation.get("requires_fixture") and not fixture:
+            raise click.ClickException(f"Le probe {capability} a besoin d'une référence : --fixture")
+        if goal and not evaluation.get("accepts_prompt"):
+            raise click.ClickException(f"Le probe {capability} n'évalue pas de prompt ; utilise --fixture")
+        requests.append({
+            "capability": capability,
+            "required_checks": evaluation["required_checks"],
+            "fixture": fixture,
+            "goal": goal,
+        })
+
+    display.header(f"Exécution autonome : {', '.join(capabilities)}")
+    report = run_autonomous(requests, researcher=researcher,
+                            log=lambda message: display.hint(message))
+
+    display.header("Bilan")
+    if report["promotions"]:
+        for capability, entry in report["promotions"].items():
+            display.success(f"{capability} : {entry['engine']} — {entry['reason']}")
+    else:
+        display.hint("Aucune promotion.")
+    for capability, reason in report["blocked"].items():
+        display.hint(f"{capability} bloqué : {reason[:100]}")
+    display.hint(report["reason"])
+    display.hint(f"{len(report['passes'])} passe(s)")
+    if receipt:
+        Path(receipt).write_text(json.dumps(report, indent=2, ensure_ascii=False),
+                                 encoding="utf-8")
+        display.hint(f"Reçu : {receipt}")
+
+
+@main.command(name="improve")
+@click.option("--capability", required=True, help="Capability to re-evaluate (3d, image, ...)")
+@click.option("--fixture", type=click.Path(exists=True, dir_okay=False),
+              help="Image used as the 3D probe fixture")
+@click.option("--artefact", type=click.Path(exists=True, dir_okay=False),
+              help="Legacy fixture metadata; candidates always generate their own output")
+@click.option("--no-research", is_flag=True, help="Only consider engines already installed")
+@click.option("--limit", default=5, show_default=True, help="Research candidates per round")
+@click.option("--goal", default="", help="Task prompt used to compare candidates")
+def improve(capability, fixture, artefact, no_research, limit, goal):
+    """Find, prove and promote the best engine for a capability, unattended.
+
+    Runs the discover -> probe -> score -> promote cycle. Research is on by
+    default; if the Hub is unreachable the loop falls back to what is installed
+    and says so, rather than failing. Nothing is promoted without a passing
+    probe, every decision is appended to evolution.log, and a capability with no
+    proofable candidate is reported rather than guessed at.
+    """
+    from aurora_cli.capability_probe import evaluation_profile, run_probe
+    from aurora_cli.engine_manager import AutonomousEngineManager
+    from aurora_cli.evolution import EvolutionLoop, TaskSpec, load_policy
+
+    researcher = None
+    if not no_research:
+        try:
+            from aurora_cli.research import HuggingFaceResearcher
+
+            researcher = HuggingFaceResearcher()
+        except Exception as exc:
+            display.hint(f"Recherche indisponible ({exc}) : moteurs locaux uniquement.")
+
+    policy = load_policy()
+    try:
+        evaluation = evaluation_profile(capability, policy)
+    except ValueError as exc:
+        raise click.ClickException(str(exc)) from exc
+    target = Path(fixture or artefact) if fixture or artefact else None
+    if evaluation.get("requires_fixture") and target is None:
+        raise click.ClickException(f"Le probe {capability} a besoin d'une référence : --fixture")
+    if goal and not evaluation.get("accepts_prompt"):
+        raise click.ClickException(f"Le probe {capability} n'évalue pas de prompt ; utilise --fixture")
+    task = TaskSpec(capability=capability, goal=goal,
+                    required_checks=tuple(evaluation["required_checks"]), fixture=target,
+                    metric=evaluation["metric"])
+    policy.setdefault("discovery", {})["research_limit"] = limit
+    loop = EvolutionLoop(AutonomousEngineManager(), researcher=researcher, policy=policy)
+    kwargs = {"fixture": target}
+    if goal:
+        kwargs["prompt"] = goal
+    result = loop.improve(task, attempt=lambda c: run_probe(capability, c, **kwargs))
+
+    display.header(f"Capacité {capability}")
+    if researcher is not None:
+        for note in getattr(researcher, "notes", []):
+            display.hint(note)
+    current = loop.current(capability)
+    if result["promoted"]:
+        display.success(f"Moteur promu : {result['promoted']}")
+        display.hint(result["reason"])
+    else:
+        display.hint("Aucun moteur promu.")
+        display.hint(result["reason"])
+    if current:
+        display.hint(f"Actif : {current['engine']} (score {current['score']}) — {current['reason']}")
+    display.hint(f"Journal : {loop.log.path}")
+
+
+@main.command(name="research")
+@click.option("--capability", required=True, help="Capability to search for")
+@click.option("--limit", default=8, show_default=True, help="Candidates to list")
+@click.option("--offline", is_flag=True, help="Use the packaged catalogue, no network")
+def research(capability, limit, offline):
+    """List engines worth trying for a capability, before running any probe.
+
+    Cheap and read-only: it reports what the Hub offers, what was refused and
+    why, and which of those have a runner implemented.
+    """
+    from aurora_cli.evolution import TaskSpec
+    from aurora_cli.research import HuggingFaceResearcher, StubHubClient
+
+    researcher = HuggingFaceResearcher(
+        StubHubClient({}) if offline else None,
+    )
+    task = TaskSpec(capability=capability)
+    candidates = researcher.candidates(task, limit=limit)
+    display.header(f"Candidats {capability} ({len(candidates)})")
+    for candidate in candidates:
+        runner = candidate.adapter.get("runner", "aucun runner")
+        display.print(f"  {candidate.spec:<44} [{runner}]")
+        display.hint(f"    {candidate.evidence}")
+    for note in researcher.notes:
+        display.hint(note)
+    if not candidates:
+        display.hint("Aucun candidat. Ajoute un profil dans aurora_cli/policies/research.toml.")
+
+
+@main.command(name="engine-list")
+def engine_list():
+    """List all engines/models managed by the autonomous engine manager."""
+    from aurora_cli.engine_manager import AutonomousEngineManager
+
+    mgr = AutonomousEngineManager()
+    status = mgr.status()
+
+    display.header(f"Moteurs gérés : {status['total_engines']} (actifs: {status['active']}, inactifs: {status['idle']})")
+    display.hint(f"Taille totale : {status['total_size_mb']:.1f} MB")
+
+    if not status["engines"]:
+        display.hint("Aucun moteur installé. Utilise 'create-3d' pour installer à la demande.")
+        return
+
+    for eng in status["engines"]:
+        status_icon = "●" if eng["in_use"] else "○"
+        display.print(f"  {status_icon} {eng['name']} [{eng['capability']}] {eng['size_mb']:.1f} MB — {eng['source']}")
+        display.hint(f"    Chemin : {eng['path']}")
+
+
+@main.command(name="engine-status")
+def engine_status():
+    """Show detailed status of the autonomous engine manager."""
+    from aurora_cli.engine_manager import AutonomousEngineManager
+
+    mgr = AutonomousEngineManager()
+    status = mgr.status()
+
+    display.header("État du gestionnaire de moteurs autonome")
+    display.print(f"  Total moteurs : {status['total_engines']}")
+    display.print(f"  Actifs (protégés) : {status['active']}")
+    display.print(f"  Inactifs (nettoyables) : {status['idle']}")
+    display.print(f"  Taille totale : {status['total_size_mb']:.1f} MB")
+
+    if status["engines"]:
+        display.print("")
+        for eng in status["engines"]:
+            state = "● ACTIF" if eng["in_use"] else "○ INACTIF"
+            display.print(f"  {eng['name']} [{eng['capability']}] — {state}")
+            display.print(f"    Source: {eng['source']} | Taille: {eng['size_mb']:.1f} MB")
+            display.print(f"    Chemin: {eng['path']}")
+
+
+@main.command(name="engine-clean")
+@click.argument("name", required=False)
+@click.option("--all-idle", is_flag=True, help="Clean all idle engines (not in use)")
+@click.option("--force", is_flag=True, help="Compatibility option; active engines remain protected")
+@click.option("--yes", is_flag=True, help="Skip confirmation prompt (still requires explicit intent)")
+def engine_clean(name, all_idle, force, yes):
+    """Clean up engines/models. REQUIRES explicit confirmation.
+
+    Removes only idle installations owned by JOBIA.
+    """
+    from aurora_cli.engine_manager import AutonomousEngineManager
+
+    mgr = AutonomousEngineManager()
+    status = mgr.status()
+
+    if name:
+        # Clean specific engine
+        target = mgr.registry.get(name)
+        if not target:
+            display.error(f"Moteur '{name}' non trouvé.")
+            return
+        if target.in_use:
+            display.error(f"Moteur '{name}' est en cours d'utilisation et reste protégé.")
+            return
+        engines = [name]
+    elif all_idle:
+        # Clean all idle engines
+        engines = [e["name"] for e in mgr.status()["engines"] if not e["in_use"]]
+        if not engines:
+            display.success("Aucun moteur inactif à nettoyer.")
+            return
+    else:
+        display.error("Spécifiez un nom de moteur ou utilisez --all-idle.")
+        return
+
+    display.header(f"Nettoyage prévu : {len(engines)} moteur(s)")
+    for name in engines:
+        eng = mgr.registry.get(name)
+        if eng:
+            display.print(f"  • {eng.name} [{eng.capability}]")
+            display.hint(f"    Chemin : {eng.install_path}")
+
+    if not yes and not click.confirm("Confirmer la suppression de ces moteurs ?", default=False):
+        display.hint("Annulé. Rien n'a été supprimé.")
+        return
+
+    cleaned = 0
+    for name in engines:
+        try:
+            removed = mgr.cleanup(name, confirmed_by_user=True, force=force)
+        except (PermissionError, RuntimeError, OSError) as exc:
+            display.error(f"{name} : {exc}")
+            continue
+        if removed:
+            display.success(f"Supprimé : {name}")
+            cleaned += 1
+        else:
+            display.error(f"Échec nettoyage : {name}")
+
+    if cleaned:
+        display.success(f"Nettoyage terminé : {cleaned} moteur(s) supprimé(s).")
+    else:
+        display.warning("Aucun moteur n'a été nettoyé.")
+
+
 @main.command()
 def providers():
     """List every local runtime found on this machine."""
@@ -1023,6 +1365,59 @@ def close_cmd(pid):
     try:
         close_app(pid)
     except Exception as exc:
+        raise click.ClickException(str(exc)) from exc
+
+
+@main.command(name='choose')
+@click.argument('role')
+@click.option('--install', 'install_model', is_flag=True, help='Préparer la recette sélectionnée, sans supprimer les autres modèles.')
+@click.option('--json', 'as_json', is_flag=True, help='Afficher les choix et les motifs de rejet en JSON.')
+def choose_cmd(role, install_model, as_json):
+    """Expliquer la sélection compatible pour n’importe quel rôle du catalogue."""
+    from .core.model_selection import choices
+    from .core.agents import get
+    from .core.pipeline import ensure_model
+    import json
+    try:
+        options, rejected = choices(role, require_textures=role == '3d')
+        result = {'role': role, 'selected': options[0].to_dict() if options else None,
+                  'candidates': [choice.to_dict() for choice in options], 'rejected': rejected}
+        if install_model:
+            if not options:
+                raise RuntimeError('Aucune recette compatible à installer.')
+            choice = options[0]
+            prepared = ensure_model(choice.artifact.ref, get(role).capability)
+            if prepared is None:
+                raise RuntimeError('Aucun runtime préparé ; les poids seuls ne suffisent pas.')
+            result['prepared'] = {'root': str(prepared[0]), 'python': str(prepared[1])}
+        if as_json:
+            click.echo(json.dumps(result, ensure_ascii=False, indent=2))
+        elif options:
+            display.info(f'{role} : {options[0].artifact.ref} · {options[0].runner_id}')
+            display.hint('Préférence du catalogue, pas preuve de qualité maximale. --json détaille les rejets.')
+            if options[0].artifact.note:
+                display.hint(options[0].artifact.note)
+        else:
+            display.warning(f'Aucune recette compatible pour {role}. {rejected}')
+    except (ValueError, RuntimeError) as exc:
+        raise click.ClickException(str(exc)) from exc
+
+
+@main.command(name='audio')
+@click.option('--text', help='Texte à prononcer en français (MMS : licence non commerciale).')
+@click.option('--input', 'source', type=click.Path(exists=True, dir_okay=False, path_type=Path), help='Audio à transcrire.')
+@click.option('--output', type=click.Path(path_type=Path), help='Nouveau fichier WAV ou JSON ; aucun écrasement.')
+@click.option('--model', help='Modèle explicite, sinon sélection adaptée à la machine.')
+def audio_cmd(text, source, output, model):
+    """Synthèse vocale ou transcription locale, avec un moteur adapté à la tâche."""
+    from .core.audio import generate
+    if text is not None:
+        display.hint('MMS français : licence CC-BY-NC-4.0, narration sans clonage.')
+    try:
+        target = generate(text=text, source=source, output=output, model=model)
+        display.success(f'Audio traité : {target}')
+        display.hint('Structure contrôlée ; intelligibilité et exactitude sémantique à vérifier.')
+    except (ValueError, RuntimeError, OSError) as exc:
         raise click.ClickException(str(exc)) from exc
 
 

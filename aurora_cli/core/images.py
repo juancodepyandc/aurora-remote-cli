@@ -1,68 +1,81 @@
-"""Local image generation with isolated dependencies and reusable weights."""
+"""Local image creation uses the same runner and verifier as 3D references."""
 from pathlib import Path
-import subprocess
+import shutil
 import uuid
-import click
 from aurora_cli import display
-from . import catalog, fetcher, locations
+from . import catalog, fetcher, pipeline
 from .agents import get
-from .bootstrap import ensure_hf, python_engine
 from .machine import profile
+from .request_spec import parse_creation_request
 
 
 def generate(prompt, result):
-    machine = profile()
-    if machine.free_ram_gb < 10:
-        from .bootstrap import start_ollama
+    model_name = model_spec = pipeline.select_image_model()
+    request = parse_creation_request(prompt, capability='image')
+    output_dir = request.output_dir
+    attempt = output_dir / '.jobia' / uuid.uuid4().hex
+    attempt.mkdir(parents=True, exist_ok=True)
+    manifest = {'request': prompt, 'subject': request.subject, 'model': model_spec, 'stages': []}
+    from aurora_cli.evolution import load_policy
+    retries = int(load_policy().get('delivery_image', {}).get('max_attempts', 2))
+    feedback = ''
+    used = set()
+    discovered = {m.name: Path(m.path) for m in result.loose_models
+                  if m.capability == 'image' and m.path and (Path(m.path) / 'model_index.json').is_file()}
+    from .model_selection import remember_failure
+    for index in range(max(1, retries)):
+        used.add(model_spec)
         try:
-            start_ollama()
-            subprocess.run(["ollama", "ps"], capture_output=True, text=True,
-                           timeout=5, check=False)
-            from .resource_governor import release_ollama_models
-            released = release_ollama_models()
-            if released:
-                display.info(f"Mémoire libérée automatiquement : {len(released)} modèle(s) local(aux).")
-                machine = profile()
+            if model_spec in discovered:
+                prepared = pipeline.ensure_model(model_spec, 'image', model_dir=discovered[model_spec])
+            else:
+                prepared = pipeline.ensure_model(model_name, 'image')
+            if not prepared:
+                raise RuntimeError('Aucun moteur image exécutable pour le modèle sélectionné.')
         except Exception as exc:
-            display.hint(f"Gestion automatique de la mémoire indisponible : {exc}")
-    # Only complete diffusion pipelines are loadable by this adapter. A loose
-    # checkpoint or a LoRA must never be passed off as an executable pipeline.
-    roots = [fetcher.hf_target_dir(a) for a in catalog.for_agent(get('image'))]
-    for model in result.loose_models:
-        path = Path(model.path) if model.path else None
-        if path and model.capability == 'image':
-            roots.append(path if path.is_dir() else path.parent)
-    model_dir = next((p for p in roots if (p / 'model_index.json').is_file()
-                      and 'flux' not in str(p).lower()), None)
-    if machine.free_ram_gb < 10:
-        display.warning(f'{machine.free_ram_gb:.1f} Go libres : le moteur image local nécessite une marge de 10 Go.')
-        display.hint('/apps pour identifier la mémoire occupée ; /close PID puis réessaie.')
-        return False
-    consent_for_engine = False
-    if model_dir is None:
-        artifact = catalog.resolve(get('image'), machine, 'light')
-        if artifact is None:
-            display.warning('Aucun modèle image adapté à cette machine.')
-            return False
-        consent_for_engine = True
-        ensure_hf()
-        plan, _ = fetcher.install(artifact, profile(), job=prompt, progress=display.hint)
-        model_dir = plan.target
-    else:
-        display.info(f'Pipeline image local : {model_dir.name}')
-    engine = locations.data_dir() / 'engines' / 'images'
-    import os
-    python = engine / ('Scripts/python.exe' if os.name == 'nt' else 'bin/python')
-    marker = engine / 'ready'
-    if not python.exists() or not marker.exists():
-        python = python_engine('images', ['torch', 'diffusers', 'transformers', 'accelerate', 'safetensors', 'Pillow'])
-        marker.touch()
-    output = locations.data_dir() / 'outputs' / f'image-{uuid.uuid4().hex[:12]}.png'
-    output.parent.mkdir(parents=True, exist_ok=True)
-    display.info('Génération locale en cours ; Ctrl-C pour interrompre.')
-    subprocess.run([str(python), str(Path(__file__).with_name('image_worker.py')),
-                    str(model_dir), prompt, str(output)], check=True)
-    if not output.is_file() or output.stat().st_size == 0:
-        raise RuntimeError('Le moteur a terminé sans produire une image.')
-    display.success(f'Image créée : {output}')
-    return True
+            manifest['stages'].append(dict(name='image_preparation', status='failed', provider=model_spec, log=str(exc)))
+            pipeline._save_manifest(attempt / 'job.json', manifest)
+            alternative = pipeline.alternative_image_model(used) if index + 1 < retries else None
+            if not alternative:
+                raise RuntimeError(f'Échec image, diagnostics conservés : {attempt}. {exc}') from exc
+            model_name = model_spec = alternative
+            continue
+        candidate = attempt / f'candidate-{index + 1}.png'
+        display.info(f'Génération image et contrôle visuel, tentative {index + 1}.')
+        correction = '\nCorrect these visual inconsistencies: ' + pipeline.visual_corrections(feedback) if feedback else ''
+        stage = pipeline.stage_generate_image(request.subject + correction, candidate,
+                    model_name=model_name, model_spec=model_spec, seed=index + 1, prepared=prepared)
+        manifest['stages'].append({'name': stage.name, 'status': stage.status, 'provider': model_spec, 'log': stage.log})
+        if stage.status != 'done':
+            pipeline._save_manifest(attempt / 'job.json', manifest)
+            remember_failure('image', model_spec, stage.log, context=request.subject,
+                             infrastructure='out of memory' in stage.log.lower())
+            alternative = pipeline.alternative_image_model(used) if index + 1 < retries else None
+            if not alternative:
+                raise RuntimeError(f'Échec image, diagnostics conservés : {attempt}. {stage.log[-1000:]}')
+            model_name = model_spec = alternative
+            continue
+        verification = pipeline.stage_verify_image(candidate, request.subject)
+        manifest['stages'].append({'name': verification.name, 'status': verification.status,
+                                   'log': verification.log})
+        pipeline._save_manifest(attempt / 'job.json', manifest)
+        if verification.status == 'done':
+            target = output_dir / f'image-{attempt.name[:12]}.png'
+            temporary = target.with_suffix('.tmp')
+            shutil.copyfile(candidate, temporary)
+            temporary.replace(target)
+            manifest.update(status='delivered', output=str(target), sha256=pipeline._digest(target))
+            pipeline._save_manifest(attempt / 'job.json', manifest)
+            display.success(f'Image livrée après contrôle visuel : {target}')
+            return target
+        if verification.error_kind != 'mismatch':
+            break
+        feedback = verification.log
+        remember_failure('image', model_spec, feedback, context=request.subject)
+        alternative = pipeline.alternative_image_model(used) if index + 1 < retries else None
+        if alternative:
+            manifest['stages'].append(dict(name='image_recipe_change', status='done',
+                provider=alternative, log='Référence refusée ; nouvelle recette, mêmes critères de validation.'))
+            model_name = model_spec = alternative
+    display.warning(f'Image non validée, aucune livraison finale. Diagnostics : {attempt / "job.json"}')
+    return False

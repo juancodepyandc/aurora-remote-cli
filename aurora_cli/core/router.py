@@ -166,21 +166,16 @@ class Router:
         route.reason = "auto : ni runtime local, ni pont distant"
         return route
 
-    def pick_model(self, model: str = "", route: Route | None = None) -> str:
+    def pick_model(self, model: str = "", route: Route | None = None, *, role: str = 'resume') -> str:
         """Resolve which model id to send, honouring an explicit choice."""
         chosen = route if route is not None else self.route()
         if model:
             return model
         if not chosen.models:
             return ""
-        # Prefer something with a parameter count in a usable range.
-        ranked = sorted(
-            chosen.models,
-            key=lambda m: (0 if 3 <= m.parameter_count <= 80 else 1,
-                           0 if m.size_bytes else 1,
-                           m.name),
-        )
-        return ranked[0].name
+        from .model_selection import rank_available
+        ranked = rank_available(chosen.models, role=role)
+        return ranked[0].name if ranked else ''
 
 
 def _models_for(scan: discovery.ScanResult,

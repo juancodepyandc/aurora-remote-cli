@@ -37,6 +37,11 @@ MIN_USABLE_RAM_GB = 4.0
 def _total_ram_bytes() -> int:
     """Total physical RAM, from the OS rather than a guess."""
     try:
+        import psutil
+        return psutil.virtual_memory().total
+    except (ImportError, OSError, AttributeError):
+        pass
+    try:
         return os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES")
     except (ValueError, OSError, AttributeError):
         pass
@@ -48,12 +53,17 @@ def _total_ram_bytes() -> int:
 
 
 def _free_ram_bytes() -> int:
-    """Free RAM now, not at boot.
+    """Available physical RAM now, with one portable OS measurement.
 
-    Deliberately not ``available`` everywhere: on Linux and macOS the kernel
-    will happily hand out memory that is really swap-backed, and provisioning
-    against that number is how a download starts and then gets OOM-killed.
+    psutil avoids overlapping macOS page counters and supports Windows, where
+    sysconf and /proc do not exist. Swap capacity is not added to this budget.
     """
+    try:
+        import psutil
+        memory = psutil.virtual_memory()
+        return min(memory.available, memory.total)
+    except (ImportError, OSError, AttributeError):
+        pass
     total = _total_ram_bytes()
     if total <= 0:
         return 0
@@ -213,8 +223,6 @@ def _accelerator() -> tuple[str, bool]:
     vram = _nvidia_vram_bytes()
     if vram:
         return f"NVIDIA {vram / (1024 ** 3):.0f} Go", False
-    if sys.platform == "darwin":
-        return "Metal (partagé)", True
     return "CPU", False
 
 

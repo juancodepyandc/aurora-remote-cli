@@ -205,6 +205,15 @@ def test_explicit_model_wins_over_ranking():
     assert router.pick_model("only:1b", route=router.route()) == "only:1b"
 
 
+def test_text_model_beats_alphabetically_first_vision_and_embedding():
+    models = [ModelInfo('a-vision', capability='vision', parameter_count=7),
+              ModelInfo('b-embedding', capability='embedding', parameter_count=7),
+              ModelInfo('z-text', capability='llm', parameter_count=7)]
+    router = Router(mode='local', result=_result([ProviderInfo(
+        id='o', label='O', kind=ProviderKind.LOCAL, healthy=True, models=models)]))
+    assert router.pick_model(route=router.route()) == 'z-text'
+
+
 def test_discovery_never_raises_without_network():
     """Discovery runs on every startup; it must not fail loudly on timeout."""
     result = discovery.scan(deep=False, include_files=False, timeout=0.01)

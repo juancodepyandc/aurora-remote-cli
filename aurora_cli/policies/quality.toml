@@ -1,0 +1,136 @@
+# Promotion policy for the self-improving engine loop (aurora_cli/evolution.py).
+#
+# Everything the loop is allowed to accept lives here. Nothing is hardcoded in
+# Python, so the quality bar is inspectable and editable without a code change.
+# Point JOBIA_QUALITY_POLICY at another file to override this one wholesale.
+
+[discovery]
+# How many non-local candidates a researcher may propose per round.
+research_limit = 5
+# Rank locally installed engines ahead of research proposals, because they cost
+# nothing extra to prove.
+prefer_local = true
+
+[promotion]
+# A candidate below this score is never promoted, however much better it looks
+# than the incumbent. 0.0 disables the floor.
+#
+# 0.8 is set deliberately: a 3D probe that returns valid geometry but no PBR
+# maps scores 0.6, so this floor keeps an untextured mesh from being promoted as
+# a finished asset. Lower it only if geometry-only is genuinely acceptable for
+# a capability.
+absolute_min_score = 0.8
+# To replace the incumbent, a candidate must beat it by this factor. 1.0 means
+# "strictly better"; 1.05 refuses to churn on noise.
+replacement_ratio = 1.0
+# A candidate must pass every check in the task's required_checks.
+require_all_checks = true
+# A readiness recommendation expires; a fresh probe is then required. This does
+# not schedule downloads or treat a newly released model as better by default.
+evidence_max_age_s = 86400
+
+[retry]
+# How many times the loop tries the whole candidate set before giving up on a
+# round. Failures are logged and classified, never raised at the caller.
+max_attempts = 3
+
+# These scores measure technical readiness only. A semantic/visual evaluator
+# must declare a different metric and its own calibrated checks.
+[evaluation."3d"]
+metric = "technical-readiness-v1"
+required_checks = ["output_nonempty", "mesh_valid", "has_texture"]
+requires_fixture = true
+accepts_prompt = false
+[evaluation."3d".weights]
+output_nonempty = 0.2
+mesh_valid = 0.4
+has_texture = 0.4
+
+[evaluation.image]
+metric = "technical-readiness-v1"
+required_checks = ["output_nonempty", "image_valid", "not_flat"]
+requires_fixture = false
+accepts_prompt = true
+[evaluation.image.weights]
+output_nonempty = 0.2
+image_valid = 0.5
+not_flat = 0.3
+[evaluation.image.limits]
+min_dimension = 64
+min_luminance_range = 8
+
+# Bake tiers, smallest first. The highest one that fits the machine's measured
+# memory budget is selected automatically, so this ladder is the whole quality
+# decision for texturing and it is not tuned to any particular subject or model.
+[shape]
+# Surface decoding needs a stable dynamic range independently of the sampler.
+# The adapter releases the sampler first, rather than upcasting all its weights.
+decoder_dtype = "float32"
+decoder_device = "same"
+hierarchical_decode = true
+min_resolution = 96
+surface_band = 0.95
+query_chunk_size = 8192
+
+[conversation]
+fallback_context_tokens = 4096
+max_context_tokens = 8192
+output_tokens = 2048
+summary_tokens = 768
+retrieval_messages = 4
+max_continuations = 3
+max_model_attempts = 2
+
+[delivery_3d]
+max_recipe_attempts = 2
+min_bbox_fill = 0.05
+min_silhouette_iou = 0.35
+render_size = 256
+timeout_s = 600
+require_placed_texture = true
+
+[delivery_image]
+max_attempts = 2
+max_prompt_chunks = 8
+
+[delivery_audio]
+max_text_characters = 20000
+max_input_duration_s = 3600
+
+[visual_review]
+max_attempts = 2
+max_dimension = 512
+context_tokens = 8192
+output_tokens = 2048
+max_output_tokens = 4096
+timeout_s = 180
+
+[texture_placement]
+min_correlation = 0.60
+max_placement_error = 0.35
+misplaced_correlation = 0.20
+
+[bake]
+# Fraction of the measured unified-memory pool a bake may claim for its buffers.
+ceiling_fraction = 0.35
+
+# How sharply per-view contributions are weighted when baking into the atlas.
+# Upstream pins 4; a lower value blends neighbouring views and drags colour across
+# UV islands, which the placement check reports as misplacement. Raised only on
+# evidence — see CHANTIERS.md for the measured correlation it is meant to move.
+bake_exp = 8
+
+[[bake.tiers]]
+render_size = 1024
+texture_size = 2048
+
+[[bake.tiers]]
+render_size = 2048
+texture_size = 4096
+
+[autonomy]
+# The self-driving loop stops when a full pass promotes nothing: that is a proven
+# fixed point, not a guess. max_passes is the absolute ceiling so a capability
+# that keeps flipping cannot run forever.
+max_passes = 3
+stability_rounds = 1

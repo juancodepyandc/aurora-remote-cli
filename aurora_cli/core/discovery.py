@@ -181,6 +181,23 @@ def probe_ollama(port: int) -> ProviderInfo | None:
             modified=str(entry.get("modified_at") or ""),
             source="ollama",
         ))
+    def enrich(model):
+        try:
+            response = httpx.post(f'{base}/api/show', json={'model': model.name}, timeout=0.6)
+            response.raise_for_status()
+            metadata = response.json()
+            capabilities = metadata.get('capabilities', [])
+            model.capability = ('vision' if 'vision' in capabilities else 'llm' if 'completion' in capabilities
+                                else 'embedding' if 'embedding' in capabilities else '')
+            contexts = [_as_int(value) for key, value in (metadata.get('model_info') or {}).items()
+                        if key.endswith('.context_length')]
+            model.context_length = max(contexts, default=0)
+        except Exception:
+            # Missing metadata is unknown, never inferred from a model name.
+            pass
+    if info.models:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=min(4, len(info.models))) as pool:
+            list(pool.map(enrich, info.models))
     return info
 
 
@@ -225,6 +242,9 @@ def probe_openai_compatible(port: int, flavour: LocalFlavour,
             quantization=parse_quantization(name),
             family=name.split("/")[0] if "/" in name else "",
             source=provider_id,
+            context_length=_as_int(entry.get('context_length') or entry.get('max_context_length'))
+                if isinstance(entry, dict) else 0,
+            capability=str(entry.get('capability') or '') if isinstance(entry, dict) else '',
         ))
     return info
 

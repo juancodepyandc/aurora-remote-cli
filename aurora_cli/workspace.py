@@ -18,6 +18,23 @@ from aurora_cli.core.machine import profile
 from aurora_cli.core.router import Router
 
 
+def _remember_result(history, request, result):
+    from .core.conversation import Conversation
+    history.extend([{'role': 'user', 'content': request}, {'role': 'assistant', 'content': result}])
+    if isinstance(history, Conversation):
+        history.save()
+
+
+def _remote_mission(request, history):
+    from .bridge import Bridge
+    from .mission import run_mission
+    return run_mission(Bridge(), request, workspace=str(Path.cwd()),
+                       permissions=config.get('default_permissions', 'SAFE'),
+                       # A local archive UUID is not a session created by the
+                       # remote server. Never send a fabricated bridge session.
+                       session_id=getattr(history, 'state', {}).get('remote_session_id', ''))
+
+
 def dashboard(result=None):
     view = display.view
     theme, caps = view.theme, view.caps
@@ -97,42 +114,55 @@ def execute(request: str, history: list, *, local_only=False):
     media = any(s.agent.capability not in {"llm", "code"} for s in plan.steps)
     mode = "local" if local_only else config.get("mode", "auto")
     if any(s.agent.id in {"3d", "3d-texture"} for s in plan.steps):
+        from .core.pipeline import run_pipeline
+        from .core.request_spec import parse_creation_request
+        spec = parse_creation_request(request)
         # A configured bridge is the fixed workstation requested by the user.
         # Try it first for complex 3D work; local execution remains an
         # automatic fallback if the bridge is temporarily unreachable.
-        if mode != "local" and config.is_configured():
-            from .bridge import Bridge
-            from .mission import run_mission
+        if spec.input_image is not None and mode != 'local' and config.is_configured():
+            # The bridge currently transports text, not local attachments. A
+            # path on this computer is not evidence the remote host can read it.
+            display.hint("Image locale fournie : exécution locale ; le pont ne transfère pas encore les références.")
+        if spec.input_image is None and mode != "local" and config.is_configured():
             display.info("Demande 3D complexe : utilisation automatique du PC fixe via AuroraIA.")
-            if run_mission(Bridge(), request, permissions="AUTONOMOUS"):
+            if _remote_mission(request, history):
                 return
             display.warning("Le PC fixe ne répond pas ; reprise automatique en local.")
-        from .core import locations
-        from .core.pipeline import run_pipeline
-        # Honour a natural destination such as "dans le dossier Documents"
-        # without forcing a flag or a machine-specific absolute path.
-        destination = locations.data_dir() / "outputs" / "3d" / "autonomous"
-        request_lower = request.lower()
-        if "documents" in request_lower or "document" in request_lower:
-            destination = Path.home() / "Documents" / "JOBIA" / "3d"
-        output_dir = destination
-        display.info("Pipeline autonome : image → contrôle → forme 3D → texture PBR → validation.")
-        result_3d = run_pipeline(request, output_dir, texture=True)
+        display.info("Image fournie → forme 3D → texture PBR → contrôles → livraison."
+                     if spec.input_image is not None
+                     else "Préparation → référence vérifiée → forme 3D → texture PBR → livraison.")
+        if spec.input_image is not None:
+            display.hint(f"Image d’entrée : {spec.input_image}")
+        display.hint(f"Sujet : {spec.subject} · Destination : {spec.output_dir}")
+        result_3d = run_pipeline(request, spec.output_dir, texture=True, progress=show_pipeline_stage)
         if result_3d.success:
-            display.success(f"Résultat 3D validé : {result_3d.final_output}")
+            display.success(f"Fichier 3D livré, géométrie et textures contrôlées : {result_3d.final_output}")
         else:
-            display.error("Le pipeline 3D n'a pas atteint son gate qualité.")
-            display.hint(result_3d.log[-800:])
+            display.warning("Travail conservé ; le résultat demandé n'est pas encore livré.")
+            if result_3d.checkpoint:
+                display.hint(f"État et diagnostics : {result_3d.checkpoint}")
+        remaining = [step.agent.label for step in plan.steps
+                     if step.agent.id not in {'3d', '3d-texture', 'image', 'vision'}]
+        pending = ''
+        if remaining:
+            pending = 'Autres étapes non exécutées par ce pipeline 3D local : ' + ', '.join(remaining)
+            display.warning(pending)
+        _remember_result(history, request, f"3D : {'livrée' if result_3d.success else 'non livrée'}. "
+                         f"Fichier : {result_3d.final_output}. Diagnostics : {result_3d.checkpoint}. {pending}")
         return
     if media and mode != "remote" and all(s.agent.id == "image" for s in plan.steps):
         from aurora_cli.core.images import generate
-        if generate(request, result):
-            return
+        output = generate(request, result)
+        if output:
+            _remember_result(history, request, f'Image livrée après contrôle visuel : {output}')
+        else:
+            _remember_result(history, request, 'Image non livrée : le contrôle visuel a échoué ; diagnostics conservés.')
+        return
     if media or mode == "remote":
         if mode != "local" and config.is_configured():
             display.info("Cette tâche utilise les outils du PC fixe via le pont.")
-            from aurora_cli.mission import run_mission
-            run_mission(request)
+            _remote_mission(request, history)
             return
         display.hint("Analyse des modèles nécessaires à cette création…")
         for step in plan.steps:
@@ -145,8 +175,7 @@ def execute(request: str, history: list, *, local_only=False):
     router.note_remote(config.is_configured() and not local_only)
     route = router.route()
     if route.kind == "remote":
-        from aurora_cli.mission import run_mission
-        run_mission(request)
+        _remote_mission(request, history)
         return
     if not route.ok or not route.models:
         if not prepare("discussion : " + request, yes=True):
@@ -157,23 +186,28 @@ def execute(request: str, history: list, *, local_only=False):
         display.warning("Modèle préparé, mais aucun moteur ne le sert encore.")
         display.hint("Démarre Ollama (ollama serve) ou charge le modèle dans LM Studio, puis réessaie ici.")
         return
-    chosen = router.pick_model(route=route)
+    role = next((s.agent.id for s in plan.steps if s.agent.capability in {'llm', 'code'}), 'resume')
+    chosen = router.pick_model(route=route, role=role)
+    if not chosen:
+        display.warning('Aucun modèle servi ne tient dans le budget mémoire disponible pour cette tâche.')
+        display.hint('/apps montre les ressources occupées. La conversation reste conservée.')
+        return
     display.info(f"Local · {route.target} · {chosen}")
-    messages = history[-20:] + [{"role": "user", "content": request}]
-    answer = []
+    from .core.conversation import respond_with_fallback
     try:
-        for chunk in route.runtime.stream(chosen, messages):
-            if chunk.error:
-                raise RuntimeError(chunk.error)
-            if chunk.text:
-                display.view.console.print(chunk.text, end="", markup=False, highlight=False)
-                answer.append(chunk.text)
+        for text in respond_with_fallback(route.runtime, chosen, history, request, models=route.models, role=role):
+            display.view.console.print(text, end="", markup=False, highlight=False)
     finally:
         display.view.console.print()
-    if answer:
-        history.extend([messages[-1], {"role": "assistant", "content": "".join(answer)}])
-    else:
-        display.warning("Le moteur a renvoyé une réponse vide ; /models pour changer de moteur.")
+
+
+def show_pipeline_stage(stage):
+    if stage.status == "running":
+        display.info(stage.log)
+    elif stage.status == "failed":
+        display.warning(f"{stage.name} : {stage.log[-800:]}")
+    elif stage.status == "done":
+        display.hint(f"{stage.name} : terminé ({stage.duration_s:.1f}s)")
 
 
 def run_workspace():
@@ -183,9 +217,12 @@ def run_workspace():
 
     result = scan(deep=True)
     dashboard(result)
-    commands = ["/theme", "/models", "/apps", "/close", "/prepare", "/clear", "/help", "/quit"]
+    commands = ["/theme", "/models", "/apps", "/close", "/prepare", "/clear", "/new", "/context", "/help", "/quit"]
     session = PromptSession(completer=WordCompleter(commands))
-    history = []
+    from .core.conversation import Conversation
+    history = Conversation.open()
+    if history:
+        display.hint(f"Conversation reprise : {len(history) // 2} échange(s). /new pour une nouvelle conversation.")
     while True:
         try:
             view = display.view
@@ -219,9 +256,14 @@ def run_workspace():
             elif raw.startswith("/prepare "):
                 prepare(raw.split(maxsplit=1)[1])
             elif raw == "/clear":
-                history.clear()
                 view.console.clear()
                 dashboard(result)
+            elif raw == "/new":
+                history = history.new()
+                display.hint("Nouvelle conversation ; la précédente reste archivée localement.")
+            elif raw == "/context":
+                for entry in history:
+                    display.kv(entry['role'], entry['content'])
             elif raw.startswith("/"):
                 display.hint(" · ".join(commands))
                 display.hint("/close PID : demander la fermeture d'une application précise.")

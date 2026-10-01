@@ -85,6 +85,9 @@ def hf_target_dir(artifact: Artifact) -> Path:
     confused with one the user put there themselves.
     """
     slug = artifact.ref.replace("/", "--")
+    if artifact.revision:
+        import hashlib
+        slug += '--revision-' + hashlib.sha256(artifact.revision.encode()).hexdigest()[:12]
     root = (locations.data_dir() / "models").resolve()
     target = root / slug
     if not target.resolve().is_relative_to(root) or target.resolve() == root:
@@ -127,6 +130,9 @@ def preflight(artifact: Artifact, machine) -> Plan:
             ]
         else:
             commands = [[cli, "download", artifact.ref, "--local-dir", str(target)]]
+        if artifact.revision:
+            for command in commands:
+                command.extend(['--revision', artifact.revision])
         needs = artifact.bytes or 0
 
     if machine.free_disk_gb * (1024 ** 3) < needs * 1.15:
@@ -305,6 +311,7 @@ def manifest(plan: Plan) -> dict:
         "tier": plan.artifact.tier,
         "target": str(plan.target),
         "include": list(plan.artifact.include),
+        "revision": plan.artifact.revision,
         "bytes": dir_size(plan.target),
         "at": time.time(),
     }

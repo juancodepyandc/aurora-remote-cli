@@ -55,6 +55,7 @@ class Artifact:
     note: str = ""
     gated: bool = False
     tags: tuple[str, ...] = field(default_factory=tuple)
+    revision: str = ''
 
 
 _GO = 1024 ** 3
@@ -97,9 +98,20 @@ _VISION: tuple[Artifact, ...] = (
 #: one as the middle level. Quality that can be tuned is set at run time; only
 #: a different model is a different level.
 _IMAGE: tuple[Artifact, ...] = (
+    Artifact('image', 'balanced', 'huggingface', 'black-forest-labs/FLUX.2-klein-4B',
+             'FLUX.2 klein 4B', 16_000_000_000, 16.0, tags=('flux', 'flux2'),
+             note='Génération et édition ; compatibilité Diffusers vérifiée avant utilisation.'),
     Artifact("image", "light", "huggingface", "stabilityai/sdxl-turbo",
              "Version légère", 7_000_000_000, 8.0,
              note="Few steps, works on any recent machine.", tags=("sd", "turbo")),
+    Artifact("image", "balanced", "huggingface", "stabilityai/stable-diffusion-xl-base-1.0",
+             "SDXL détaillé", 7_000_000_000, 10.0,
+             include=("model_index.json", "scheduler/*", "tokenizer/*", "tokenizer_2/*",
+                      "text_encoder/config.json", "text_encoder/*.fp16.safetensors",
+                      "text_encoder_2/config.json", "text_encoder_2/*.fp16.safetensors",
+                      "unet/config.json", "unet/*.fp16.safetensors",
+                      "vae/config.json", "vae/*.fp16.safetensors"),
+             note="Référence 1024 px, 30 étapes ; réutilisation des poids locaux.", tags=("sdxl",)),
     Artifact("image", "balanced", "huggingface", "black-forest-labs/FLUX.1-schnell",
              "Équilibré", 23_800_000_000, 16.0,
              note="Much better detail, 4 steps suffice.", tags=("flux",)),
@@ -151,7 +163,12 @@ _AUDIO: tuple[Artifact, ...] = (
              "Qualité maximale", 3_100_000_000, 10.0),
 )
 
-ARTIFACTS: tuple[Artifact, ...] = _OLLAMA + _VISION + _IMAGE + _3D + _AUDIO
+_SPEECH = (Artifact('speech', 'light', 'huggingface', 'facebook/mms-tts-fra',
+    'Narration française VITS', 300_000_000, 2.0,
+    include=('config.json', 'model.safetensors', 'tokenizer_config.json', 'vocab.json', 'special_tokens_map.json'),
+    note='Français, CPU ; licence CC-BY-NC-4.0 (usage non commercial). Pas de clonage.'),)
+
+ARTIFACTS: tuple[Artifact, ...] = _OLLAMA + _VISION + _IMAGE + _3D + _AUDIO + _SPEECH
 
 
 def for_agent(agent: Agent | str) -> list[Artifact]:
@@ -181,9 +198,18 @@ def resolve(agent: Agent, machine, tier: str = "balanced") -> Artifact | None:
     if not options:
         return None
     for artifact in options:
-        if artifact.tier == tier and artifact.ram_gb <= machine.total_ram_gb:
+        if artifact.tier == tier and artifact.ram_gb <= machine.total_ram_gb and supported(artifact, machine):
             return artifact
     return None
+
+
+def supported(artifact, machine):
+    """Do not advertise a CUDA-only engine as runnable from host RAM alone."""
+    from aurora_cli.adapters import AdapterRegistry
+    from .agents import get
+    role = get(artifact.agent_id)
+    runner, _ = AdapterRegistry().resolve(role.capability if role else artifact.agent_id, artifact.ref)
+    return not runner or not runner.incompatibility(machine)
 
 
 #: Memory left over for the model itself once the desktop keeps its share. Used
@@ -202,7 +228,7 @@ def usable_ram_gb(machine) -> float:
     24 GB / 23.8 GB download proposed to it, which is advice nobody should
     follow at that moment.
     """
-    return max(2.0, machine.free_ram_gb - _HEADROOM_GB)
+    return max(0.0, machine.free_ram_gb - _HEADROOM_GB)
 
 
 def recommended_tier(agent: Agent, machine) -> str:
@@ -223,7 +249,7 @@ def recommended_tier(agent: Agent, machine) -> str:
     # the 6 GB model.
     for tier in reversed(tiers):
         for artifact in for_agent(agent):
-            if artifact.tier == tier and artifact.ram_gb <= budget:
+            if artifact.tier == tier and artifact.ram_gb <= budget and supported(artifact, machine):
                 return tier
     # Nothing fits the current free memory. Offer the smallest tier anyway,
     # which is what a user asking for this job on a busy machine wants, and
@@ -261,7 +287,7 @@ def available_tiers(agent: Agent, machine) -> list[str]:
     out = []
     for tier in TIERS:
         for artifact in for_agent(agent):
-            if artifact.tier == tier and artifact.ram_gb <= machine.total_ram_gb:
+            if artifact.tier == tier and artifact.ram_gb <= machine.total_ram_gb and supported(artifact, machine):
                 out.append(tier)
                 break
     return out

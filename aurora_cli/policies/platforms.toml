@@ -1,0 +1,96 @@
+# Platform compatibility matrix — which build a host can actually run.
+#
+# Read by aurora_cli/platforms.py. Adding a platform is an edit here; the Python
+# does not change. Every resolution returns its reason, so an unusable
+# combination is explained instead of surfacing later as an ImportError.
+#
+# Constraints are written `>=x,<y`. An empty constraint means "any build"; that
+# is only appropriate when the package really is portable.
+
+[target.macos-arm64]
+python = ">=3.10"
+name = "macOS arm64 (Apple silicon)"
+system = "darwin"
+arch = "arm64"
+libc = ""
+# Package resolution must work before torch is installed. MPS is confirmed by
+# the isolated runtime probe, not required to select the arm64 wheel target.
+[target.macos-arm64.package]
+# torch 2.14 ships default_low_watermark_ratio=1.4 while validating the ratio as
+# <=1.0, so the first sizeable MPS buffer raises "invalid low watermark ratio".
+# Recorded here because it is a platform-level constraint, not a local patch.
+torch = ">=2.4"
+diffusers = ">=0.30"
+transformers = ">=4.46"
+trimesh = ">=4.4"
+pillow = ">=10.0"
+
+[target.macos-x86]
+python = ">=3.10,<3.13"
+name = "macOS Intel"
+system = "darwin"
+arch = "x86_64"
+libc = ""
+[target.macos-x86.package]
+# Official macOS x86 builds stopped after 2.2. PyPI's 2.2.2 Intel wheels cover
+# CPython through 3.12. This legacy runtime still needs a compatible model;
+# resolving it does not imply that the current Hunyuan pipeline supports it.
+# https://dev-discuss.pytorch.org/t/pytorch-macos-x86-builds-deprecation-starting-january-2024/1690
+torch = ">=2.2,<2.3"
+diffusers = ">=0.30"
+transformers = ">=4.46"
+trimesh = ">=4.4"
+pillow = ">=10.0"
+
+[target.linux-glibc]
+python = ">=3.10"
+name = "Linux glibc (x86_64)"
+system = "linux"
+arch = "x86_64"
+libc = "gnu"
+[target.linux-glibc.package]
+torch = ">=2.4"
+diffusers = ">=0.30"
+transformers = ">=4.46"
+trimesh = ">=4.4"
+pillow = ">=10.0"
+
+[target.linux-glibc-arm64]
+python = ">=3.10"
+name = "Linux glibc (arm64)"
+system = "linux"
+arch = "arm64"
+libc = "gnu"
+[target.linux-glibc-arm64.package]
+torch = ">=2.4"
+diffusers = ">=0.30"
+transformers = ">=4.46"
+trimesh = ">=4.4"
+pillow = ">=10.0"
+
+[target.linux-musl]
+python = ">=3.10"
+name = "Linux musl (Alpine)"
+system = "linux"
+arch = "x86_64"
+libc = "musl"
+[target.linux-musl.package]
+# musl has no manylinux wheels for torch, so this target declares nothing runnable
+# rather than letting pip fail halfway through a multi-gigabyte download.
+diffusers = ">=0.30"
+transformers = ">=4.46"
+trimesh = ">=4.4"
+pillow = ">=10.0"
+
+[target.windows]
+python = ">=3.10"
+name = "Windows"
+system = "windows"
+arch = "x86_64"
+libc = ""
+[target.windows.package]
+torch = ">=2.4"
+diffusers = ">=0.30"
+transformers = ">=4.46"
+trimesh = ">=4.4"
+pillow = ">=10.0"

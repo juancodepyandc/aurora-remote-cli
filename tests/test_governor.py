@@ -20,6 +20,7 @@ def _machine(total_ram_gb=24.0, free_ram_gb=20.0):
     class M:
         pass
     m = M()
+    m.os_name, m.accelerator, m.vram_gb = 'Linux', 'NVIDIA CUDA', 24.0
     m.total_ram_gb = total_ram_gb
     m.free_ram_gb = free_ram_gb
     m.disk_free_gb = 500.0
@@ -201,13 +202,17 @@ def test_holders_are_named_when_memory_is_short():
 
 # --- waiting -----------------------------------------------------------------
 
-def test_waiting_returns_immediately_when_memory_is_already_there():
+def test_waiting_returns_immediately_when_memory_is_already_there(monkeypatch):
+    from aurora_cli.core import machine as machine_mod
+    monkeypatch.setattr(machine_mod, 'profile', lambda: _machine(free_ram_gb=20.0))
     agent = agents_mod.get("audio")
     assert governor.wait_until(agent, "light", machine=_machine(free_ram_gb=20.0),
                                seconds=5) is True
 
 
-def test_waiting_gives_up_and_returns_false():
+def test_waiting_gives_up_and_returns_false(monkeypatch):
+    from aurora_cli.core import machine as machine_mod
+    monkeypatch.setattr(machine_mod, 'profile', lambda: _machine(free_ram_gb=3.0))
     agent = agents_mod.get("3d-texture")
     assert governor.wait_until(agent, "balanced", machine=_machine(free_ram_gb=3.0),
                                seconds=0, poll=0.1) is False
