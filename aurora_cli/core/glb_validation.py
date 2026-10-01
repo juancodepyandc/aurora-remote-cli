@@ -5,13 +5,21 @@ This is a technical delivery gate. It does not establish visual resemblance.
 from __future__ import annotations
 
 import base64
+import io
 import json
 import math
 import struct
 from pathlib import Path
 
 
-def validate_glb(path: Path, *, require_textures: bool = False) -> str:
+def inspect_glb(path: Path, *, require_textures: bool = False,
+                require_pbr_maps: bool = False, decode_textures: bool = False) -> dict:
+    """Inspect connected materials; pixel decoding runs only in an engine venv.
+
+    A constant roughness/metallic factor is valid glTF. ``require_pbr_maps`` is
+    for exporters promising *generated* roughness/metallic maps, like TRELLIS.2.
+    This check never establishes perceptual quality or correct placement.
+    """
     data = path.read_bytes()
     if len(data) < 20 or data[:4] != b"glTF":
         raise ValueError("GLB header absent")
@@ -94,6 +102,102 @@ def validate_glb(path: Path, *, require_textures: bool = False) -> str:
             raise ValueError("Texture externe ou absente du GLB livré")
         return base64.b64decode(uri.split(",", 1)[1], validate=True)
 
+    images = {}
+    materials = {}
+
+    def image_info(index):
+        if index in images:
+            return images[index]
+        payload = image_bytes(index)
+        png = (len(payload) >= 45 and payload.startswith(b"\x89PNG\r\n\x1a\n")
+               and payload[8:16] == b"\0\0\0\rIHDR"
+               and all(struct.unpack_from(">II", payload, 16))
+               and b"IEND" in payload[-12:])
+        jpeg = (len(payload) >= 20 and payload.startswith(b"\xff\xd8\xff")
+                and payload.endswith(b"\xff\xd9"))
+        if not (png or jpeg):
+            raise ValueError("Données de texture PNG/JPEG absentes")
+        info = dict(format='PNG' if png else 'JPEG', bytes=len(payload), decoded=False)
+        if decode_textures:
+            from PIL import Image
+            try:
+                with Image.open(io.BytesIO(payload)) as image:
+                    image.verify()
+                with Image.open(io.BytesIO(payload)) as image:
+                    image.load()
+                    info.update(width=image.width, height=image.height,
+                                mode=image.mode, decoded=True)
+            except (OSError, ValueError, SyntaxError) as exc:
+                raise ValueError(f"Texture embarquée illisible : {index}") from exc
+        images[index] = info
+        return info
+
+    def factor(value, count=1, *, unit=True):
+        values = value if count > 1 else [value]
+        if (not isinstance(values, (list, tuple)) or len(values) != count
+                or any(type(x) not in (int, float) or not math.isfinite(x)
+                       or (unit and not 0 <= x <= 1) for x in values)):
+            raise ValueError("Facteur de matériau PBR invalide")
+        return value
+
+    def inspect_material(index, attributes, positions):
+        material = entry('materials', index)
+        pbr = material.get('pbrMetallicRoughness', {})
+        if not isinstance(pbr, dict):
+            raise ValueError('Matériau PBR invalide')
+        summary = dict(
+            base_colour_factor=factor(pbr.get('baseColorFactor', [1, 1, 1, 1]), 4),
+            roughness_factor=factor(pbr.get('roughnessFactor', 1)),
+            metallic_factor=factor(pbr.get('metallicFactor', 1)),
+            alpha_mode=material.get('alphaMode', 'OPAQUE'), maps={})
+        if summary['alpha_mode'] not in {'OPAQUE', 'MASK', 'BLEND'}:
+            raise ValueError('Mode d’opacité PBR invalide')
+        factor(material.get('alphaCutoff', 0.5), unit=False)
+        factor(material.get('emissiveFactor', [0, 0, 0]), 3, unit=False)
+        if (require_textures or require_pbr_maps) and not isinstance(pbr.get('baseColorTexture'), dict):
+            raise ValueError('Primitive sans texture PBR de couleur')
+        if require_pbr_maps and not isinstance(pbr.get('metallicRoughnessTexture'), dict):
+            raise ValueError('Cartes PBR roughness/metallic promises mais absentes')
+        maps = {'base_colour': pbr.get('baseColorTexture'),
+                'metallic_roughness': pbr.get('metallicRoughnessTexture'),
+                'normal': material.get('normalTexture'),
+                'occlusion': material.get('occlusionTexture'),
+                'emissive': material.get('emissiveTexture')}
+        for role, binding in maps.items():
+            if binding is None:
+                continue
+            if not isinstance(binding, dict):
+                raise ValueError(f'Connexion de texture invalide : {role}')
+            transform = binding.get('extensions', {}).get('KHR_texture_transform', {})
+            coord = transform.get('texCoord', binding.get('texCoord', 0))
+            if type(coord) is not int or coord < 0:
+                raise ValueError('Canal UV invalide')
+            if transform:
+                factor(transform.get('offset', [0, 0]), 2, unit=False)
+                factor(transform.get('scale', [1, 1]), 2, unit=False)
+                factor(transform.get('rotation', 0), unit=False)
+            uv = accessor(attributes.get(f'TEXCOORD_{coord}'), 'VEC2')
+            if len(uv) != len(positions):
+                raise ValueError('UV et sommets non alignés')
+            if role == 'normal':
+                factor(binding.get('scale', 1), unit=False)
+            if role == 'occlusion':
+                factor(binding.get('strength', 1))
+            texture = entry('textures', binding.get('index'))
+            sampler = {}
+            if 'sampler' in texture:
+                sampler = entry('samplers', texture['sampler'])
+                for key in ('wrapS', 'wrapT'):
+                    if sampler.get(key, 10497) not in {33071, 33648, 10497}:
+                        raise ValueError('Mode d’échantillonnage UV invalide')
+            image_index = texture.get('source')
+            info = image_info(image_index)
+            summary['maps'][role] = dict(texture=binding['index'], image=image_index,
+                texcoord=coord, transform=transform,
+                sampler={'wrap_s': sampler.get('wrapS', 10497),
+                         'wrap_t': sampler.get('wrapT', 10497)}, **info)
+        materials[index] = summary
+
     scenes = doc.get("scenes", [])
     if not scenes:
         raise ValueError("Scène GLB absente")
@@ -139,22 +243,17 @@ def validate_glb(path: Path, *, require_textures: bool = False) -> str:
             if not nondegenerate:
                 raise ValueError("Maillage composé uniquement de triangles dégénérés")
             triangles += len(indices) // 3
-            if require_textures:
-                material = entry("materials", primitive.get("material"))
-                base = material.get("pbrMetallicRoughness", {}).get("baseColorTexture")
-                if not isinstance(base, dict):
-                    raise ValueError("Primitive sans texture PBR de couleur")
-                uv = accessor(attributes.get(f"TEXCOORD_{base.get('texCoord', 0)}"), "VEC2")
-                if len(uv) != len(positions):
-                    raise ValueError("UV et sommets non alignés")
-                texture = entry("textures", base.get("index"))
-                payload = image_bytes(texture.get("source"))
-                png = (len(payload) >= 45 and payload.startswith(b"\x89PNG\r\n\x1a\n")
-                       and payload[8:16] == b"\0\0\0\rIHDR"
-                       and all(struct.unpack_from(">II", payload, 16))
-                       and b"IEND" in payload[-12:])
-                jpeg = (len(payload) >= 20 and payload.startswith(b"\xff\xd8\xff")
-                        and payload.endswith(b"\xff\xd9"))
-                if not (png or jpeg):
-                    raise ValueError("Données de texture PNG/JPEG absentes")
-    return f"Structure GLB validée · {triangles} triangles · {len(data) / 1024 ** 2:.1f} Mo. Ressemblance 3D non évaluée."
+            if require_textures or require_pbr_maps or 'material' in primitive:
+                inspect_material(primitive.get('material'), attributes, positions)
+    return dict(triangles=triangles, bytes=len(data), materials=list(materials.values()),
+                embedded_images=len(images), pixels_decoded=decode_textures,
+                require_textures=require_textures, require_pbr_maps=require_pbr_maps,
+                scope='structure_and_connected_materials', resemblance_evaluated=False)
+
+
+def validate_glb(path: Path, *, require_textures: bool = False,
+                 require_pbr_maps: bool = False, decode_textures: bool = False) -> str:
+    result = inspect_glb(path, require_textures=require_textures,
+                         require_pbr_maps=require_pbr_maps, decode_textures=decode_textures)
+    return (f"Structure GLB validée · {result['triangles']} triangles · "
+            f"{result['bytes'] / 1024 ** 2:.1f} Mo. Ressemblance 3D non évaluée.")

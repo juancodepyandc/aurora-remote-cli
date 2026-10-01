@@ -70,6 +70,27 @@ def test_pbr_export_preserves_material_attributes_and_png(tmp_path):
     assert recorded['texture_size'] == 2048 and recorded['export_options'] == {'extension_webp': False}
 
 
+def test_native_conditioning_is_retained_and_not_run_twice(tmp_path):
+    calls = []
+    original = object()
+    class Conditioned:
+        def save(self, path):
+            Path(path).write_bytes(b'native conditioning fixture')
+    conditioned = Conditioned()
+    def preprocess(image):
+        assert image is original
+        calls.append('preprocess')
+        return conditioned
+    def run(image, **kwargs):
+        assert image is conditioned and kwargs == dict(pipeline_type='1536_cascade', preprocess_image=False)
+        calls.append('run')
+        return ['mesh']
+    mesh, path = trellis_worker.run_conditioned(SimpleNamespace(preprocess_image=preprocess, run=run),
+        original, tmp_path / 'job' / 'model.glb', 1536)
+    assert calls == ['preprocess', 'run'] and mesh == 'mesh'
+    assert path.name == 'model.conditioning.png' and path.read_bytes() == b'native conditioning fixture'
+
+
 def test_component_code_is_verified_before_loading(tmp_path):
     source = tmp_path / 'component.py'
     source.write_bytes(b'reviewed fixture')

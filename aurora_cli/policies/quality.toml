@@ -109,6 +109,10 @@ timeout_s = 180
 min_correlation = 0.60
 max_placement_error = 0.35
 misplaced_correlation = 0.20
+# Identical intentionally uniform colours carry no spatial placement signal.
+# Patterned references keep the correlation gate above; they cannot use this.
+max_uniform_channel_std = 1.0
+max_uniform_colour_error = 0.05
 
 [bake]
 # Fraction of the measured unified-memory pool a bake may claim for its buffers.

@@ -38,8 +38,8 @@ def glb_bytes(*, textured=False, edit=None):
                       {"bufferView": 1, "componentType": 5126, "count": 3, "type": "VEC2"}],
     }
     if textured:
-        # One valid embedded 1x1 PNG; texture must be connected to a primitive.
-        png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aE8sAAAAASUVORK5CYII="
+        # A genuinely decodable embedded PNG (including valid chunk CRCs).
+        png = "iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAYAAACp8Z5+AAAAFUlEQVR4nGO8I8f1nwEJMCFziBMAAITuAgvgbwDHAAAAAElFTkSuQmCC"
         primitive.update(material=0)
         primitive["attributes"]["TEXCOORD_0"] = 1
         doc.update(materials=[{"pbrMetallicRoughness": {"baseColorTexture": {"index": 0}}}],

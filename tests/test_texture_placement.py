@@ -97,6 +97,30 @@ class TestPlacementError:
 
 
 class TestVerdict:
+    def test_intentionally_uniform_matching_colours_are_not_missing_texture(self):
+        image, mask = disc()
+        image[mask] = (180, 90, 40)
+        result = assess(image, mask, image.copy(), mask.copy())
+        assert result['verdict'] == 'placed'
+        assert result['mode'] == 'uniform_colour'
+        assert result['spatial_placement_observable'] is False
+        assert result['colour_correlation'] is None
+
+    def test_wrong_uniform_colour_is_rejected(self):
+        image, mask = disc()
+        image[mask] = (180, 90, 40)
+        wrong = image.copy()
+        wrong[mask] = (10, 10, 240)
+        assert assess(image, mask, wrong, mask)['verdict'] == 'misplaced'
+
+    def test_uniform_exception_does_not_hide_lost_patterned_parts(self):
+        image, mask = disc()
+        reference = image.copy()
+        reference[mask] = (180, 90, 40)
+        reference[mask & (np.indices(mask.shape)[1] < mask.shape[1] // 3)] = (0, 0, 255)
+        render_mask = mask & (np.indices(mask.shape)[1] > mask.shape[1] // 3)
+        image[mask] = (180, 90, 40)
+        assert assess(reference, mask, image, render_mask)['verdict'] != 'placed'
     def test_a_correctly_placed_texture_is_accepted(self):
         image, mask = disc()
         result = assess(image, mask, image.copy(), mask.copy())

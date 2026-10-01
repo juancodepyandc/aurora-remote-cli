@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -49,6 +50,17 @@ def export_pbr(mesh, output, *, postprocess, texture_size, target_faces):
     glb.export(str(output), extension_webp=False)
 
 
+def run_conditioned(pipe, image, output, resolution):
+    """Retain the exact native crop/matte; do not preprocess it a second time."""
+    conditioned = pipe.preprocess_image(image)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    conditioning_path = output.with_name(output.stem + '.conditioning.png')
+    conditioned.save(conditioning_path)
+    recipe = '1536_cascade' if resolution == 1536 else str(resolution)
+    mesh = pipe.run(conditioned, pipeline_type=recipe, preprocess_image=False)[0]
+    return mesh, conditioning_path
+
+
 def main():
     parser = argparse.ArgumentParser()
     for key in ('root', 'repo', 'image', 'output'):
@@ -85,14 +97,20 @@ def main():
     with Image.open(args.image) as original:
         image = ImageOps.exif_transpose(original).convert('RGBA')
     with torch.inference_mode():
-        recipe = '1536_cascade' if args.resolution == 1536 else str(args.resolution)
-        mesh = pipe.run(image, pipeline_type=recipe)[0]
+        mesh, conditioning_path = run_conditioned(pipe, image, args.output, args.resolution)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     temporary = args.output.with_name(args.output.stem + '.candidate.glb')
     export_pbr(mesh, temporary, postprocess=o_voxel.postprocess,
                texture_size=args.texture_size, target_faces=args.target_faces)
-    validate_glb(temporary, require_textures=args.paint)
+    validate_glb(temporary, require_textures=args.paint, require_pbr_maps=args.paint,
+                 decode_textures=True)
     temporary.replace(args.output)
+    args.output.with_suffix('.generation.json').write_text(json.dumps(dict(
+        model=args.model, family=args.family, requested_resolution=args.resolution,
+        effective_voxel_size=float(mesh.voxel_size), texture_size=args.texture_size,
+        source_sha256=hashlib.sha256(args.image.read_bytes()).hexdigest(),
+        conditioning_sha256=hashlib.sha256(conditioning_path.read_bytes()).hexdigest(),
+        export='embedded_png_pbr'), indent=2), encoding='utf-8')
     print(f'TRELLIS.2 : GLB et matériaux exportés, fidélité restant à vérifier : {args.output}', flush=True)
 
 

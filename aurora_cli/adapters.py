@@ -96,6 +96,7 @@ class Runner:
     torch_packages: tuple = ()
     torch_index: str = ''
     dependencies: tuple = ()
+    geometry_contract: str = 'volumetric'
 
     def incompatibility(self, machine, *, require_textures=False) -> str:
         if require_textures and not self.texturing:
@@ -130,7 +131,8 @@ class Runner:
                 "interpreter": self.interpreter or "inherited",
                 "parameters": dict(self.parameters), 'systems': list(self.systems),
                 'accelerators': list(self.accelerators), 'min_vram_gb': self.min_vram_gb,
-                'worker': self.worker, 'provisioner': self.provisioner}
+                'worker': self.worker, 'provisioner': self.provisioner,
+                'geometry_contract': self.geometry_contract}
 
 
 class AdapterRegistry:
@@ -140,6 +142,8 @@ class AdapterRegistry:
         self.manifest = manifest if manifest is not None else load_manifest()
         self.runners: dict[str, Runner] = {}
         for name, body in (self.manifest.get("runner") or {}).items():
+            if body.get('geometry_contract', 'volumetric') not in {'volumetric', 'surface'}:
+                raise ValueError(f'Unknown geometry contract for {name}')
             declared = body["argv"]
             argv = tuple(shlex.split(declared) if isinstance(declared, str) else declared)
             self.runners[name] = Runner(
@@ -165,6 +169,7 @@ class AdapterRegistry:
                 torch_packages=tuple(body.get('torch_packages', ())),
                 torch_index=body.get('torch_index', ''),
                 dependencies=tuple(body.get('dependencies', ())),
+                geometry_contract=body.get('geometry_contract', 'volumetric'),
             )
 
     def resolve(self, capability: str, spec: str) -> tuple[Runner | None, str]:

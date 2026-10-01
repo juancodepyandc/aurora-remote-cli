@@ -104,7 +104,7 @@ def stage_validate_mesh(mesh_path: Path, *, require_textures: bool = False) -> P
 
 
 def stage_verify_mesh(reference: Path, mesh: Path, *, prepared: tuple[Path, Path],
-                      require_textures: bool = True) -> PipelineStage:
+                      require_textures: bool = True, model_name: str = '') -> PipelineStage:
     """Measure actual textured views in the engine environment before delivery."""
     from aurora_cli.evolution import load_policy
     settings = load_policy().get('delivery_3d', {})
@@ -112,15 +112,21 @@ def stage_verify_mesh(reference: Path, mesh: Path, *, prepared: tuple[Path, Path
     stage = PipelineStage('mesh_visual_gate', 'local-renderer')
     t0 = time.monotonic()
     try:
+        from aurora_cli.adapters import AdapterRegistry
+        runner, _ = AdapterRegistry().resolve('3d', model_name)
+        geometry_contract = runner.geometry_contract if runner else 'volumetric'
         thresholds = mesh.with_suffix('.thresholds.json')
         _save_manifest(thresholds, {
             'min_bbox_fill': float(settings.get('min_bbox_fill', 0.05)),
             'min_silhouette_iou': float(settings.get('min_silhouette_iou', 0.35)),
+            'geometry_contract': geometry_contract,
         })
         report = mesh.with_suffix('.fidelity.json')
         foreground = mesh.with_name(mesh.stem + '.input-rgba.png')
+        conditioning = mesh.with_name(mesh.stem + '.conditioning.png')
+        measured_reference = conditioning if conditioning.is_file() else foreground if foreground.is_file() else reference
         command = [str(python), str(Path(__file__).with_name('fidelity.py')),
-                   '--reference', str(foreground if foreground.is_file() else reference),
+                   '--reference', str(measured_reference),
                    '--mesh', str(mesh), '--engine-root', str(root),
                    '--thresholds', str(thresholds), '--size', str(settings.get('render_size', 256)),
                    '--output', str(report)]
@@ -135,7 +141,9 @@ def stage_verify_mesh(reference: Path, mesh: Path, *, prepared: tuple[Path, Path
         placement = (measured.get('texture_placement') or {}).get('verdict')
         if require_textures and settings.get('require_placed_texture', True) and placement != 'placed':
             raise RuntimeError(f'Texture non validée ({placement or "non mesurée"}). Diagnostics : {report}')
-        measured.update(mesh_sha256=_digest(mesh), reference_sha256=_digest(reference))
+        measured.update(mesh_sha256=_digest(mesh), reference_sha256=_digest(reference),
+                        measured_reference=str(measured_reference),
+                        measured_reference_sha256=_digest(measured_reference))
         _save_manifest(report, measured)
         stage.status, stage.output = 'done', report
         stage.log = json.dumps(measured, ensure_ascii=False)
@@ -652,10 +660,13 @@ def _digest(path: Path) -> str:
 
 
 def _visual_contract() -> str:
+    from aurora_cli.adapters import manifest_path
     from aurora_cli.evolution import load_policy
     payload = (Path(__file__).with_name('fidelity.py').read_bytes()
+               + Path(__file__).with_name('glb_validation.py').read_bytes()
                + Path(__file__).with_name('portable_rasterizer.py').read_bytes()
                + Path(__file__).with_name('texture_placement.py').read_bytes()
+               + manifest_path().read_bytes()
                + Path(__file__).read_bytes()
                + json.dumps({key: load_policy().get(key, {}) for key in
                              ('delivery_3d', 'visual_review', 'texture_placement')},
@@ -1011,7 +1022,8 @@ def run_pipeline(
             failed = gate if gate.status != 'done' else None
         if failed is None:
             pending('mesh_visual_gate', 'local-renderer', 'Contrôle des rendus et du placement des textures.')
-            visual = stage_verify_mesh(image_path, mesh_path, prepared=prepared, require_textures=texture)
+            visual = stage_verify_mesh(image_path, mesh_path, prepared=prepared,
+                                       require_textures=texture, model_name=model_3d)
             report(visual)
             # A visual failure still gets the semantic evidence when available.
             if visual.output is not None:

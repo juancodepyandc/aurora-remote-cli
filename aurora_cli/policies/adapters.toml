@@ -59,6 +59,7 @@ argv = """
 # Verified upstream API, not a claim of measured superiority on this host.
 # https://github.com/microsoft/TRELLIS.2
 [runner.trellis2]
+geometry_contract = "surface"
 capability = "3d"
 texturing = true
 priority = 30

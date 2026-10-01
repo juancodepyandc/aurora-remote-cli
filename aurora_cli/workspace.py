@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import shlex
 
 import click
 from rich import box
@@ -138,6 +139,7 @@ def execute(request: str, history: list, *, local_only=False):
         result_3d = run_pipeline(request, spec.output_dir, texture=True, progress=show_pipeline_stage)
         if result_3d.success:
             display.success(f"Fichier 3D livré, géométrie et textures contrôlées : {result_3d.final_output}")
+            display.hint(f'Contrôles enregistrés : /verify {shlex.quote(str(result_3d.final_output))}')
         else:
             display.warning("Travail conservé ; le résultat demandé n'est pas encore livré.")
             if result_3d.checkpoint:
@@ -210,6 +212,28 @@ def show_pipeline_stage(stage):
         display.hint(f"{stage.name} : terminé ({stage.duration_s:.1f}s)")
 
 
+def verify_delivery(argument):
+    """Inspect retained evidence from the user's own interface, without a bridge."""
+    from .core.delivery_audit import audit_delivery
+    if not argument.strip():
+        display.hint('/verify chemin/model.glb : vérifier le fichier, les textures et les preuves conservées.')
+        return None
+    parts = shlex.split(argument)
+    path = parts[0] if len(parts) == 1 else argument.strip()
+    report = audit_delivery(Path(path))
+    for name, check in report['checks'].items():
+        if check['status'] == 'passed':
+            display.hint(f'{name} : validé')
+        else:
+            display.warning(f"{name} : {check['status']} — {check['detail']}")
+    if report['verified']:
+        display.success('Contrôles de livraison enregistrés vérifiés pour ce fichier.')
+    else:
+        display.warning('Fichier non validé : au moins une preuve manque, a changé ou a été refusée.')
+    display.hint(report['limits'])
+    return report
+
+
 def run_workspace():
     from prompt_toolkit import PromptSession
     from prompt_toolkit.completion import WordCompleter
@@ -217,7 +241,7 @@ def run_workspace():
 
     result = scan(deep=True)
     dashboard(result)
-    commands = ["/theme", "/models", "/apps", "/close", "/prepare", "/clear", "/new", "/context", "/help", "/quit"]
+    commands = ["/theme", "/models", "/apps", "/close", "/prepare", "/verify", "/clear", "/new", "/context", "/help", "/quit"]
     session = PromptSession(completer=WordCompleter(commands))
     from .core.conversation import Conversation
     history = Conversation.open()
@@ -255,6 +279,8 @@ def run_workspace():
                 close_app(int(raw.split()[1]))
             elif raw.startswith("/prepare "):
                 prepare(raw.split(maxsplit=1)[1])
+            elif raw == '/verify' or raw.startswith('/verify '):
+                verify_delivery(raw[len('/verify'):].strip())
             elif raw == "/clear":
                 view.console.clear()
                 dashboard(result)

@@ -49,6 +49,87 @@ from aurora_cli.core.fidelity import (
 )
 
 
+def test_surface_contract_does_not_mistake_a_valid_open_mesh_for_a_failed_solid():
+    from aurora_cli.core.fidelity import verdict, DEFAULT_THRESHOLDS
+    assert verdict(0.9, 0, DEFAULT_THRESHOLDS) == 'degenerate_geometry'
+    assert verdict(0.9, 0, DEFAULT_THRESHOLDS | {'geometry_contract': 'surface'}) == 'plausible'
+    assert verdict(float('nan'), 1, DEFAULT_THRESHOLDS) == 'invalid_measurement'
+    with pytest.raises(ValueError):
+        verdict(0.9, 1, DEFAULT_THRESHOLDS | {'geometry_contract': 'invented'})
+
+
+@requires_engine_stack
+def test_decoding_checks_all_connected_maps_not_only_the_albedo(tmp_path):
+    from test_pipeline_execution import glb_bytes
+    from aurora_cli.core.glb_validation import inspect_glb
+    path = tmp_path / 'pbr.glb'
+    def material(doc):
+        doc['materials'][0]['pbrMetallicRoughness']['metallicRoughnessTexture'] = {'index': 1}
+        doc['textures'].append({'source': 1})
+        doc['images'].append(dict(doc['images'][0]))
+    path.write_bytes(glb_bytes(textured=True, edit=material))
+    result = inspect_glb(path, require_pbr_maps=True, decode_textures=True)
+    maps = result['materials'][0]['maps']
+    assert maps['base_colour']['decoded'] and maps['metallic_roughness']['decoded']
+    assert result['embedded_images'] == 2
+    def corrupt(doc):
+        material(doc)
+        # Correct-looking signature/dimensions, but a damaged PNG chunk CRC.
+        doc['images'][1]['uri'] = ('data:image/png;base64,'
+            'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aE8sAAAAASUVORK5CYII=')
+    path.write_bytes(glb_bytes(textured=True, edit=corrupt))
+    with pytest.raises(ValueError, match='illisible'):
+        inspect_glb(path, require_pbr_maps=True, decode_textures=True)
+
+
+@requires_engine_stack
+def test_actual_textured_open_surface_is_not_rejected_as_a_collapsed_solid(tmp_path):
+    from PIL import Image
+    from aurora_cli.core.fidelity import evaluate, DEFAULT_THRESHOLDS
+    from trimesh.visual.material import PBRMaterial
+    vertices = np.array([[-.5, -.5, 0], [.5, -.5, 0], [.5, .5, 0], [-.5, .5, 0]])
+    material = PBRMaterial(baseColorTexture=Image.new('RGBA', (8, 8), (220, 30, 10, 255)),
+                           metallicRoughnessTexture=Image.new('RGB', (8, 8), (0, 128, 0)))
+    visual = trimesh.visual.texture.TextureVisuals(uv=np.array([[0, 0], [1, 0], [1, 1], [0, 1]]),
+                                                  material=material)
+    sheet = trimesh.Trimesh(vertices=vertices, faces=[[0, 1, 2], [0, 2, 3]], visual=visual, process=False)
+    mesh = tmp_path / 'surface.glb'
+    sheet.export(mesh)
+    rgb, mask = render_view(trimesh.load(mesh, force='scene'), 0, 0, size=128, engine_root=ENGINE_ROOT)
+    reference = tmp_path / 'reference.png'
+    Image.fromarray(np.concatenate([rgb, (mask * 255).astype(np.uint8)[:, :, None]], axis=2)).save(reference)
+    result = evaluate(reference, mesh, engine_root=ENGINE_ROOT, size=128,
+                      thresholds=DEFAULT_THRESHOLDS | {'geometry_contract': 'surface'})
+    assert result['verdict'] == 'plausible' and result['bbox_fill'] == 0
+    assert result['watertight'] is False and result['surface_area'] > 0
+    assert result['texture_placement']['verdict'] == 'placed'
+    assert len(result['views']) == len(result['previews_sha256']) == 6
+
+
+@requires_engine_stack
+@pytest.mark.parametrize('feature', ['uv_set', 'transform', 'sampler', 'transparency'])
+def test_unimplemented_render_features_are_not_called_misplaced_textures(tmp_path, feature):
+    from test_pipeline_execution import glb_bytes
+    from aurora_cli.core.fidelity import evaluate
+    def edit(doc):
+        material = doc['materials'][0]
+        binding = material['pbrMetallicRoughness']['baseColorTexture']
+        if feature == 'uv_set':
+            binding['texCoord'] = 1
+            doc['meshes'][0]['primitives'][0]['attributes']['TEXCOORD_1'] = 1
+        elif feature == 'transform':
+            binding['extensions'] = {'KHR_texture_transform': {'offset': [0.5, 0]}}
+        elif feature == 'sampler':
+            doc['textures'][0]['sampler'] = 0
+            doc['samplers'] = [{'wrapS': 33071}]
+        else:
+            material['alphaMode'] = 'BLEND'
+    asset = tmp_path / 'material.glb'
+    asset.write_bytes(glb_bytes(textured=True, edit=edit))
+    with pytest.raises(ValueError, match='Rendu de vérification non pris en charge'):
+        evaluate(tmp_path / 'unused-reference.png', asset)
+
+
 def test_review_thumbnail_preserves_original_and_aspect_ratio(tmp_path):
     from PIL import Image
     from aurora_cli.core.image_worker import prepare_review

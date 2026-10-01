@@ -8,6 +8,7 @@ The CLI can import this module without importing its numerical dependencies.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 import sys
@@ -153,7 +154,8 @@ def _scene_parts(mesh):
     raise ValueError("rendering requires a mesh or a mesh scene")
 
 
-def render_view(mesh, azimuth: float, elevation: float, size: int = 256, *, engine_root=None):
+def render_view(mesh, azimuth: float, elevation: float, size: int = 256, *, engine_root=None,
+                allow_empty_surface=False):
     """Render all instances with shared depth, perspective UVs and albedo."""
     import numpy as np
     import torch
@@ -191,7 +193,7 @@ def render_view(mesh, azimuth: float, elevation: float, size: int = 256, *, engi
     indices = findices.cpu().numpy() - 1
     bary = bary.cpu().numpy()
     mask = indices >= 0
-    if not mask.any():
+    if not mask.any() and not allow_empty_surface:
         raise ValueError("rasterizer produced no visible surface")
     rgb = np.ones((size, size, 3), dtype=np.float32)
     face_start = 0
@@ -293,10 +295,10 @@ def silhouette_iou(reference_mask, render_mask) -> float:
 def bbox_fill(mesh) -> float:
     """Mesh volume as a fraction of its bounding box.
 
-    A closed solid scores 1.0. An open shell — what a flattened or unfinished
-    reconstruction produces — scores near 0, because it encloses nothing. This
-    is the cheapest model-free detector for "the geometry is degenerate", which
-    is exactly the failure a structural validator cannot see.
+    A closed box scores 1.0. Signed volume is not a valid degeneracy test for
+    arbitrary open or non-manifold surfaces; the adapter's geometry contract
+    determines whether this signal is applicable. It remains a delivery gate
+    for the existing volumetric Hunyuan reconstruction recipe.
     """
     import numpy as np
 
@@ -313,7 +315,7 @@ def bbox_fill(mesh) -> float:
         volume = float(mesh.volume)
     except Exception:
         return 0.0
-    return volume / box
+    return abs(volume) / box
 
 
 def _processor_dir(encoder: Path) -> Path:
@@ -372,7 +374,12 @@ def verdict(silhouette: float, fill: float, thresholds: dict,
     invent a number that means nothing. The signals are reported raw and the
     verdict is a thresholded statement, with the thresholds in policy.
     """
-    if fill < thresholds["min_bbox_fill"]:
+    contract = thresholds.get('geometry_contract', 'volumetric')
+    if contract not in {'volumetric', 'surface'}:
+        raise ValueError('Unknown geometry contract')
+    if not math.isfinite(fill) or not math.isfinite(silhouette):
+        return 'invalid_measurement'
+    if contract == 'volumetric' and fill < thresholds["min_bbox_fill"]:
         return "degenerate_geometry"
     if silhouette < thresholds["min_silhouette_iou"]:
         return "low_fidelity"
@@ -394,7 +401,22 @@ def evaluate(reference_path: Path, mesh_path: Path, *, encoder_path: Path | None
     """
     import numpy as np
     import trimesh
-    from PIL import Image
+    from PIL import Image, ImageOps
+
+    from aurora_cli.core.glb_validation import inspect_glb
+    materials = inspect_glb(Path(mesh_path), decode_textures=True)
+    # Trimesh exposes one UV set. Do not judge a wrongly sampled render as a
+    # misplaced generated texture when the renderer lacks the glTF feature.
+    for material in materials['materials']:
+        if material['alpha_mode'] != 'OPAQUE':
+            raise ValueError('Rendu de vérification non pris en charge pour les matériaux transparents/alpha-mask')
+        colour = material['maps'].get('base_colour')
+        if colour:
+            transform = colour['transform']
+            if (colour['texcoord'] != 0 or transform.get('offset', [0, 0]) != [0, 0]
+                    or transform.get('scale', [1, 1]) != [1, 1] or transform.get('rotation', 0) != 0
+                    or any(wrap != 10497 for wrap in colour['sampler'].values())):
+                raise ValueError('Rendu de vérification non pris en charge pour ce canal/transform/sampler UV')
 
     views = tuple(views)
     if not views:
@@ -405,14 +427,19 @@ def evaluate(reference_path: Path, mesh_path: Path, *, encoder_path: Path | None
     if not parts:
         raise ValueError('mesh has no visible geometry instances')
     geometry = trimesh.util.concatenate(parts)
+    if not math.isfinite(float(geometry.area)) or geometry.area <= 0:
+        raise ValueError('mesh has no finite nondegenerate surface')
     fill = bbox_fill(geometry)
 
-    reference = Image.open(reference_path).convert("RGBA")
+    with Image.open(reference_path) as source:
+        reference = ImageOps.exif_transpose(source).convert("RGBA")
     ref_mask = foreground_mask(reference)
     if not ref_mask.any():
         raise ValueError("reference image has no separable foreground")
 
-    renders = [render_view(mesh, az, el, size, engine_root=engine_root) for az, el in views]
+    renders = [render_view(mesh, az, el, size, engine_root=engine_root,
+                          allow_empty_surface=thresholds.get('geometry_contract') == 'surface')
+               for az, el in views]
     images = [Image.fromarray(rgb).convert("RGB") for rgb, _ in renders]
 
     # The reference is whatever resolution the user shot; the renders are fixed,
@@ -445,7 +472,9 @@ def evaluate(reference_path: Path, mesh_path: Path, *, encoder_path: Path | None
         ref_mask, renders[order][0].astype(np.float32), renders[order][1],
         min_correlation=float(placement_policy.get('min_correlation', 0.60)),
         max_placement_error=float(placement_policy.get('max_placement_error', 0.35)),
-        misplaced_correlation=float(placement_policy.get('misplaced_correlation', 0.20)))
+        misplaced_correlation=float(placement_policy.get('misplaced_correlation', 0.20)),
+        max_uniform_channel_std=float(placement_policy.get('max_uniform_channel_std', 1.0)),
+        max_uniform_colour_error=float(placement_policy.get('max_uniform_colour_error', 0.05)))
     previews = []
     for index, (rgb, mask) in enumerate(renders):
         preview = Path(mesh_path).with_name(f'{Path(mesh_path).stem}.view-{index:02d}.png')
@@ -466,15 +495,22 @@ def evaluate(reference_path: Path, mesh_path: Path, *, encoder_path: Path | None
     return {
         "verdict": verdict(silhouette, fill, thresholds, placement),
         "bbox_fill": round(fill, 4),
+        "geometry_contract": thresholds.get('geometry_contract', 'volumetric'),
+        "watertight": bool(geometry.is_watertight),
+        "surface_area": float(geometry.area),
         "silhouette": round(silhouette, 4),
         "silhouette_per_view": [round(v, 4) for v in ious],
         "texture_placement": placement,
+        "asset_validation": materials,
+        "render_mode": "albedo_only",
         "semantic": None if semantic is None else round(semantic, 4),
         "semantic_control": None if control is None else round(control, 4),
         "thresholds": thresholds,
         "views": [{"azimuth": az, "elevation": el} for az, el in views],
         "mesh_faces": int(len(geometry.faces)),
         "previews": previews,
+        "previews_sha256": [hashlib.sha256(Path(path).read_bytes()).hexdigest()
+                            for path in previews],
         'contact_sheet': str(contact_sheet),
         "best_view": order,
         "note": "semantic is a raw CLIP cosine (1.0 self, ~0.27 across different "

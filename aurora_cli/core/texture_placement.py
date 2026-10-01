@@ -113,7 +113,9 @@ def placement_error(reference: np.ndarray, ref_mask: np.ndarray,
 def assess(reference: np.ndarray, ref_mask: np.ndarray,
            render: np.ndarray, render_mask: np.ndarray, size: int = 128, *,
            min_correlation: float = 0.60, max_placement_error: float = 0.35,
-           misplaced_correlation: float = 0.20) -> dict:
+           misplaced_correlation: float = 0.20,
+           max_uniform_channel_std: float = 1.0,
+           max_uniform_colour_error: float = 0.05) -> dict:
     """Both placement signals plus a thresholded verdict.
 
     Thresholds are arguments rather than module constants so a caller can state
@@ -124,6 +126,7 @@ def assess(reference: np.ndarray, ref_mask: np.ndarray,
     correlation = colour_correlation(ref_img, ref_small, ren_img, ren_small)
     error = placement_error(ref_img, ref_small, ren_img, ren_small)
     verdict = "unknown"
+    mode, uniform_error = 'spatial_correlation', None
     if correlation is not None and error is not None:
         if correlation >= min_correlation and error <= max_placement_error:
             verdict = "placed"
@@ -131,11 +134,28 @@ def assess(reference: np.ndarray, ref_mask: np.ndarray,
             verdict = "misplaced"
         else:
             verdict = "partial"
+    elif correlation is None:
+        shared = ref_small & ren_small
+        left, right = ref_img[ref_small], ren_img[ren_small]
+        # Uniform colours have no observable placement to correlate. Accept
+        # only when BOTH complete foregrounds are uniform and colours agree;
+        # a patterned reference reduced to grey still fails closed.
+        if (shared.sum() >= 64 and len(left) >= 64 and len(right) >= 64
+                and np.max(left.std(axis=0)) <= max_uniform_channel_std
+                and np.max(right.std(axis=0)) <= max_uniform_channel_std):
+            mode = 'uniform_colour'
+            uniform_error = round(float(np.max(np.abs(left.mean(axis=0) - right.mean(axis=0)))) / 255, 4)
+            verdict = 'placed' if uniform_error <= max_uniform_colour_error else 'misplaced'
     return {
         "verdict": verdict,
+        "mode": mode,
+        "uniform_colour_error": uniform_error,
+        "spatial_placement_observable": correlation is not None,
         "colour_correlation": correlation,
         "placement_error": error,
         "thresholds": {"min_correlation": min_correlation,
                        "max_placement_error": max_placement_error,
-                       "misplaced_correlation": misplaced_correlation},
+                       "misplaced_correlation": misplaced_correlation,
+                       "max_uniform_channel_std": max_uniform_channel_std,
+                       "max_uniform_colour_error": max_uniform_colour_error},
     }

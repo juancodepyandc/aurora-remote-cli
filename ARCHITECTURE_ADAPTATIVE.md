@@ -1,5 +1,82 @@
 # Adapter JOBIA à la tâche, à la machine et aux progrès techniques
 
+## Contrôles PBR depuis l’interface JOBIA
+
+L’interface interactive JOBIA appelle directement ses workers locaux ou son
+bridge configuré : **Pinokio n’est pas une dépendance d’exécution**. En mode
+`local`, une interface identique ne change pas les capacités du matériel qui
+exécute le worker. Le projet Microsoft TRELLIS.2 annonce la génération de
+couleur, roughness, metallic et opacité ; son runtime officiel est testé sur
+Linux avec NVIDIA et au moins 24 Go de VRAM dédiée. Cela n’établit ni une
+compatibilité Metal, ni une garantie de ressemblance pour chaque sujet.
+Source : [Microsoft TRELLIS.2](https://github.com/microsoft/TRELLIS.2).
+
+Corrections supplémentaires des contrôles :
+
+- Toutes les cartes déclarées par les matériaux des primitives visibles sont
+  contrôlées : couleur, metallic/roughness, normales, occlusion et émission.
+  Chaque connexion doit référencer une image embarquée et un canal UV valide.
+  Les facteurs PBR, le mode d’opacité et les transformations UV sont vérifiés.
+  Le worker de rendu décode réellement les pixels de toutes ces cartes avec
+  Pillow : une signature PNG présente mais des données corrompues ne suffisent
+  plus. Un facteur roughness/metallic constant reste un matériau glTF valide,
+  mais le worker TRELLIS.2 exige les cartes générées qu’il promet d’exporter.
+- Le rendu diagnostique évalue l’albédo, pas la réponse photométrique complète
+  des matériaux PBR. Un canal UV, une transformation ou un mode d’adressage
+  couleur ou une transparence non pris en charge par ce renderer provoque un diagnostic explicite,
+  au lieu d’un faux verdict de mauvais placement sur le résultat du générateur.
+- TRELLIS.2 conserve l’image de conditionnement réellement prétraitée par son
+  propre pipeline et n’effectue pas le détourage deux fois. Les contrôles
+  géométriques utilisent cette image, tandis que le VLM compare toujours les
+  rendus à la référence originale conservée. Source et conditionnement sont
+  liés par empreintes au rapport ; la référence utilisateur n’est pas régénérée.
+- Les surfaces ouvertes et non manifold permises par TRELLIS.2 ne sont plus
+  évaluées comme des solides ratés sur la seule base du volume signé. Le contrat
+  géométrique est déclaré par adaptateur. La recette volumétrique Hunyuan
+  conserve sa barrière de volume, et toutes les recettes conservent les
+  contrôles de surface, silhouette, texture et revue du sujet. Une surface
+  valide n’est pas pour autant un objet étanche et prêt pour l’impression 3D.
+- Des couleurs entièrement uniformes des deux côtés peuvent correspondre sans
+  corrélation spatiale mesurable. Seul ce cas explicite compare leur erreur de
+  couleur absolue. Une référence multicolore simplifiée en gris n’en bénéficie
+  pas. Les seuils restent déclarés dans la politique et non calibrés sur un
+  ensemble de sujets réel.
+
+Dans le prompt JOBIA, `/verify "chemin/model.glb"` vérifie, sans téléchargement
+ni service externe, le fichier livré et ses preuves : checkpoint, empreintes,
+référence, conditionnement, décodage des cartes, placement, rendus et observations
+visuelles. Des preuves absentes, anciennes, modifiées ou défavorables ne sont
+jamais annoncées comme validées. C’est une vérification locale traçable, pas
+une certification indépendante de perfection ou de tous les modules.
+
+Validation de cette correction : 629 tests passent et 12 sont ignorés dans
+l’environnement CLI léger ; 70 tests passent dans l’environnement numérique
+du moteur 3D. Ces suites se recoupent : leurs comptes ne s’additionnent pas.
+Les tests numériques comprennent des GLB réellement exportés/réimportés et le
+décodage de cartes PBR ; les tests d’orchestration simulent les inférences.
+Le GLB de contrôle Hunyuan déjà produit sur le Mac contient bien deux images
+embarquées et décodables, connectées à la couleur et à metallic/roughness.
+Une nouvelle vérification de cet artefact a produit six vues, une IoU de 0,6493
+et un remplissage volumique de 0,0959, mais une corrélation de couleur de 0,3547 :
+le placement reste `partial`, sous le seuil requis de 0,60. Cet artefact de
+contrôle n’est donc pas livré comme résultat validé, et la demande originale
+en échec n’est pas annoncée comme résolue.
+Aucune nouvelle inférence TRELLIS.2 n’a été exécutée sur ce Mac : le runtime
+Linux/CUDA n’y est pas disponible, et le bridge JOBIA configuré était
+injoignable au moment de la vérification. Les anciens checkpoints ne sont pas
+rétroactivement certifiés par les nouveaux contrôles.
+
+Les sections suivantes conservent l’historique des audits précédents et leurs
+comptes de tests au moment où ils ont été effectués.
+
+Le lanceur local `jobia` pointait vers l’interpréteur du projet, mais celui-ci
+chargeait une **copie installée** du paquet, pas le dépôt édité. Les tests lancés
+dans le dépôt pouvaient donc passer sans mettre à jour l’interface utilisée.
+Le wheel corrigé est réinstallé sans toucher aux dépendances ni aux modèles ;
+son import et sa commande de vérification sont ensuite contrôlés hors du dépôt.
+Une interface déjà ouverte doit être relancée pour charger le nouveau code ;
+les conversations et les fichiers de travaux restent conservés.
+
 Audit du 1 octobre 2026. Le dépôt comportait déjà de nombreuses modifications
 locales : elles ont été conservées. Ce document distingue les corrections
 logicielles réalisées des capacités qui restent à mesurer ou à construire.
