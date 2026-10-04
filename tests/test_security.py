@@ -8,7 +8,7 @@ decides what gets deleted.
 import json
 import os
 import stat
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 import pytest
 
@@ -28,6 +28,18 @@ def test_system_paths_are_refused(bad):
 def test_ordinary_paths_are_allowed(tmp_path):
     assert not security.is_forbidden(tmp_path / "models" / "thing")
     assert not security.is_forbidden(Path.home() / "Documents" / "photo.png")
+
+
+def test_windows_system_paths_match_case_and_drive_boundaries():
+    roots = [PureWindowsPath('C:/Windows'),PureWindowsPath('C:/Program Files')]
+    assert security._inside_roots(PureWindowsPath('c:/WINDOWS/System32/kernel.dll'),roots)
+    assert security._inside_roots(PureWindowsPath('C:/program files/tool/program.exe'),roots)
+    assert not security._inside_roots(PureWindowsPath('C:/Windows-project/output.txt'),roots)
+    assert not security._inside_roots(PureWindowsPath('D:/Windows/output.txt'),roots)
+    if os.name=='nt':
+        for variable in ['SystemRoot','ProgramFiles','ProgramData']:
+            if os.environ.get(variable):
+                assert security.is_forbidden(Path(os.environ[variable])/'protected-file')
 
 
 # --- target building ---------------------------------------------------------
@@ -112,6 +124,7 @@ def _ledger_path(monkeypatch, tmp_path):
     return provision
 
 
+@pytest.mark.skipif(os.name=='nt',reason='POSIX modes do not measure Windows NTFS ACLs')
 def test_the_ledger_is_owner_only(tmp_path, monkeypatch):
     provision = _ledger_path(monkeypatch, tmp_path)
     provision.save_ledger([])

@@ -29,8 +29,6 @@ decision to close something belongs to the user.
 
 from __future__ import annotations
 
-import shutil
-import subprocess
 import time
 from dataclasses import dataclass, field
 
@@ -83,38 +81,30 @@ class Decision:
 def memory_holders(limit: int = 3) -> list[tuple[str, float]]:
     """The applications using the most resident memory, biggest first.
 
-    Only consulted when the machine is actually short, because running a
-    process listing on every command would be slow for no benefit. The name
+    Only consulted when the machine is actually short. The portable process
+    listing reads resident memory and executable names. The name
     is taken from the executable rather than the full command line, so the
     output is something a person can recognise instead of a wall of arguments.
     """
-    if not shutil.which("ps"):
-        return []
-    try:
-        result = subprocess.run(
-            ["ps", "-eo", "rss=,comm="],
-            capture_output=True, text=True, timeout=5,
-        )
-    except (OSError, subprocess.SubprocessError):
-        return []
-    if result.returncode != 0:
-        return []
+    import psutil
     rows: list[tuple[str, float]] = []
-    for line in result.stdout.splitlines():
-        parts = line.split(None, 1)
-        if len(parts) != 2:
-            continue
-        try:
-            rss_kb = int(parts[0])
-        except ValueError:
-            continue
-        name = parts[1].strip().rsplit("/", 1)[-1]
-        if not name or name in ("launchd", "kernel_task", "WindowServer"):
-            continue
-        rows.append((name, rss_kb / 1024 / 1024))
+    try:
+        for process in psutil.process_iter(['name','memory_info']):
+            try:
+                info = process.info
+                name = (info.get('name') or '').replace('\\','/').rsplit('/',1)[-1]
+                memory = info.get('memory_info')
+                if (not name or not memory or memory.rss<=0 or name.casefold() in
+                        {'launchd','kernel_task','windowserver','system','registry','system idle process'}):
+                    continue
+                rows.append((name,memory.rss/1024**3))
+            except (psutil.NoSuchProcess,psutil.AccessDenied):
+                continue
+    except (OSError,psutil.Error):
+        pass
     rows.sort(key=lambda row: -row[1])
     # Only applications big enough to explain the shortfall are worth naming.
-    return rows[:limit]
+    return rows[:max(0,limit)]
 
 
 def _tier_ram(agent, tier: str) -> float:

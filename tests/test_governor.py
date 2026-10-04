@@ -185,6 +185,17 @@ def test_system_processes_are_not_blamed():
     assert "WindowServer" not in names
 
 
+def test_memory_holders_use_portable_resident_measurements(monkeypatch):
+    from types import SimpleNamespace
+    import psutil
+    def process(name,rss):
+        return SimpleNamespace(info={'name':name,'memory_info':SimpleNamespace(rss=rss)})
+    monkeypatch.setattr(psutil,'process_iter',lambda attrs:iter([
+        process('C:\\Tools\\editor.exe',2*1024**3),process('browser',3*1024**3),
+        process('System',4*1024**3),process('vanished',0)]))
+    assert governor.memory_holders()==[('browser',3.0),('editor.exe',2.0)]
+
+
 def test_no_holder_is_named_when_memory_is_fine():
     """The expensive process listing is only run when memory is short."""
     roomy = _machine(total_ram_gb=64.0, free_ram_gb=30.0)
@@ -221,23 +232,16 @@ def test_waiting_gives_up_and_returns_false(monkeypatch):
 def test_waiting_never_kills_anything(monkeypatch):
     """A wait must not act on the user's applications.
 
-    The only subprocess this module runs is a read-only process listing; a
-    kill would be a decision no software should take for the user.
+    The process listing reads memory; waiting must never stop an application.
     """
-    import subprocess
-    seen = []
-
-    def fake_run(argv, *args, **kwargs):
-        seen.append(argv)
-        raise subprocess.SubprocessError
-
-    monkeypatch.setattr(governor.subprocess, "run", fake_run)
+    import psutil
+    def stopped(*args,**kwargs):
+        pytest.fail('Waiting must never kill or terminate a process')
+    monkeypatch.setattr(psutil.Process,'terminate',stopped)
+    monkeypatch.setattr(psutil.Process,'kill',stopped)
     governor.memory_holders()
     governor.wait_until(agents_mod.get("audio"), "max",
                         machine=_machine(free_ram_gb=1.0), seconds=0, poll=0.1)
-    for argv in seen:
-        assert not any(part in ("kill", "killall", "pkill", "terminate")
-                       for part in argv), argv
 
 
 # --- strategy plumbing -------------------------------------------------------

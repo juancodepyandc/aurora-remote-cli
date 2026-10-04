@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 
 import pytest
 
@@ -42,8 +43,9 @@ def test_save_is_atomic_and_private(isolated_config):
     config.set_key("mode", "local")
     path = isolated_config / "config.json"
     assert json.loads(path.read_text())["mode"] == "local"
-    # A config holding a key must not be world readable.
-    assert path.stat().st_mode & 0o077 == 0
+    # POSIX modes do not describe Windows' inherited NTFS access control lists.
+    if os.name != 'nt':
+        assert path.stat().st_mode & 0o077 == 0
 
 
 def test_config_roundtrip_preserves_unknown_keys(isolated_config):

@@ -15,6 +15,7 @@ The rules under test all come from failures the source project hit for real:
 from __future__ import annotations
 
 import json
+import os
 
 import pytest
 
@@ -268,6 +269,7 @@ def test_corrupt_ledger_grants_nothing(monkeypatch, tmp_path):
     assert provision.removable() == []
 
 
+@pytest.mark.skipif(os.name=='nt',reason='POSIX modes do not measure Windows NTFS ACLs')
 def test_ledger_is_not_world_readable(monkeypatch, tmp_path):
     monkeypatch.setattr(provision, "ledger_path",
                         lambda: tmp_path / "provisioned.json")

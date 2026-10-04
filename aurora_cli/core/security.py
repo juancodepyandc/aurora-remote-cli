@@ -47,8 +47,18 @@ def is_forbidden(path: Path) -> bool:
     except (OSError, RuntimeError):
         # A path that cannot even be resolved is refused outright.
         return True
-    text = str(resolved)
-    return any(text == item or text.startswith(item + os.sep) for item in FORBIDDEN)
+    roots = list(FORBIDDEN)
+    if os.name == 'nt':
+        roots += [os.environ.get('SystemRoot',r'C:\Windows'),
+                  os.environ.get('ProgramFiles',r'C:\Program Files'),
+                  os.environ.get('ProgramFiles(x86)',r'C:\Program Files (x86)'),
+                  os.environ.get('ProgramData',r'C:\ProgramData')]
+    return _inside_roots(resolved,[Path(root).expanduser().resolve() for root in roots if root])
+
+
+def _inside_roots(path, roots):
+    # Native Path/PureWindowsPath comparisons honor Windows case and drive rules.
+    return any(path.is_relative_to(root) for root in roots)
 
 
 def safe_target(root: Path, *parts: str) -> Path:

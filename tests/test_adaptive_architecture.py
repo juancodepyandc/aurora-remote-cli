@@ -277,7 +277,7 @@ def test_accelerator_specific_target_beats_general_target():
 def test_memory_measurement_works_without_posix_sysconf(monkeypatch):
     import psutil
     monkeypatch.setattr(psutil, "virtual_memory", lambda: SimpleNamespace(total=32 * 1024**3, available=12 * 1024**3))
-    monkeypatch.setattr(machine.os, "sysconf", lambda *a: (_ for _ in ()).throw(OSError("not available")))
+    monkeypatch.delattr(machine.os, "sysconf", raising=False)
     assert machine._total_ram_bytes() == 32 * 1024**3
     assert machine._free_ram_bytes() == 12 * 1024**3
 
