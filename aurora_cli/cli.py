@@ -207,7 +207,9 @@ def status():
 
 
 @main.command()
-def doctor():
+@click.option("--remote", is_flag=True, help="Vérifier aussi la disponibilité réelle des missions du bridge.")
+@click.option("--json", "as_json", is_flag=True, help="Émettre un diagnostic JSON exploitable.")
+def doctor(remote, as_json):
     """Check the terminal, the configuration and the local runtimes."""
     from aurora_cli.core.discovery import scan
 
@@ -225,11 +227,30 @@ def doctor():
         {"name": "Thème", "status": "ok", "detail": f"{ctx.obj['theme'].id} ({ctx.obj['theme_source']})"},
         {"name": "Configuration", "status": "ok" if path.exists() else "warn", "detail": str(path)},
     ]
-    display.doctor_results(checks)
-
-    display.hint("")
-    result = scan()
-    display.providers_table(result.providers)
+    remote_data = None
+    if remote:
+        client = _client()
+        try:
+            remote_data = client.doctor()
+        finally:
+            client.close()
+        checks.extend(remote_data.get("checks", []))
+        if not remote_data.get("checks"):
+            checks.append({"name": "Bridge", "status": "error", "ok": False,
+                           "detail": remote_data.get("error", "Diagnostic distant incomplet")})
+    ready = (bool(remote_data.get("ready", remote_data.get("ok", False)))
+             if remote else True)
+    if as_json:
+        click.echo(json.dumps({"ok": ready, "scope": "remote" if remote else "local",
+                               "checks": checks}, ensure_ascii=False))
+    else:
+        display.doctor_results(checks)
+        if not remote:
+            display.hint("")
+            result = scan()
+            display.providers_table(result.providers)
+    if not ready:
+        raise click.exceptions.Exit(1)
 
 
 @main.command()
@@ -247,16 +268,22 @@ def permissions(level):
     display.hint("Niveaux : " + ' | '.join(config.PERMISSION_LEVELS))
 
 
-@main.command()
+@main.command(name="mission")
 @click.argument("request", required=True)
 @click.option("--model", default="", help="Server model to use.")
 @click.option("--server-workspace", default=None, help="Working directory on the bridge host.")
-def run(request, model, server_workspace):
+def mission(request, model, server_workspace):
     """Send one request to the remote bridge."""
     from aurora_cli.mission import run_mission
     from aurora_cli.bridge import Bridge
-    run_mission(Bridge(), request, model=model, server_workspace=server_workspace,
-                permissions=config.get('default_permissions', 'SAFE'))
+    client = Bridge()
+    try:
+        if not run_mission(client, request, workspace=str(Path.cwd()), model=model,
+                           server_workspace=server_workspace,
+                           permissions=config.get('default_permissions', 'AUTONOMOUS')):
+            raise click.ClickException("La mission distante ne s'est pas terminée avec succès.")
+    finally:
+        client.close()
 
 
 # --- Local commands -------------------------------------------------------
@@ -1294,15 +1321,25 @@ def agents():
 @agents.command(name="list")
 def agents_list():
     """List agents known to the bridge."""
-    display.agents_table([], _client().list_agents())
+    client = _client()
+    try:
+        official = _require_remote_ok(client.agents_official())
+        dynamic = _require_remote_ok(client.agents_dynamic())
+        display.agents_table(official.get("agents", []), dynamic.get("agents", []))
+    finally:
+        client.close()
 
 
 @agents.command(name="disable")
 @click.argument("name")
 def agents_disable(name):
     """Disable one agent on the bridge."""
-    _client().disable_agent(name)
-    display.success(f"Agent désactivé : {name}")
+    client = _client()
+    try:
+        _require_remote_ok(client.agent_disable(name))
+        display.success(f"Agent désactivé : {name}")
+    finally:
+        client.close()
 
 
 @main.group()
@@ -1314,7 +1351,12 @@ def mcp():
 def mcp_list():
     """List MCP servers and their tools."""
     client = _client()
-    display.mcp_table(client.list_mcp_servers(), client.list_mcp_tools())
+    try:
+        servers = _require_remote_ok(client.mcp_list())
+        tools = _require_remote_ok(client.mcp_tools())
+        display.mcp_table(servers.get("servers", []), tools.get("tools", []))
+    finally:
+        client.close()
 
 
 @main.group()
@@ -1325,7 +1367,18 @@ def skills():
 @skills.command(name="list")
 def skills_list():
     """List skills exposed by the bridge."""
-    display.skills_table(_client().list_skills())
+    client = _client()
+    try:
+        result = _require_remote_ok(client.skills_list())
+        display.skills_table(result.get("skills", []))
+    finally:
+        client.close()
+
+
+def _require_remote_ok(result: dict) -> dict:
+    if not result.get("ok"):
+        raise click.ClickException(result.get("error") or "Le bridge n'a pas confirmé l'opération.")
+    return result
 
 
 @main.command(name="prepare")

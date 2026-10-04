@@ -162,6 +162,13 @@ def test_image_execution_obeys_manifest_and_environment(monkeypatch, tmp_path):
 
 
 def test_mesh_execution_obeys_manifest_and_environment(monkeypatch, tmp_path):
+    from aurora_cli.core import machine
+    # Hardware probing also uses subprocess.run; keep this adapter test local
+    # to its worker instead of replacing GPU discovery with the worker stub.
+    monkeypatch.setattr(machine, "profile", lambda: SimpleNamespace(
+        os_name="linux", arch="x86_64", accelerator="cuda", vram_bytes=32 * 1024**3,
+        ram_total_bytes=64 * 1024**3, ram_available_bytes=64 * 1024**3,
+        python="3.12", libc="glibc", libc_version="2.39"))
     monkeypatch.setattr(adapters, "load_manifest", lambda: {"runner": {"custom": {
         "capability": "3d", "specs": ["author/model"],
         "texturing": True,

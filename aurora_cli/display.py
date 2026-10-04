@@ -49,8 +49,8 @@ class Display:
     def __init__(self, console_: "Console | None" = None,
                  theme: Theme | None = None,
                  caps: Capabilities | None = None):
-        self.console = console_ or _default_console()
         self.caps = caps or capabilities.current()
+        self.console = console_ or _default_console(self.caps)
         self.theme = theme or themes.auto_select(self.caps)
         self.animator = animation.Animator(self.console, self.caps, self.theme)
 
@@ -351,7 +351,7 @@ class Display:
     def agents_table(self, official: Sequence[dict], dynamic: Sequence[dict]) -> None:
         self.console.print(
             f"\n[{self.style('primary', bold=True)}]Agents officiels "
-            f"({len(official)})[/{self.style('primary')}]")
+            f"({len(official)})[/]")
         for agent in official:
             icon = (self.mark("success", self.glyph("ok")) if agent.get("enabled", True)
                     else self.mark("error", self.glyph("fail")))
@@ -362,7 +362,7 @@ class Display:
         if dynamic:
             self.console.print(
                 f"\n[{self.style('secondary', bold=True)}]Agents dynamiques "
-                f"({len(dynamic)})[/{self.style('secondary')}]")
+                f"({len(dynamic)})[/]")
             for agent in dynamic:
                 self.console.print(
                     f"  [{self.style('secondary')}]{self.glyph('bullet')}[/]"
@@ -578,19 +578,13 @@ class _ThinkingLive:
 
 # --- Module-level facade --------------------------------------------------
 
-_CONSOLE: "Console | None" = None
-
-
-def _default_console() -> "Console":
-    """The shared Rich console, created on first use.
-
-    Building it lazily matters: importing this module must not touch the
-    terminal, because tests and ``--help`` both import it first.
-    """
-    global _CONSOLE
-    if _CONSOLE is None:
-        _CONSOLE = Console()
-    return _CONSOLE
+def _default_console(caps: Capabilities) -> "Console":
+    """Apply the selected output policy when the renderer is bound."""
+    systems = {"ansi": "standard", "color8": "standard",
+               "color256": "256", "truecolor": "truecolor"}
+    return Console(force_terminal=caps.color,
+                   color_system=systems.get(caps.color_depth),
+                   no_color=not caps.color, width=caps.width)
 
 
 view = Display()

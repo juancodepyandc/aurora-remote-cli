@@ -64,11 +64,15 @@ def _supports_unicode() -> bool:
 
 
 def _detect_color_depth(stream) -> ColorDepth:
-    if _env_flag("NO_COLOR"):
-        return "none"
     forced = os.environ.get("JOBIA_COLOR")
+    if forced == "never":
+        return "none"
+    if forced == "always":
+        return "truecolor"
     if forced in ("none", "ansi", "color8", "color256", "truecolor"):
         return forced  # type: ignore[return-value]
+    if "NO_COLOR" in os.environ:
+        return "none"
     if os.environ.get("TERM", "") == "dumb":
         return "none"
     if not hasattr(stream, "isatty") or not stream.isatty():

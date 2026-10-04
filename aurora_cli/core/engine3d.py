@@ -93,12 +93,12 @@ def generate_mesh(engine: Engine3D, image_path: Path, output_path: Path, *,
     runner, reason = adapters.resolve("3d", model_ref)
     if runner is None:
         return False, reason
-    from .machine import profile
-    if reason := runner.incompatibility(profile(), require_textures=paint):
-        return False, reason
     if paint and not engine.can_paint:
         return False, ('Texturation demandée, mais aucun moteur de texture exécutable '
                        'n’est présent. Aucune substitution silencieuse par une forme nue.')
+    from .machine import profile
+    if reason := runner.incompatibility(profile(), require_textures=paint):
+        return False, reason
 
     try:
         command = adapters.build(

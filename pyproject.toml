@@ -1,6 +1,6 @@
 [project]
 name = "jobia-cli"
-version = "1.2.0"
+version = "1.2.1"
 description = "JOBIA (Juan Of Bike IA) — piloter un modèle local ou un pont distant depuis un seul terminal."
 requires-python = ">=3.10"
 license = {text = "MIT"}
@@ -37,6 +37,7 @@ Homepage = "https://github.com/juancodepyandc/aurora-remote-cli"
 [project.scripts]
 jobia = "aurora_cli.cli:main"
 jbia = "aurora_cli.cli:main"
+aurora = "aurora_cli.cli:main"
 
 [build-system]
 requires = ["setuptools>=68"]

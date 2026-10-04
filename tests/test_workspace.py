@@ -22,11 +22,15 @@ def test_bare_jobia_launches_workspace_in_terminal(monkeypatch):
     called.assert_called_once()
 
 
-def test_pipe_renders_dashboard_without_waiting():
+def test_pipe_renders_dashboard_without_waiting(monkeypatch):
+    # This case verifies ordinary pipe output, overriding the shared fixture's
+    # forced truecolor policy used by rendering tests.
+    monkeypatch.setenv("JOBIA_COLOR", "never")
     result = CliRunner().invoke(main, [])
     assert result.exit_code == 0, result.output
     assert 'CRÉER' in result.output
     assert '/theme' in result.output
+    assert '\x1b[' not in result.output
 
 
 @pytest.mark.parametrize('prompt', ['dessine Naruto', 'crée un personnage inconnu', 'fais un perso inventé'])

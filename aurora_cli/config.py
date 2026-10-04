@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -102,15 +103,17 @@ def load() -> dict[str, Any]:
 def save(cfg: dict[str, Any]) -> None:
     """Atomically write the configuration with owner-only permissions."""
     ensure_dirs()
-    tmp = _config_file().with_name(_config_file().name + ".tmp")
+    target = _config_file()
+    fd, name = tempfile.mkstemp(prefix=".config-", suffix=".tmp", dir=target.parent)
+    tmp = Path(name)
     try:
-        tmp.write_text(json.dumps(cfg, indent=2, ensure_ascii=False), "utf-8")
+        with os.fdopen(fd, "w", encoding="utf-8") as stream:
+            json.dump(cfg, stream, indent=2, ensure_ascii=False)
         _restrict(tmp)
-        os.replace(tmp, _config_file())
-    except OSError:
+        os.replace(tmp, target)
+    finally:
         tmp.unlink(missing_ok=True)
-        raise
-    _restrict(_config_file())
+    _restrict(target)
     global _cached
     _cached = None
 
@@ -176,7 +179,7 @@ def resolve_server_url(explicit: str = "", cfg: dict[str, Any] | None = None) ->
 def is_configured() -> bool:
     """True when a remote bridge is both addressed and authorised."""
     cfg = load()
-    return bool(resolve_server_url(cfg=cfg)) and bool(cfg.get("api_key"))
+    return bool(resolve_server_url(cfg=cfg)) and bool(get("api_key"))
 
 
 def config_path() -> Path:
