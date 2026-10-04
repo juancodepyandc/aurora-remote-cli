@@ -75,12 +75,15 @@ def test_traversal_segments_cannot_reach_a_system_root(tmp_path):
     assert not security.is_forbidden(target)
 
 
-def test_a_symlink_inside_the_root_pointing_outside_is_refused(tmp_path):
+@pytest.mark.parametrize('existing',[False,True])
+def test_a_symlink_inside_the_root_pointing_outside_is_refused(tmp_path,existing):
     """A symlink already in the data directory must not become an exit."""
     root = tmp_path / "data"
     root.mkdir()
     outside = tmp_path / "outside"
     outside.mkdir()
+    if existing:
+        (outside/'model').mkdir()
     (root / "link").symlink_to(outside)
     with pytest.raises(SecurityError):
         safe_target(root, "link", "model")

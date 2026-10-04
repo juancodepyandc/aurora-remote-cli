@@ -75,6 +75,8 @@ def safe_target(root: Path, *parts: str) -> Path:
     if not cleaned:
         raise SecurityError("Chemin de destination vide.")
     target = root.joinpath(*cleaned)
+    if not target.resolve().is_relative_to(root.resolve()):
+        raise SecurityError(f"Destination hors du répertoire JOBIA : {target}")
     if is_forbidden(target):
         raise SecurityError(f"Refus d'écrire dans une zone système : {target}")
     # Resolve as far as the tree exists; a not-yet-created leaf is fine.
