@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import subprocess
 import time
+from uuid import uuid4
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -36,13 +37,17 @@ def _safe_target(root: Path, raw: str, for_write: bool = False) -> Path | None:
     return resolved
 
 
-def run_mission(client: Bridge, request: str, workspace: str = "", permissions: str = "AUTONOMOUS", model: str = "", session_id: str = "", *, server_workspace: str | None = None) -> bool:
+def run_mission(client: Bridge, request: str, workspace: str = "", permissions: str = "AUTONOMOUS", model: str = "", session_id: str = "", *, server_workspace: str | None = None, resume_id: str = "", watch_id: str = "") -> bool:
     """Start and monitor an autonomous mission."""
     if server_workspace is None:
         local_server = urlsplit(client.server_url).hostname in ("localhost", "127.0.0.1", "::1")
         server_workspace = workspace if local_server else ""
     try:
-        data = client.mission_start(request, workspace=server_workspace, permissions=permissions, model=model, session_id=session_id)
+        data = (client.mission_status(watch_id) if watch_id else client.mission_resume(resume_id,model=model) if resume_id else
+                client.mission_start(request, workspace=server_workspace, permissions=permissions,
+                                     model=model, session_id=session_id, idempotency_key=uuid4().hex))
+        if watch_id and data.get("ok"):
+            data.update(mission_id=watch_id,cursor=data.get("stream_start_cursor",0))
         mission_id = data.get("mission_id")
         if not mission_id:
             display.error(data.get("error", "Impossible de démarrer la mission."))
@@ -86,7 +91,7 @@ def run_mission(client: Bridge, request: str, workspace: str = "", permissions: 
             tokens_printed = False
 
     try:
-        for event in client.mission_stream(mission_id):
+        for event in client.mission_stream(mission_id, last_event_id=data.get("cursor", 0)):
             etype = event.get("type", "")
             
             if etype == "step_start":
@@ -225,7 +230,7 @@ def run_mission(client: Bridge, request: str, workspace: str = "", permissions: 
                     else:
                         with open(safe_path, "w", encoding="utf-8") as f:
                             f.write(content)
-                        out = "Fichier écrit avec succès sur le Mac."
+                        out = "Fichier écrit avec succès sur le client."
                 except Exception as e:
                     out = f"Erreur d'écriture: {e}"
                 client.post(f"/api/cli/mission/{mission_id}/input", data={"input_type": "remote_write_result", "value": out})
@@ -233,7 +238,7 @@ def run_mission(client: Bridge, request: str, workspace: str = "", permissions: 
             elif etype == "reconnecting":
                 display.info(f"Connexion interrompue, reprise du flux (tentative {event['attempt']}/3)...")
 
-            elif etype == "error":
+            elif etype in ("error", "mission_interrupted"):
                 if live_spinner:
                     live_spinner.stop()
                     live_spinner = None
@@ -246,7 +251,7 @@ def run_mission(client: Bridge, request: str, workspace: str = "", permissions: 
                     live_spinner = None
                 _separate_from_tokens()
                 display.mission_summary(event)
-                return not event.get("stopped", False)
+                return not event.get("stopped", False) and event.get("status", "completed") == "completed"
 
         display.error("Flux fermé sans confirmation de fin de mission.")
         return False

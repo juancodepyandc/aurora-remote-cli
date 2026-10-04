@@ -29,11 +29,10 @@ def _remember_result(history, request, result):
 def _remote_mission(request, history):
     from .bridge import Bridge
     from .mission import run_mission
-    return run_mission(Bridge(), request, workspace=str(Path.cwd()),
-                       permissions=config.get('default_permissions', 'SAFE'),
-                       # A local archive UUID is not a session created by the
-                       # remote server. Never send a fabricated bridge session.
-                       session_id=getattr(history, 'state', {}).get('remote_session_id', ''))
+    with Bridge() as client:
+        return run_mission(client, request, workspace=str(Path.cwd()),
+                           permissions=config.get('default_permissions', 'SAFE'),
+                           session_id=getattr(history, 'state', {}).get('remote_session_id', ''))
 
 
 def dashboard(result=None):
@@ -127,9 +126,9 @@ def execute(request: str, history: list, *, local_only=False):
             display.hint("Image locale fournie : exécution locale ; le pont ne transfère pas encore les références.")
         if spec.input_image is None and mode != "local" and config.is_configured():
             display.info("Demande 3D complexe : utilisation automatique du PC fixe via AuroraIA.")
-            if _remote_mission(request, history):
-                return
-            display.warning("Le PC fixe ne répond pas ; reprise automatique en local.")
+            # An accepted mission can fail after side effects. Do not regenerate
+            # locally merely because the remote stream did not finish.
+            return _remote_mission(request, history)
         display.info("Image fournie → forme 3D → texture PBR → contrôles → livraison."
                      if spec.input_image is not None
                      else "Préparation → référence vérifiée → forme 3D → texture PBR → livraison.")
@@ -152,7 +151,7 @@ def execute(request: str, history: list, *, local_only=False):
             display.warning(pending)
         _remember_result(history, request, f"3D : {'livrée' if result_3d.success else 'non livrée'}. "
                          f"Fichier : {result_3d.final_output}. Diagnostics : {result_3d.checkpoint}. {pending}")
-        return
+        return bool(result_3d.success and not remaining)
     if media and mode != "remote" and all(s.agent.id == "image" for s in plan.steps):
         from aurora_cli.core.images import generate
         output = generate(request, result)
@@ -160,12 +159,11 @@ def execute(request: str, history: list, *, local_only=False):
             _remember_result(history, request, f'Image livrée après contrôle visuel : {output}')
         else:
             _remember_result(history, request, 'Image non livrée : le contrôle visuel a échoué ; diagnostics conservés.')
-        return
+        return bool(output)
     if media or mode == "remote":
         if mode != "local" and config.is_configured():
             display.info("Cette tâche utilise les outils du PC fixe via le pont.")
-            _remote_mission(request, history)
-            return
+            return _remote_mission(request, history)
         display.hint("Analyse des modèles nécessaires à cette création…")
         for step in plan.steps:
             display.info(f"{step.agent.label} : {len(step.satisfied_by)} modèle(s) local(aux) détecté(s).")
@@ -177,8 +175,7 @@ def execute(request: str, history: list, *, local_only=False):
     router.note_remote(config.is_configured() and not local_only)
     route = router.route()
     if route.kind == "remote":
-        _remote_mission(request, history)
-        return
+        return _remote_mission(request, history)
     if not route.ok or not route.models:
         if not prepare("discussion : " + request, yes=True):
             return
@@ -189,7 +186,11 @@ def execute(request: str, history: list, *, local_only=False):
         display.hint("Démarre Ollama (ollama serve) ou charge le modèle dans LM Studio, puis réessaie ici.")
         return
     role = next((s.agent.id for s in plan.steps if s.agent.capability in {'llm', 'code'}), 'resume')
-    chosen = router.pick_model(route=route, role=role)
+    preferred = config.get('default_model', '')
+    if preferred and preferred not in {m.name for m in route.models}:
+        display.error('Le modèle choisi n’est pas servi par ce moteur : '+preferred)
+        return False
+    chosen = preferred or router.pick_model(route=route, role=role)
     if not chosen:
         display.warning('Aucun modèle servi ne tient dans le budget mémoire disponible pour cette tâche.')
         display.hint('/apps montre les ressources occupées. La conversation reste conservée.')
@@ -201,6 +202,7 @@ def execute(request: str, history: list, *, local_only=False):
             display.view.console.print(text, end="", markup=False, highlight=False)
     finally:
         display.view.console.print()
+    return True
 
 
 def show_pipeline_stage(stage):
@@ -235,6 +237,11 @@ def verify_delivery(argument):
 
 
 def run_workspace():
+    from .ui import run_ui
+    run_ui()
+
+
+def run_text_workspace():
     from prompt_toolkit import PromptSession
     from prompt_toolkit.completion import WordCompleter
     from prompt_toolkit.styles import Style

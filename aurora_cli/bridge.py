@@ -55,7 +55,7 @@ class Bridge:
     def __init__(self, server_url: str = "", api_key: str = "", timeout: float = 30.0):
         cfg = config.load()
         self.server_url = config.resolve_server_url(server_url, cfg)
-        self.api_key = api_key or cfg.get("api_key", "")
+        self.api_key = api_key or config.get("api_key", "")
         self.timeout = timeout
         
         # Expert mode: Robust connection transport with retries
@@ -72,6 +72,12 @@ class Bridge:
     def close(self) -> None:
         self._client.close()
 
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        self.close()
+
     # --- Low-level ---
 
     def get(self, path: str, **kwargs: Any) -> dict:
@@ -82,7 +88,10 @@ class Bridge:
         except httpx.RequestError as e:
             return {"ok": False, "error": f"Connection error: {e}"}
         except httpx.HTTPStatusError as e:
-            return {"ok": False, "error": f"HTTP error {e.response.status_code}"}
+            payload = _decode_json(e.response)
+            payload.update(ok=False, http_status=e.response.status_code)
+            payload.setdefault("error", f"HTTP error {e.response.status_code}")
+            return payload
 
     def post(self, path: str, data: dict | None = None, **kwargs: Any) -> dict:
         try:
@@ -92,7 +101,10 @@ class Bridge:
         except httpx.RequestError as e:
             return {"ok": False, "error": f"Connection error: {e}"}
         except httpx.HTTPStatusError as e:
-            return {"ok": False, "error": f"HTTP error {e.response.status_code}"}
+            payload = _decode_json(e.response)
+            payload.update(ok=False, http_status=e.response.status_code)
+            payload.setdefault("error", f"HTTP error {e.response.status_code}")
+            return payload
 
     def delete(self, path: str, **kwargs: Any) -> dict:
         try:
@@ -131,7 +143,7 @@ class Bridge:
                                 raise ValueError("Missing mission events; refusing an incomplete result")
                             last_event_id = cursor
                         yield event
-                        if resume and event.get("type") in ("mission_complete", "error"):
+                        if resume and event.get("type") in ("mission_complete", "error", "mission_interrupted"):
                             return
                 if not resume:
                     return
@@ -283,11 +295,15 @@ class Bridge:
     # --- Missions ---
 
     def mission_start(self, request: str, workspace: str = "", permissions: str = "AUTONOMOUS",
-                      session_id: str = "", model: str = "") -> dict:
-        return self.post("/api/cli/mission/start", {
+                      session_id: str = "", model: str = "", idempotency_key: str = "", history: list | None = None) -> dict:
+        payload = {
             "request": request, "workspace": workspace, "permissions": permissions,
             "session_id": session_id, "model": model,
-        })
+            "idempotency_key": idempotency_key,
+        }
+        if history is not None:
+            payload['history'] = history
+        return self.post("/api/cli/mission/start", payload)
 
     def mission_stream(self, mission_id: str, last_event_id: int = 0) -> Generator[dict, None, None]:
         yield from self.stream_sse(f"/api/cli/mission/{mission_id}/stream", method="GET",
@@ -298,3 +314,9 @@ class Bridge:
 
     def mission_stop(self, mission_id: str) -> dict:
         return self.post(f"/api/cli/mission/{mission_id}/stop")
+
+    def missions_list(self) -> dict:
+        return self.get("/api/cli/missions")
+
+    def mission_resume(self, mission_id: str, model: str = "") -> dict:
+        return self.post(f"/api/cli/mission/{mission_id}/resume", {"model": model})

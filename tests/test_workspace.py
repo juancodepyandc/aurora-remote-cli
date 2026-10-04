@@ -115,7 +115,10 @@ def test_close_refuses_self_before_confirm(monkeypatch):
 def test_remote_bridge_never_receives_the_local_archive_uuid(monkeypatch):
     from aurora_cli import bridge, mission
     calls = []
-    monkeypatch.setattr(bridge, 'Bridge', lambda: 'bridge-client')
+    from unittest.mock import MagicMock
+    managed = MagicMock()
+    managed.__enter__.return_value = 'bridge-client'
+    monkeypatch.setattr(bridge, 'Bridge', lambda: managed)
     monkeypatch.setattr(mission, 'run_mission', lambda client, request, **kwargs:
                         calls.append((client, request, kwargs)) or True)
     history = SimpleNamespace(session_id='local-only-uuid', state={})

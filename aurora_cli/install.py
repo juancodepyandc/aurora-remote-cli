@@ -88,7 +88,9 @@ def detect_target(root: Path | None = None) -> Target:
 def installed_version(target: Target) -> str | None:
     """The version the venv currently has, read from its metadata, not guessed."""
     for pattern in ("jobia_cli-*.dist-info", "jobia-cli-*.dist-info", "jobia-*.dist-info"):
-        for folder in target.venv.glob(f"lib/python*/site-packages/{pattern}"):
+        folders = list(target.venv.glob(f"lib/python*/site-packages/{pattern}"))
+        folders += list(target.venv.glob(f"Lib/site-packages/{pattern}"))
+        for folder in folders:
             stem = folder.name[: -len(".dist-info")]
             # Split on the last hyphen so a name containing one cannot shift the
             # version to the wrong field.
@@ -231,9 +233,7 @@ class Installer:
         if not self.target.python.is_file():
             return StepResult("package", "failed", "pas d'environnement virtuel")
         command = [str(self.target.python), "-m", "pip", "install"]
-        if getattr(self, "force_reinstall", False):
-            # A same-version reinstall is how a broken half-install is repaired.
-            command.append("--force-reinstall")
+        # pip upgrades the package without force-reinstalling every dependency.
         command += ["--upgrade", str(self.project_root)]
         code, output = self.runner(command)
         if code != 0:

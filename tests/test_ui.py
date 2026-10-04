@@ -1,0 +1,187 @@
+"""Full-screen input, real transcript persistence and structured mission events."""
+import asyncio
+from contextlib import contextmanager
+import json
+from pathlib import Path
+from unittest.mock import Mock
+
+import pytest
+from click.testing import CliRunner
+from prompt_toolkit.input.defaults import create_pipe_input
+from prompt_toolkit.output import DummyOutput
+
+from aurora_cli import config, ui, workspace
+from aurora_cli.bridge import Bridge
+from aurora_cli.cli import main
+
+
+class FakeBridge:
+    server_url = 'http://localhost:3001'
+    accepted = []
+    closed = 0
+    def __init__(self,**kwargs):
+        pass
+    def __enter__(self):
+        return self
+    def __exit__(self,*args):
+        type(self).closed += 1
+    def mission_start(self,request,**kwargs):
+        self.accepted.append((request,kwargs))
+        return {'ok':True,'mission_id':'mis_test'}
+    def mission_stream(self,mid,last_event_id=0):
+        yield {'type':'plan','steps':['Inspect actual file'],'criteria':['File tested']}
+        yield {'type':'tool_result','tool':'verify','id':'ev_actual','ok':True}
+        yield {'type':'model_metrics','tokens_per_second':12.5}
+        yield {'type':'mission_complete','result':'Verified response','verification':{'verified':['File tested']}}
+    def mission_status(self,mid):
+        return {'ok':True,'id':mid,'status':'running','plan':[],'criteria':[],'evidence':[]}
+    def doctor(self):
+        return {'ok':True}
+    def models(self):
+        return {'models':[{'name':'observed:local'}]}
+    def mission_stop(self,mid):
+        return {'ok':True,'status':'stopping'}
+    def missions_list(self):
+        return {'ok':True,'missions':[]}
+
+
+def test_pipe_ui_exits_cleanly_without_entering_alternate_screen(monkeypatch):
+    monkeypatch.setenv('JOBIA_COLOR','never')
+    result = CliRunner().invoke(main,['ui'])
+    assert result.exit_code==0,result.output
+    assert 'terminal interactif' in result.output
+    assert '\x1b[' not in result.output
+
+
+def test_terminal_control_sequences_are_not_rendered_from_tool_output():
+    assert ui.plain('\x1b[31mresult\x1b[0m\x00\x9b')=='result'
+
+
+def test_no_quality_or_progress_is_invented_without_events():
+    state = ui.MissionView()
+    assert state.status=='idle'
+    assert not state.metrics and not state.evidence and not state.verified
+    state.consume({'type':'error','message':'failure'})
+    assert state.status=='failed'
+    state.consume({'type':'mission_complete','status':'blocked','result':'Missing tool'})
+    assert state.status=='blocked'
+
+
+def test_full_screen_keyboard_submits_and_quits_without_loading_a_model(monkeypatch):
+    FakeBridge.accepted,FakeBridge.closed = [],0
+    config.set('mode','remote')
+    config.set('default_permissions','AUTONOMOUS')
+    config.set('api_key','test')
+    async def scenario():
+        with create_pipe_input() as pipe:
+            app = ui.WorkspaceApp(bridge_factory=FakeBridge,input=pipe,output=DummyOutput())
+            running = asyncio.create_task(app.run())
+            await asyncio.sleep(.03)
+            pipe.send_text('Inspect the file\r')
+            async def finished():
+                while app.state.status!='completed' or app.busy:
+                    await asyncio.sleep(.01)
+            await asyncio.wait_for(finished(),3)
+            assert app.state.criteria==['File tested']
+            assert app.state.verified==['File tested']
+            assert app.state.metrics['tokens_per_second']==12.5
+            assert 'Verified response' in app.transcript
+            pipe.send_text('\x11')  # Ctrl+Q
+            await asyncio.wait_for(running,2)
+            from aurora_cli.core.conversation import Conversation
+            persisted = Conversation.open()
+            assert persisted[-1]['content']=='Verified response'
+            assert FakeBridge.accepted[0][1]['idempotency_key']
+            assert FakeBridge.closed>=1
+    asyncio.run(scenario())
+
+
+def test_new_conversation_does_not_delete_previous_transcript():
+    from aurora_cli.core.conversation import Conversation
+    history = Conversation.open()
+    history.append({'role':'user','content':'Preserve me'})
+    history.save()
+    previous = history.root/f'{history.session_id}.json'
+    with create_pipe_input() as pipe:
+        app = ui.WorkspaceApp(history=history,input=pipe,output=DummyOutput())
+        app.new_conversation()
+    assert previous.exists()
+    assert 'Preserve me' in previous.read_text()
+    assert not app.history
+
+
+def test_bridge_preserves_accepted_id_when_dispatch_fails(monkeypatch):
+    import httpx
+    client = Bridge(server_url='http://localhost',api_key='test')
+    client._client.close()
+    client._client = httpx.Client(transport=httpx.MockTransport(lambda req:httpx.Response(
+        503,json={'ok':False,'mission_id':'mis_retained','error':'daemon unavailable'})),base_url='http://localhost')
+    with client:
+        result = client.mission_start('Request',idempotency_key='stable-key')
+    assert not result['ok']
+    assert result['mission_id']=='mis_retained'
+    assert result['error']=='daemon unavailable'
+
+
+def test_windows_install_version_is_detected(tmp_path):
+    from aurora_cli.install import Target,installed_version
+    venv = tmp_path/'venv'
+    (venv/'Lib/site-packages/jobia_cli-1.3.0.dist-info').mkdir(parents=True)
+    target = Target('windows',tmp_path,venv,venv/'Scripts',venv/'Scripts')
+    assert installed_version(target)=='1.3.0'
+
+
+def test_api_key_environment_override_reaches_the_real_http_client(monkeypatch):
+    monkeypatch.setenv('JOBIA_API_KEY','environment-key-for-test')
+    with Bridge(server_url='http://localhost') as client:
+        assert client._client.headers['Authorization']=='Bearer environment-key-for-test'
+
+
+def test_worker_plan_cannot_replace_the_parent_mission_criteria():
+    state = ui.MissionView()
+    state.consume({'type':'plan','steps':['Parent task'],'criteria':['Parent criterion']})
+    state.consume({'type':'plan','worker':True,'steps':['Worker task'],'criteria':['Worker criterion']})
+    assert state.plan==['Parent task'] and state.criteria==['Parent criterion']
+
+
+def test_uncertain_acceptance_retries_the_identical_saved_request(monkeypatch):
+    config.set('mode','remote')
+    calls = []
+    class LostReply(FakeBridge):
+        def mission_start(self,request,**kwargs):
+            calls.append((request,kwargs))
+            if len(calls)==1:
+                raise RuntimeError('Response lost after acceptance')
+            return {'ok':True,'mission_id':'mis_original','replayed':True}
+    async def scenario():
+        with create_pipe_input() as pipe:
+            app = ui.WorkspaceApp(bridge_factory=LostReply,input=pipe,output=DummyOutput())
+            await app.submit('Exact original task')
+            await asyncio.sleep(.01)
+            saved = dict(app.history.state['pending_request'])
+            config.set('default_model','different:local')
+            await app.submit('/retry')
+            await asyncio.sleep(.01)
+            assert calls[0]==calls[1]
+            assert calls[1][1]['idempotency_key']==saved['idempotency_key']
+            assert calls[1][1]['history']==[]
+            assert [m['content'] for m in app.history if m['role']=='user']==['Exact original task']
+            assert 'pending_request' not in app.history.state
+    asyncio.run(scenario())
+
+
+def test_remote_followup_keeps_prior_turns_separate_from_the_current_goal():
+    config.set('mode','remote')
+    FakeBridge.accepted = []
+    async def scenario():
+        with create_pipe_input() as pipe:
+            app = ui.WorkspaceApp(bridge_factory=FakeBridge,input=pipe,output=DummyOutput())
+            await app.submit('Initial exact task')
+            await asyncio.sleep(.02)
+            await app.submit('Refine the previous result')
+            await asyncio.sleep(.02)
+            request,payload = FakeBridge.accepted[-1]
+            assert request=='Refine the previous result'
+            assert payload['history']==[{'role':'user','content':'Initial exact task'},
+                                        {'role':'assistant','content':'Verified response'}]
+    asyncio.run(scenario())

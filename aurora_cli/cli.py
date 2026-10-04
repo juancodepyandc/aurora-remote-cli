@@ -286,6 +286,57 @@ def mission(request, model, server_workspace):
         client.close()
 
 
+@main.command(name="ui")
+@click.option("--text", "text_mode", is_flag=True, help="Use the linear terminal interface.")
+def ui_command(text_mode):
+    """Open the full-screen workspace, or the linear interface with --text."""
+    if text_mode:
+        from .workspace import run_text_workspace
+        if not sys.stdin.isatty():
+            raise click.ClickException("Le mode texte nécessite une entrée interactive.")
+        run_text_workspace()
+    else:
+        from .ui import run_ui
+        run_ui()
+
+
+@main.group(name="missions")
+def missions_command():
+    """List durable missions and resume retained execution state."""
+
+
+@missions_command.command(name="list")
+@click.option("--json", "as_json", is_flag=True)
+def missions_list_command(as_json):
+    with _client() as client:
+        result = _require_remote_ok(client.missions_list())
+    if as_json:
+        click.echo(json.dumps(result, ensure_ascii=False))
+    else:
+        for item in result.get('missions', []):
+            display.kv(item['id'], item['status']+' · '+item['request'][:100])
+
+
+@missions_command.command(name="resume")
+@click.argument("mission_id")
+@click.option("--model", default="", help="Continue the same objective using another available model.")
+def missions_resume_command(mission_id, model):
+    from .mission import run_mission
+    with _client() as client:
+        if not run_mission(client, "Reprise "+mission_id, workspace=str(Path.cwd()), resume_id=mission_id,model=model):
+            raise click.ClickException("La reprise n’a pas confirmé le résultat demandé.")
+
+
+@missions_command.command(name="watch")
+@click.argument("mission_id")
+def missions_watch_command(mission_id):
+    """Reattach to a retained mission without executing it again."""
+    from .mission import run_mission
+    with _client() as client:
+        if not run_mission(client,"Suivi "+mission_id,workspace=str(Path.cwd()),watch_id=mission_id):
+            raise click.ClickException("La mission suivie n’a pas confirmé le résultat demandé.")
+
+
 # --- Local commands -------------------------------------------------------
 
 @main.command(name="theme")

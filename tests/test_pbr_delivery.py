@@ -166,5 +166,5 @@ def test_verify_command_is_dispatched_inside_interactive_jobia(monkeypatch, tmp_
     def verify(argument):
         reports.append(original(argument))
     monkeypatch.setattr(workspace, 'verify_delivery', verify)
-    workspace.run_workspace()
+    workspace.run_text_workspace()
     assert len(reports) == 1 and reports[0]['verified']
