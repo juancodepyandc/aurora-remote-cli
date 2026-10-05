@@ -74,6 +74,47 @@ def test_stale_terminal_cannot_overwrite_newer_turns(tmp_path):
     assert conversation.Conversation.open(root=tmp_path) == first
 
 
+def test_clear_archives_is_scoped_recoverable_and_blocks_stale_writes(tmp_path):
+    first = conversation.Conversation.open(project=tmp_path / 'first')
+    first.append({'role': 'user', 'content': 'Keep in backup'})
+    first.state['pending_request'] = 'Old request'
+    first.save()
+    other = conversation.Conversation.open(project=tmp_path / 'other')
+    original = (first.root / f'{first.session_id}.json').read_bytes()
+    count, backup = conversation.clear_archives(project=tmp_path / 'first')
+    assert count == 1
+    assert (backup / first.root.name / f'{first.session_id}.json').read_bytes() == original
+    assert conversation.Conversation.open(project=tmp_path / 'other').session_id == other.session_id
+    fresh = conversation.Conversation.open(project=tmp_path / 'first')
+    assert fresh == [] and 'pending_request' not in fresh.state
+    with pytest.raises(RuntimeError, match='effacée'):
+        first.save()
+    assert conversation.Conversation.open(project=tmp_path / 'first').session_id == fresh.session_id
+
+
+def test_clear_all_ignores_backups_and_unrelated_files(tmp_path):
+    first = conversation.Conversation.open(project=tmp_path / 'first')
+    second = first.new()
+    other = conversation.Conversation.open(project=tmp_path / 'other')
+    parent = first.root.parent
+    unrelated = parent / 'notes.txt'
+    unrelated.write_text('keep')
+    count, backup = conversation.clear_archives(all_projects=True)
+    assert count == 3
+    assert (backup / first.root.name / f'{second.session_id}.json').exists()
+    assert (backup / other.root.name / 'active.json').exists()
+    assert unrelated.read_text() == 'keep'
+    assert conversation.clear_archives(all_projects=True) == (0, None)
+
+
+def test_clear_refuses_symlink_backup_directory(tmp_path):
+    history = conversation.Conversation.open()
+    (history.root.parent / '.cleared').symlink_to(tmp_path, target_is_directory=True)
+    with pytest.raises(OSError, match='symbolique'):
+        conversation.clear_archives()
+    assert (history.root / 'active.json').exists()
+
+
 def test_all_turns_are_sent_when_context_fits():
     history = [{'role': role, 'content': f'{i}'} for i in range(15) for role in ('user', 'assistant')]
     rt, calls = runtime([[StreamChunk(text='ok'), StreamChunk(done=True)]])

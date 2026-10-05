@@ -286,6 +286,22 @@ def mission(request, model, server_workspace):
         client.close()
 
 
+@main.command(name="clear")
+@click.option('--all', 'all_projects', is_flag=True,
+              help='Effacer les conversations locales de tous les dossiers.')
+def clear_command(all_projects):
+    """Effacer les conversations du dossier courant, avec sauvegarde locale."""
+    from .core.conversation import clear_archives
+    try:
+        count, backup = clear_archives(all_projects=all_projects)
+    except OSError as exc:
+        raise click.ClickException(f'Nettoyage impossible : {exc}') from exc
+    click.echo(f'{count} conversation(s) locale(s) effacée(s).')
+    if backup:
+        click.echo(f'Sauvegarde : {backup}')
+    click.echo('Les missions distantes et leurs fichiers sont conservés.')
+
+
 @main.command(name="ui")
 @click.option("--text", "text_mode", is_flag=True, help="Use the linear terminal interface.")
 def ui_command(text_mode):

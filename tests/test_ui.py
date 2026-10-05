@@ -110,6 +110,39 @@ def test_new_conversation_does_not_delete_previous_transcript():
     assert not app.history
 
 
+def test_clear_resets_ui_and_persisted_history_without_contacting_bridge():
+    from aurora_cli.core.conversation import Conversation
+    history = Conversation.open()
+    history.append({'role': 'user', 'content': 'Old conversation'})
+    history.state['pending_request'] = 'Old pending request'
+    history.save()
+    bridge = Mock(side_effect=AssertionError('No remote call allowed'))
+    async def scenario():
+        with create_pipe_input() as pipe:
+            app = ui.WorkspaceApp(history=history, bridge_factory=bridge, input=pipe, output=DummyOutput())
+            app.journal = 'Old logs'
+            app.page = 'journal'
+            app.state.id = 'mis_old'
+            await app.submit('/clear')
+            assert not app.history
+            assert app.page == 'conversation' and app.journal == '' and app.state.id == ''
+            assert 'Old conversation' not in app.transcript
+            assert '1 conversation(s)' in app.transcript
+            assert 'pending_request' not in Conversation.open().state
+            bridge.assert_not_called()
+    asyncio.run(scenario())
+
+
+def test_clear_cli_all_cleans_multiple_projects(tmp_path):
+    from aurora_cli.core.conversation import Conversation
+    Conversation.open(project=tmp_path / 'a')
+    Conversation.open(project=tmp_path / 'b')
+    result = CliRunner().invoke(main, ['clear', '--all'])
+    assert result.exit_code == 0, result.output
+    assert '2 conversation(s)' in result.output
+    assert 'Sauvegarde' in result.output
+
+
 def test_bridge_preserves_accepted_id_when_dispatch_fails(monkeypatch):
     import httpx
     client = Bridge(server_url='http://localhost',api_key='test')
@@ -159,6 +192,9 @@ def test_uncertain_acceptance_retries_the_identical_saved_request(monkeypatch):
             await app.submit('Exact original task')
             await asyncio.sleep(.01)
             saved = dict(app.history.state['pending_request'])
+            # Reopen the on-disk archive, as happens after restarting jobia.
+            from aurora_cli.core.conversation import Conversation
+            app.history = Conversation.open()
             config.set('default_model','different:local')
             await app.submit('/retry')
             await asyncio.sleep(.01)
@@ -167,6 +203,61 @@ def test_uncertain_acceptance_retries_the_identical_saved_request(monkeypatch):
             assert calls[1][1]['history']==[]
             assert [m['content'] for m in app.history if m['role']=='user']==['Exact original task']
             assert 'pending_request' not in app.history.state
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize('pending', [
+    'Original task', '', ['Original task'], 42,
+    {'request': 'Original task'},
+    {'request': 'Original task', 'workspace': '', 'permissions': 'SAFE',
+     'model': '', 'idempotency_key': ''},
+    {'request': 'Original task', 'workspace': '', 'permissions': 'SAFE',
+     'model': '', 'idempotency_key': 'original', 'history': 'invalid'},
+])
+def test_retry_incomplete_archive_never_crashes_or_replays(pending):
+    from aurora_cli.core.conversation import Conversation
+    history = Conversation.open()
+    history.state['pending_request'] = pending
+    history.save()
+    archive = history.root / f'{history.session_id}.json'
+    before = archive.read_bytes()
+    forbidden_bridge = Mock(side_effect=AssertionError('Must not contact the server'))
+    async def scenario():
+        with create_pipe_input() as pipe:
+            app = ui.WorkspaceApp(history=Conversation.open(), bridge_factory=forbidden_bridge,
+                                  input=pipe, output=DummyOutput())
+            await app.submit('/retry')
+            assert 'aucune mission lancée' in app.transcript
+            request = pending if isinstance(pending, str) else pending.get('request', '') if isinstance(pending, dict) else ''
+            assert app.prompt.text == request
+            assert app.history.state['pending_request'] == pending
+            forbidden_bridge.assert_not_called()
+    asyncio.run(scenario())
+    assert archive.read_bytes() == before
+
+
+@pytest.mark.parametrize('doctor, expected', [
+    ({'ok': True, 'ready': True}, 'Pont prêt'),
+    ({'ok': True, 'ready': False, 'checks': [
+        {'name': 'Daemon', 'ok': False, 'detail': 'indisponible'}]}, 'Daemon: indisponible'),
+    ({'ok': False, 'error': 'HTTP error 530'}, 'HTTP error 530'),
+])
+def test_diagnostic_shows_actual_endpoint_readiness_and_local_mode(doctor, expected):
+    config.set('server_url', 'https://configured.example')
+    config.set('api_key', 'test')
+    config.set('mode', 'local')
+    class DiagnosticBridge(FakeBridge):
+        def doctor(self):
+            return doctor
+    async def scenario():
+        with create_pipe_input() as pipe:
+            app = ui.WorkspaceApp(bridge_factory=DiagnosticBridge, input=pipe, output=DummyOutput())
+            await app.discover()
+            assert expected in app.health
+            assert 'https://configured.example' in app.health
+            assert 'Mode local actif' in app.health
+            if doctor.get('ready') is False:
+                assert 'Pont prêt' not in app.health
     asyncio.run(scenario())
 
 

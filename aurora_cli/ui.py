@@ -77,6 +77,26 @@ def plain(text):
     return ''.join(c for c in text if c in '\n\t' or (ord(c)>=32 and not 127<=ord(c)<=159))
 
 
+def retry_payload_valid(pending):
+    """Only replay a complete payload with its original deduplication key."""
+    if not isinstance(pending, dict):
+        return False
+    required = {'request', 'workspace', 'permissions', 'model', 'idempotency_key'}
+    if not required <= pending.keys() or pending.keys() - (required | {'history', 'session_id'}):
+        return False
+    if any(not isinstance(pending[key], str) for key in required):
+        return False
+    if not pending['request'].strip() or not pending['idempotency_key'].strip():
+        return False
+    if 'session_id' in pending and not isinstance(pending['session_id'], str):
+        return False
+    history = pending.get('history', [])
+    return isinstance(history, list) and all(
+        isinstance(m, dict) and m.get('role') in {'user', 'assistant'}
+        and isinstance(m.get('content'), str) for m in history
+    )
+
+
 class WorkspaceApp:
     def __init__(self, *, bridge_factory=None, history=None, input=None, output=None):
         from .bridge import Bridge
@@ -90,7 +110,7 @@ class WorkspaceApp:
         self.body = TextArea(text=self.transcript or 'Bienvenue dans JOBIA.\n\nDécris le résultat que tu veux obtenir.\n/help affiche les commandes et raccourcis.',
                              read_only=True,scrollbar=True,wrap_lines=True)
         self.prompt = TextArea(height=3,multiline=True,wrap_lines=True,
-                               completer=WordCompleter(['/help','/missions','/resume','/attach','/retry','/new','/models','/theme','/mode','/permissions','/quit']))
+                               completer=WordCompleter(['/help','/missions','/resume','/attach','/retry','/new','/clear','/models','/theme','/mode','/permissions','/quit']))
         self.sidebar = Window(FormattedTextControl(self.sidebar_text),width=34,wrap_lines=True)
         bindings = KeyBindings()
         @bindings.add('enter',filter=has_focus(self.prompt))
@@ -234,7 +254,17 @@ class WorkspaceApp:
                         doctor,models = client.doctor(),client.models()
                     return doctor,models
                 doctor,models = await asyncio.to_thread(remote)
-                self.health = 'Pont prêt' if doctor.get('ok') else 'Pont indisponible ou dégradé · jobia doctor --remote'
+                ready = doctor.get('ok') and doctor.get('ready', True)
+                self.health = 'Pont prêt' if ready else 'Pont indisponible ou dégradé'
+                self.health += ' · '+plain(config.resolve_server_url())
+                if not ready:
+                    reason = doctor.get('error') or '; '.join(
+                        str(c.get('name', 'Contrôle'))+': '+str(c.get('detail') or 'échec')
+                        for c in doctor.get('checks', []) if c.get('ok') is False
+                    )
+                    self.health += ' · '+plain(reason or 'jobia doctor --remote')
+                if config.get('mode', 'auto') == 'local':
+                    self.health += ' · Mode local actif : les demandes sont exécutées sur cet ordinateur'
                 self.models = [m.get('name','') for m in models.get('models',[]) if isinstance(m,dict) and m.get('name')]
             else:
                 from .core.discovery import scan
@@ -321,8 +351,17 @@ class WorkspaceApp:
         self.loop = asyncio.get_running_loop()
         pending = getattr(self.history,'state',{}).get('pending_request') if raw=='/retry' else None
         if raw=='/retry':
-            if not pending:
+            if pending is None:
                 self.note('Aucune demande incertaine à réessayer. /attach ou /resume suit une mission déjà identifiée.')
+                return
+            if not retry_payload_valid(pending):
+                request = pending if isinstance(pending, str) else pending.get('request') if isinstance(pending, dict) else None
+                if isinstance(request, str) and request.strip():
+                    self.prompt.text = request
+                self.note('Reprise enregistrée incomplète : impossible de garantir une relance sans doublon. '
+                          'Archive conservée, aucune mission lancée. Vérifie /missions et utilise /attach ID si elle existe. '
+                          + ('La demande est remise en saisie ; Entrée créera une nouvelle mission.'
+                             if isinstance(request, str) and request.strip() else 'Retape ta demande si elle doit être créée à nouveau.'))
                 return
             raw = pending['request']
         if raw.startswith('/'):
@@ -331,6 +370,20 @@ class WorkspaceApp:
                 return
             if raw=='/new':
                 self.new_conversation()
+                return
+            if raw=='/clear':
+                from .core.conversation import Conversation, clear_archives
+                try:
+                    count, backup = clear_archives()
+                    self.history = Conversation.open()
+                except (OSError, ValueError, RuntimeError) as exc:
+                    self.note('Nettoyage impossible : '+plain(exc))
+                    return
+                self.transcript, self.journal = '', ''
+                self.state, self.page = MissionView(), 'conversation'
+                self.prompt.text = ''
+                self.note(f'{count} conversation(s) locale(s) effacée(s) pour ce dossier. Nouvelle conversation.'
+                          + (f'\nSauvegarde : {backup}' if backup else ''))
                 return
             if raw=='/theme':
                 await self.choose_theme()
@@ -353,7 +406,7 @@ class WorkspaceApp:
                 self.note('\n'.join(f"{m['id']} · {m['status']} · {m['request'][:70]}" for m in result.get('missions',[])) or 'Aucune mission enregistrée.')
                 return
             if not raw.startswith(('/resume ','/attach ')):
-                self.note('/missions · /attach ID · /resume ID · /retry · /models · /theme · /mode · /permissions · /new · /quit\nF4 : journal et fichiers. Ctrl+C : arrêt. Ctrl+N : nouvelle conversation.\nPour connecter le pont : jobia connect dans ton terminal.')
+                self.note('/missions · /attach ID · /resume ID · /retry · /models · /theme · /mode · /permissions · /new · /clear · /quit\n/clear : effacer les conversations locales de ce dossier (sauvegardées).\nF4 : journal et fichiers. Ctrl+C : arrêt. Ctrl+N : nouvelle conversation.\nPour connecter le pont : jobia connect dans ton terminal.')
                 return
         resume = raw.split(maxsplit=1)[1] if raw.startswith('/resume ') else None
         attach = raw.split(maxsplit=1)[1] if raw.startswith('/attach ') else None
@@ -453,7 +506,10 @@ class WorkspaceApp:
         if active:
             self.note('Mission conservée : '+active+' · /attach '+active+' pour suivre son état.')
         if getattr(self.history,'state',{}).get('pending_request'):
-            self.note('Une demande a une acceptation incertaine. /retry conserve sa clé pour éviter une double exécution.')
+            if retry_payload_valid(self.history.state['pending_request']):
+                self.note('Une demande a une acceptation incertaine. /retry conserve sa clé pour éviter une double exécution.')
+            else:
+                self.note('Une demande conservée a un format de reprise incomplet. /retry permet de la récupérer sans la lancer.')
         async def tick():
             while True:
                 await asyncio.sleep(.25 if display.view.caps.animate else 1)

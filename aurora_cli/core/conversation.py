@@ -33,6 +33,27 @@ def token_estimate(messages) -> int:
     return sum(16 + (len(str(m.get('content', '')).encode('utf-8')) + 2) // 3 for m in messages)
 
 
+def clear_archives(*, project: Path | None = None, all_projects=False):
+    """Move local conversation archives aside; never call the remote bridge."""
+    parent = locations.sessions_dir() / 'conversations'
+    scope = hashlib.sha256(str((project or Path.cwd()).resolve()).encode()).hexdigest()[:16]
+    roots = sorted(parent.glob('*')) if all_projects else [parent / scope]
+    roots = [p for p in roots if re.fullmatch(r'[a-f0-9]{16}', p.name)
+             and not p.is_symlink() and p.is_dir()]
+    count = 0
+    backup = None
+    for root in roots:
+        if backup is None:
+            if (parent / '.cleared').is_symlink():
+                raise OSError('Le dossier de sauvegarde est un lien symbolique ; nettoyage refusé.')
+            backup = parent / '.cleared' / uuid.uuid4().hex
+            backup.mkdir(parents=True, mode=0o700)
+        count += sum(1 for p in root.glob('*.json')
+                     if re.fullmatch(r'[a-f0-9]{32}\.json', p.name) and p.is_file())
+        root.rename(backup / root.name)
+    return count, backup
+
+
 class Conversation(list):
     def __init__(self, root: Path, session_id: str, state: dict):
         messages = state.get('messages', [])
@@ -67,6 +88,8 @@ class Conversation(list):
 
     def save(self):
         path = self.root / f'{self.session_id}.json'
+        if self.revision and not path.exists():
+            raise RuntimeError('Conversation effacée dans un autre terminal ; ouvre une nouvelle conversation.')
         if path.exists():
             disk = json.loads(path.read_text(encoding='utf-8'))
             if disk.get('revision', 0) != self.revision:
