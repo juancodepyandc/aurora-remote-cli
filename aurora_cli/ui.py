@@ -40,35 +40,62 @@ class MissionView:
     metrics: dict = field(default_factory=dict)
     received_chars: int = 0
     started: float = 0
+    last_signal: float = 0
+    last_progress: float = 0
+    activity: list = field(default_factory=list)
+
+    def record(self, label, style='activity'):
+        elapsed = max(0, int(time.monotonic() - self.started)) if self.started else 0
+        self.activity.append((style, f'{elapsed//60:02d}:{elapsed%60:02d}  '+plain(label).replace('\n', ' ')[:240]))
+        self.activity = self.activity[-5:]
 
     def consume(self, event):
         kind = event.get('type')
+        if kind != 'reconnecting':
+            self.last_signal = time.monotonic()
+        if kind not in {'heartbeat', 'reconnecting'}:
+            self.last_progress = self.last_signal
         if kind == 'step_start':
             self.status, self.phase = 'running',event.get('step','Exécution')
+            self.record(('Agent · ' if event.get('worker') else 'Étape · ')+str(self.phase))
         elif kind == 'tool_start':
             self.phase = event.get('tool','Outil')
+            self.record('Outil en cours · '+str(self.phase))
         elif kind == 'plan' and not event.get('worker'):
             self.plan,self.criteria = event.get('steps',[]),event.get('criteria',[])
+            self.record(f'Plan reçu · {len(self.plan)} étapes')
         elif kind == 'token':
             self.received_chars += len(event.get('content',''))
         elif kind == 'tool_result':
             if not any(e.get('id')==event.get('id') for e in self.evidence):
                 self.evidence.append(event)
+            self.record(('Outil terminé · ' if event.get('ok') else 'Échec outil · ')+str(event.get('tool','Outil')),
+                        'success' if event.get('ok') else 'failure')
         elif kind == 'mission_snapshot':
             self.goal = event.get('request','')
             self.plan,self.criteria = event.get('plan',[]),event.get('criteria',[])
             self.verified,self.evidence = event.get('verified',[]),event.get('evidence',[])
+            if event.get('status'):
+                self.status = event['status']
+                self.phase = 'État distant · '+str(event['status'])
+            self.record(f'État reçu · {self.status} · {len(self.plan)} étapes · {len(self.evidence)} preuves')
         elif kind == 'model_metrics':
             self.metrics = event
         elif kind == 'file_received':
             self.files.append(event['path'])
+            self.record('Fichier vérifié · '+str(event['path']), 'success')
+        elif kind == 'reconnecting':
+            self.phase = 'Reconnexion au flux'
+            self.record(f"Reconnexion · tentative {event.get('attempt', '?')}", 'warning')
         elif kind == 'mission_complete':
             self.status = 'stopped' if event.get('stopped') else event.get('status','completed')
             self.verified = event.get('verification',{}).get('verified',[])
             self.phase = self.status
+            self.record('Mission · '+str(self.status), 'success' if self.status=='completed' else 'warning')
         elif kind in {'error','mission_interrupted'}:
             self.status = 'interrupted' if kind=='mission_interrupted' else 'failed'
             self.phase = self.status
+            self.record(event.get('message',event.get('error','Mission interrompue')), 'failure')
 
 
 def plain(text):
@@ -105,6 +132,8 @@ class WorkspaceApp:
         self.history = history if history is not None else Conversation.open()
         self.state,self.page,self.task,self.local_process = MissionView(),'conversation',None,None
         self.models,self.health,self.journal = [],'Diagnostic en cours…',''
+        self.partial = ''
+        self._refresh_handle = None
         self.transcript = ''.join(f"\n{'VOUS' if m['role']=='user' else 'JOBIA'}\n{plain(m['content'])}\n" for m in self.history)
         self.loop = None
         self.body = TextArea(text=self.transcript or 'Bienvenue dans JOBIA.\n\nDécris le résultat que tu veux obtenir.\n/help affiche les commandes et raccourcis.',
@@ -162,7 +191,11 @@ class WorkspaceApp:
                 self.new_conversation()
         header = Window(FormattedTextControl(self.header),height=2,style='class:header')
         sidebar = ConditionalContainer(Frame(self.sidebar,title='Mission · preuves'),Condition(lambda:self.app.output.get_size().columns>=96))
-        layout = HSplit([header,VSplit([Frame(self.body,title=lambda:' '+self.page.capitalize()+' '),sidebar],padding=1),
+        activity = ConditionalContainer(
+            Frame(Window(FormattedTextControl(self.activity_text), height=lambda: 3 if self.app.output.get_size().rows<28 else 7,
+                         wrap_lines=False), title='Activité observée'),
+            Condition(lambda: self.state.status != 'idle'))
+        layout = HSplit([header,activity,VSplit([Frame(self.body,title=lambda:' '+self.page.capitalize()+' '),sidebar],padding=1),
                          Frame(self.prompt,title='Demande · Entrée envoyer · Alt+Entrée nouvelle ligne'),
                          Window(FormattedTextControl(self.footer),height=2,style='class:footer')])
         self.app = Application(layout=Layout(layout,focused_element=self.prompt),key_bindings=bindings,
@@ -176,11 +209,14 @@ class WorkspaceApp:
     def style(self):
         view = display.view
         if view.caps.color_depth in {'none','ansi'}:
-            return Style.from_dict({'header':'bold','footer':'','frame.border':'','text-area':''})
+            return Style.from_dict({'header':'bold','footer':'','frame.border':'','text-area':'',
+                                    'activity':'', 'success':'bold', 'warning':'bold', 'failure':'bold'})
         palette = view.theme.palette
         return Style.from_dict({'header':f'bold {palette.primary}','footer':palette.muted,
                                 'frame.border':palette.border,'frame.label':f'bold {palette.secondary}',
-                                'text-area':palette.text,'status':palette.accent,'prompt':palette.primary})
+                                'text-area':palette.text,'status':palette.accent,'prompt':palette.primary,
+                                'activity':palette.info,'success':palette.success,
+                                'warning':palette.warning,'failure':f'bold {palette.error}'})
 
     def header(self):
         mode = config.get('mode','auto')
@@ -188,8 +224,28 @@ class WorkspaceApp:
         elapsed = f" · {int(time.monotonic()-self.state.started)}s" if self.busy and self.state.started else ''
         frames = '|/-\\'
         glyph = frames[int(time.monotonic()*4)%len(frames)] if self.busy and display.view.caps.animate else '·'
-        return [('class:header',f'  JOBIA  {glyph}  {self.state.phase}{elapsed}\n'),
+        return [('class:header',f'  JOBIA  {glyph}  {plain(self.state.phase)}{elapsed}\n'),
                 ('class:footer',f'  {mode} · {model} · {display.view.theme.id}')]
+
+    def activity_text(self):
+        state = self.state
+        active = state.status in {'starting', 'running', 'queued'}
+        quiet = max(0, int(time.monotonic() - (state.last_progress or state.started))) if state.started else 0
+        signal_age = max(0, int(time.monotonic() - state.last_signal)) if state.last_signal else None
+        if active and quiet >= 15:
+            label = f'Aucune avancée reçue depuis {quiet}s'
+            label += ' · connexion vivante' if signal_age is not None and signal_age < 15 and self.local_process is None else ' · en attente de nouvelles'
+            style = 'warning'
+        else:
+            label = {'starting':'Envoi · attente d’acceptation', 'running':'Mission acceptée · suivi du serveur',
+                     'completed':'Mission terminée', 'failed':'Mission en échec', 'interrupted':'Mission interrompue',
+                     'stopped':'Mission arrêtée'}.get(state.status, state.status)
+            style = 'failure' if state.status in {'failed', 'interrupted'} else 'activity'
+        rows = 1 if self.app.output.get_size().rows < 28 else 5
+        fragments = [(f'class:{style}', '  '+label+'\n'),
+                     ('class:footer', f'  {len(state.evidence)} preuves · {len(state.files)} fichiers · {state.received_chars} caractères reçus\n')]
+        fragments.extend((f'class:{tone}', '  '+text+'\n') for tone,text in state.activity[-rows:])
+        return fragments
 
     def footer(self):
         return [('class:footer','  F2 thème  F3 modèle  F4 vue  F5 diagnostic  Tab navigation  Ctrl+C arrêter  Ctrl+Q quitter\n'),
@@ -213,10 +269,24 @@ class WorkspaceApp:
         return plain('\n'.join(lines))
 
     def refresh_body(self):
+        if self._refresh_handle is not None:
+            self._refresh_handle.cancel()
+            self._refresh_handle = None
         follow = self.app.layout.has_focus(self.prompt)
         text = self.transcript if self.page=='conversation' else self.journal if self.page=='journal' else '\n'.join(self.state.files) or 'Aucun fichier reçu.'
+        if self.page == 'conversation' and self.partial:
+            tail = ' · derniers 16 000 caractères' if len(self.partial) == 16000 else ''
+            text += '\n\nSORTIE REÇUE · résultat non encore confirmé'+tail+'\n'+self.partial
         self.body.buffer.set_document(Document(text,len(text) if follow else min(self.body.buffer.cursor_position,len(text))),bypass_readonly=True)
         self.app.invalidate()
+
+    def schedule_refresh(self):
+        # Coalesce token bursts and journal updates into at most ten body renders/s.
+        if self._refresh_handle is None:
+            try:
+                self._refresh_handle = asyncio.get_running_loop().call_later(.1, self.refresh_body)
+            except RuntimeError:
+                self.refresh_body()
 
     def note(self,text):
         self.transcript = (self.transcript+'\n'+plain(text)+'\n')[-200000:]
@@ -230,7 +300,10 @@ class WorkspaceApp:
         kind = event.get('type')
         if kind not in {'token','heartbeat'}:
             self.journal = (self.journal+'\n'+plain(json.dumps(event,ensure_ascii=False,indent=2)))[-200000:]
+        if kind == 'token':
+            self.partial = (self.partial + plain(event.get('content','')))[-16000:]
         if kind=='mission_complete':
+            self.partial = ''
             if hasattr(self.history,'state'):
                 self.history.state.pop('active_mission_id',None)
             result = event.get('result','')
@@ -244,7 +317,9 @@ class WorkspaceApp:
             self.note(event.get('message',event.get('error','Mission interrompue.'))+'\nÉtat conservé. /missions puis /resume ID pour reprendre.')
         elif kind=='file_received':
             self.note('Fichier reçu et vérifié : '+event['path'])
-        self.app.invalidate()
+        elif kind=='plan' and not event.get('worker'):
+            self.note('PLAN REÇU\n'+'\n'.join(f'{i+1}. {plain(step)}' for i,step in enumerate(event.get('steps',[]))))
+        self.schedule_refresh()
 
     async def discover(self):
         try:
@@ -300,6 +375,7 @@ class WorkspaceApp:
         else:
             self.history = []
         self.transcript,self.journal = 'Nouvelle conversation. La précédente reste archivée.\n',''
+        self.partial = ''
         self.state = MissionView()
         self.refresh_body()
 
@@ -341,6 +417,9 @@ class WorkspaceApp:
 
     def accepted(self,mid):
         self.state.id,self.state.status = mid,'running'
+        self.state.phase = 'Mission acceptée'
+        self.state.last_progress = time.monotonic()
+        self.state.record('Acceptée · '+mid)
         if hasattr(self.history,'state'):
             self.history.state['active_mission_id'] = mid
             self.history.state.pop('pending_request',None)
@@ -380,6 +459,7 @@ class WorkspaceApp:
                     self.note('Nettoyage impossible : '+plain(exc))
                     return
                 self.transcript, self.journal = '', ''
+                self.partial = ''
                 self.state, self.page = MissionView(), 'conversation'
                 self.prompt.text = ''
                 self.note(f'{count} conversation(s) locale(s) effacée(s) pour ce dossier. Nouvelle conversation.'
@@ -410,7 +490,9 @@ class WorkspaceApp:
                 return
         resume = raw.split(maxsplit=1)[1] if raw.startswith('/resume ') else None
         attach = raw.split(maxsplit=1)[1] if raw.startswith('/attach ') else None
-        self.state = MissionView(status='starting',phase='Reprise' if resume else 'Préparation',started=time.monotonic())
+        self.partial = ''
+        self.state = MissionView(goal=raw,status='starting',phase='Reprise' if resume else 'Préparation',started=time.monotonic())
+        self.state.record('Connexion · attente du serveur')
         self.note('\nVOUS\n'+raw)
         if not resume and not attach and not pending:
             self.history.append({'role':'user','content':raw})
@@ -453,13 +535,17 @@ class WorkspaceApp:
                        env=env,start_new_session=os.name=='posix')
         self.local_process = await asyncio.create_subprocess_exec(sys.executable,'-m','aurora_cli.ui_worker','--receipt',str(receipt),**options)
         self.state.phase = 'Exécution locale'
+        self.state.status = 'running'
+        self.state.record('Processus local démarré')
         self.local_process.stdin.write(json.dumps(payload,ensure_ascii=False).encode())
         await self.local_process.stdin.drain()
         self.local_process.stdin.close()
         while chunk := await self.local_process.stdout.read(4096):
             self.journal = (self.journal+plain(chunk.decode('utf-8',errors='replace')))[-200000:]
+            self.state.last_progress = time.monotonic()
+            self.partial = (self.partial+plain(chunk.decode('utf-8',errors='replace')))[-16000:]
             log.write_text(self.journal,encoding='utf-8')
-            self.app.invalidate()
+            self.schedule_refresh()
         code = await self.local_process.wait()
         self.local_process = None
         if not receipt.is_file():

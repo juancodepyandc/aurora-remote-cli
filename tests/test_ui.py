@@ -67,6 +67,91 @@ def test_no_quality_or_progress_is_invented_without_events():
     assert state.status=='blocked'
 
 
+def test_heartbeat_does_not_claim_work_is_advancing(monkeypatch):
+    monkeypatch.setattr(ui.time, 'monotonic', lambda: 100)
+    with create_pipe_input() as pipe:
+        app = ui.WorkspaceApp(history=[], input=pipe, output=DummyOutput())
+        app.state = ui.MissionView(status='running', started=50, last_progress=60)
+        app.event({'type': 'heartbeat'})
+        assert app.state.last_progress == 60
+        text = ''.join(text for _,text in app.activity_text())
+        assert 'Aucune avancée reçue depuis 40s' in text
+        assert 'connexion vivante' in text
+        assert app.state.activity == []
+        app.event({'type': 'error', 'message': 'Timeout on reading data from socket'})
+        assert 'Mission en échec' in ''.join(t for _,t in app.activity_text())
+        assert 'Timeout on reading' in app.transcript
+
+
+def test_tokens_are_visible_batched_bounded_and_not_committed_before_completion():
+    async def scenario():
+        with create_pipe_input() as pipe:
+            app = ui.WorkspaceApp(history=[], input=pipe, output=DummyOutput())
+            refresh = Mock(wraps=app.refresh_body)
+            app.refresh_body = refresh
+            for _ in range(2000):
+                app.event({'type': 'token', 'content': 'visible output '})
+            assert refresh.call_count == 0
+            assert app.state.received_chars == 30000
+            assert len(app.partial) == 16000
+            assert app.history == []
+            await asyncio.sleep(.15)
+            assert refresh.call_count == 1
+            assert 'visible output' in app.body.text
+            app.event({'type': 'mission_complete', 'result': 'Final verified answer'})
+            assert not app.partial
+            assert 'visible output' not in app.body.text
+            assert app.history == [{'role': 'assistant', 'content': 'Final verified answer'}]
+            await asyncio.sleep(.15)
+    asyncio.run(scenario())
+
+
+def test_journal_refreshes_while_open_and_partial_output_survives_error():
+    async def scenario():
+        with create_pipe_input() as pipe:
+            app = ui.WorkspaceApp(history=[], input=pipe, output=DummyOutput())
+            app.page = 'journal'
+            app.event({'type': 'tool_start', 'tool': 'read_file'})
+            await asyncio.sleep(.15)
+            assert 'read_file' in app.body.text
+            app.page = 'conversation'
+            app.event({'type': 'token', 'content': 'Partial result'})
+            app.event({'type': 'error', 'message': 'Connection lost'})
+            assert 'Partial result' in app.body.text
+            assert 'résultat non encore confirmé' in app.body.text
+            assert app.history == []
+            await asyncio.sleep(.15)
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize('columns,rows', [(72,24),(120,40)])
+def test_real_terminal_layout_keeps_activity_visible_at_both_sizes(columns, rows):
+    from prompt_toolkit.data_structures import Size
+    class SizedOutput(DummyOutput):
+        def get_size(self):
+            return Size(rows=rows, columns=columns)
+    async def scenario():
+        with create_pipe_input() as pipe:
+            app = ui.WorkspaceApp(history=[], input=pipe, output=SizedOutput())
+            async def discover():
+                pass
+            app.discover = discover
+            app.state = ui.MissionView(status='running', started=ui.time.monotonic())
+            app.event({'type':'plan', 'steps':['Inspecter le projet', 'Tester'], 'criteria':[]})
+            app.event({'type':'tool_start', 'tool':'read_file'})
+            running = asyncio.create_task(app.run())
+            await asyncio.sleep(.15)
+            screen = app.app.renderer._last_screen
+            rendered = '\n'.join(''.join(screen.data_buffer[y][x].char for x in range(columns)) for y in range(rows))
+            assert 'Activité observée' in rendered
+            assert 'Outil en cours' in rendered and 'read_file' in rendered
+            assert 'Inspecter le projet' in rendered
+            assert 'Demande' in rendered
+            app.app.exit()
+            await running
+    asyncio.run(scenario())
+
+
 def test_full_screen_keyboard_submits_and_quits_without_loading_a_model(monkeypatch):
     FakeBridge.accepted,FakeBridge.closed = [],0
     config.set('mode','remote')

@@ -14,6 +14,8 @@ Sous Windows : `.venv\Scripts\python.exe` et `.venv\Scripts\jobia.exe`. `install
 
 JOBIA 1.3.0 : `jobia` ou `jobia ui` ouvre l'interface plein écran ; un pipe affiche le tableau d'accueil. Conversation, plan, critères, preuves, fichiers reçus et journal suivent les événements réels. F2 thème, F3 modèle, F4 vue, F5 diagnostic, Ctrl+C arrêt, Ctrl+Q sortie. `jobia ui --text` conserve le parcours linéaire. Thèmes : `jobia`, `otter`, `abyss`, `plain`. Options globales : `--theme`, `--color auto|always|never`, `--animation auto|full|reduced|none`.
 
+Le panneau « Activité observée » reste visible sur les petits terminaux : étapes horodatées à réception, outils, preuves et fichiers. La sortie reçue s'affiche pendant l'exécution, sans être présentée comme un résultat confirmé. Après 15 secondes sans avancée, une alerte distingue une connexion vivante d'une absence de nouvelles ; un heartbeat ne prouve pas que le moteur travaille. Le texte et le journal sont rafraîchis par lots, avec un aperçu limité aux 16 000 derniers caractères.
+
 ```bash
 jobia --theme jobia --animation reduced preview jobia
 jobia connect --server https://ADRESSE_DU_SERVEUR
