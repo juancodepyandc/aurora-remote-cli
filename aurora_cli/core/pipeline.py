@@ -44,6 +44,16 @@ class PipelineResult:
     checkpoint: Path | None = None
 
 
+def _timeout_log(exc: subprocess.TimeoutExpired) -> str:
+    """TimeoutExpired retains partial bytes even with text=True; keep them."""
+    lines = [f"TimeoutExpired : délai de calcul dépassé ({exc.timeout:g} s)."]
+    for label, output in (("stdout", exc.output), ("stderr", exc.stderr)):
+        if output:
+            detail = output.decode('utf-8', errors='replace') if isinstance(output, bytes) else str(output)
+            lines.append(f"{label} conservé :\n{detail}")
+    return '\n'.join(lines)
+
+
 def stage_import_reference(source: Path, destination: Path, *, expected_sha256: str) -> PipelineStage:
     """Snapshot and actually decode a user image; never call a generative model."""
     stage = PipelineStage('reference_input', 'local-image-decoder')
@@ -79,6 +89,9 @@ def stage_import_reference(source: Path, destination: Path, *, expected_sha256: 
         stage.status, stage.output = 'done', destination
         stage.log = json.dumps(dict(source=str(source), sha256=expected_sha256, image=metadata,
             authority='user_input', generated=False), ensure_ascii=False)
+    except subprocess.TimeoutExpired as exc:
+        stage.status, stage.error_kind = 'failed', 'timeout'
+        stage.log = _timeout_log(exc) + ' Aucune image de remplacement ne sera générée.'
     except Exception as exc:
         stage.status, stage.error_kind = 'failed', 'input_validation'
         stage.log = str(exc) + ' Aucune image de remplacement ne sera générée.'
@@ -147,7 +160,9 @@ def stage_verify_mesh(reference: Path, mesh: Path, *, prepared: tuple[Path, Path
         _save_manifest(report, measured)
         stage.status, stage.output = 'done', report
         stage.log = json.dumps(measured, ensure_ascii=False)
-    except (OSError, ValueError, RuntimeError, subprocess.TimeoutExpired) as exc:
+    except subprocess.TimeoutExpired as exc:
+        stage.status, stage.error_kind, stage.log = 'failed', 'timeout', _timeout_log(exc)
+    except (OSError, ValueError, RuntimeError) as exc:
         stage.status, stage.error_kind, stage.log = 'failed', 'visual_validation', str(exc)
     stage.duration_s = time.monotonic() - t0
     return stage
@@ -431,6 +446,9 @@ def stage_generate_image(
         else:
             stage.status = "failed"
             stage.error_kind = "execution"
+    except subprocess.TimeoutExpired as exc:
+        stage.duration_s = time.time() - t0
+        stage.status, stage.error_kind, stage.log = 'failed', 'timeout', _timeout_log(exc)
     except Exception as exc:
         stage.duration_s = time.time() - t0
         stage.status = "failed"
@@ -597,6 +615,8 @@ issues must be [] when no issue is observed; never put "no issues" in the issues
         else:
             stage.status, stage.error_kind = 'failed', 'invalid_verdict'
             stage.log = 'Contrôle visuel invalide : ' + json.dumps(invalid, ensure_ascii=False)
+    except subprocess.TimeoutExpired as exc:
+        stage.status, stage.error_kind, stage.log = 'failed', 'timeout', _timeout_log(exc)
     except Exception as exc:
         stage.duration_s = time.time() - t0
         stage.status = "failed"

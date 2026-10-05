@@ -39,9 +39,32 @@ def _decode_json(response) -> dict:
     """Read a dict response, tolerating non-JSON proxy bodies."""
     try:
         payload = response.json()
-    except (json.JSONDecodeError, ValueError):
+    except (json.JSONDecodeError, ValueError, httpx.ResponseNotRead):
         return {"ok": False, "error": f"Invalid JSON response ({response.status_code})"}
     return payload if isinstance(payload, dict) else {"ok": False, "error": "Unexpected non-object response"}
+
+
+def _request_failure(exc: httpx.RequestError, method: str, path: str, timeout) -> dict:
+    """Keep a timeout's phase visible even when its exception has no message."""
+    failure = {"ok": False, "error_kind": "connection", "error_type": type(exc).__name__}
+    if isinstance(exc, httpx.TimeoutException):
+        phase = next((name for cls, name in (
+            (httpx.ConnectTimeout, "connect"), (httpx.ReadTimeout, "read"),
+            (httpx.WriteTimeout, "write"), (httpx.PoolTimeout, "pool"),
+        ) if isinstance(exc, cls)), "read")
+        configured = timeout if isinstance(timeout, httpx.Timeout) else httpx.Timeout(timeout)
+        seconds = getattr(configured, phase)
+        label = {"connect": "connexion", "read": "lecture", "write": "envoi", "pool": "attente de connexion"}[phase]
+        budget = f" ({seconds:g} s)" if seconds is not None else ""
+        failure.update(error_kind="timeout", timeout_phase=phase, timeout_seconds=seconds,
+                       error=f"{type(exc).__name__} : délai de {label} dépassé{budget} pour {method} {path}.")
+        if method == "POST" and path == "/api/cli/mission/start":
+            failure["acceptance_unknown"] = True
+            failure["error"] += " L'acceptation de la mission est inconnue."
+    else:
+        detail = str(exc).strip() or "aucune réponse du transport"
+        failure["error"] = f"{type(exc).__name__} pour {method} {path} : {detail}"
+    return failure
 
 
 class Bridge:
@@ -86,7 +109,7 @@ class Bridge:
             r.raise_for_status()
             return _decode_json(r)
         except httpx.RequestError as e:
-            return {"ok": False, "error": f"Connection error: {e}"}
+            return _request_failure(e, "GET", path, kwargs.get("timeout", self._client.timeout))
         except httpx.HTTPStatusError as e:
             payload = _decode_json(e.response)
             payload.update(ok=False, http_status=e.response.status_code)
@@ -99,7 +122,7 @@ class Bridge:
             r.raise_for_status()
             return _decode_json(r)
         except httpx.RequestError as e:
-            return {"ok": False, "error": f"Connection error: {e}"}
+            return _request_failure(e, "POST", path, kwargs.get("timeout", self._client.timeout))
         except httpx.HTTPStatusError as e:
             payload = _decode_json(e.response)
             payload.update(ok=False, http_status=e.response.status_code)
@@ -112,7 +135,7 @@ class Bridge:
             r.raise_for_status()
             return _decode_json(r)
         except httpx.RequestError as e:
-            return {"ok": False, "error": f"Connection error: {e}"}
+            return _request_failure(e, "DELETE", path, kwargs.get("timeout", self._client.timeout))
         except httpx.HTTPStatusError as e:
             return {"ok": False, "error": f"HTTP error {e.response.status_code}"}
 
@@ -121,16 +144,21 @@ class Bridge:
         """Resume mission GET streams from complete events, never replay POSTs."""
         if resume and method != "GET":
             raise ValueError("Only mission GET streams support replay")
+        if type(last_event_id) is not int or last_event_id < 0:
+            raise ValueError("Mission cursor must be a non-negative integer")
         retries = 0
+        stream_timeout = httpx.Timeout(600.0, connect=10.0)
         while True:
             headers = {"Last-Event-ID": str(last_event_id)} if resume else {}
             kwargs = {"json": data or {}} if method == "POST" else {}
             try:
                 with self._client.stream(
                     method, path, headers=headers,
-                    timeout=httpx.Timeout(600.0, connect=10.0),
+                    timeout=stream_timeout,
                     **kwargs,
                 ) as response:
+                    if response.is_error:
+                        response.read()
                     response.raise_for_status()
                     for event_id, event in _sse_events(response.iter_lines()):
                         if resume and event.get("type") != "heartbeat":
@@ -148,22 +176,29 @@ class Bridge:
                 if not resume:
                     return
                 error = "Mission stream ended before its terminal event"
+                error_kind = "interrupted_stream"
             except httpx.RequestError as exc:
-                error = f"Connection error: {exc}"
+                failure = _request_failure(exc, method, path, stream_timeout)
+                error, error_kind = failure["error"], failure["error_kind"]
             except httpx.HTTPStatusError as exc:
-                error = f"HTTP error {exc.response.status_code}"
+                payload = _decode_json(exc.response)
+                error = payload.get("error") or f"HTTP error {exc.response.status_code}"
+                error_kind = payload.get("error_kind") or "http"
                 if exc.response.status_code not in (500, 502, 503, 504):
-                    yield {"type": "error", "error": error}
+                    yield {"type": "error", "error": error, "error_kind": error_kind,
+                           "last_event_id": last_event_id}
                     return
             except ValueError as exc:
-                yield {"type": "error", "error": f"Invalid SSE stream: {exc}"}
+                yield {"type": "error", "error": f"Invalid SSE stream: {exc}",
+                       "error_kind": "invalid_stream", "last_event_id": last_event_id}
                 return
             if not resume or retries >= 3:
-                yield {"type": "error", "error": error, "last_event_id": last_event_id}
+                yield {"type": "error", "error": error, "error_kind": error_kind,
+                       "last_event_id": last_event_id}
                 return
             retries += 1
             yield {"type": "reconnecting", "attempt": retries,
-                   "last_event_id": last_event_id, "message": error}
+                   "last_event_id": last_event_id, "message": error, "error_kind": error_kind}
             time.sleep(min(2 ** (retries - 1), 4))
 
     # --- Authentication ---

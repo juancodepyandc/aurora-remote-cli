@@ -241,8 +241,13 @@ def doctor(remote, as_json):
     ready = (bool(remote_data.get("ready", remote_data.get("ok", False)))
              if remote else True)
     if as_json:
-        click.echo(json.dumps({"ok": ready, "scope": "remote" if remote else "local",
-                               "checks": checks}, ensure_ascii=False))
+        diagnostic = {"ok": ready, "scope": "remote" if remote else "local", "checks": checks}
+        if remote_data is not None:
+            diagnostic.update({key: remote_data[key] for key in (
+                "gpu_ready", "hardware", "default_model", "models", "model_selection",
+                "error", "error_kind", "error_type", "timeout_phase", "timeout_seconds",
+            ) if key in remote_data})
+        click.echo(json.dumps(diagnostic, ensure_ascii=False))
     else:
         display.doctor_results(checks)
         if not remote:
@@ -565,14 +570,14 @@ def generate_3d(image, output, no_texture):
     if not engine or not engine.available:
         display.error("Hunyuan3D non trouvé localement.")
         display.hint("JOBIA ne trouve pas encore le moteur 3D adapté ; utilise create-3d pour le préparer automatiquement.")
-        return
+        raise click.exceptions.Exit(1)
 
     image_path = Path(image).expanduser().resolve()
     output_path = Path(output).expanduser().resolve()
 
     if not image_path.exists():
         display.error(f"Image introuvable : {image_path}")
-        return
+        raise click.exceptions.Exit(1)
 
     display.header(f"Génération 3D : {image_path.name}")
     display.hint(f"Moteur : {engine.name}")
@@ -587,6 +592,7 @@ def generate_3d(image, output, no_texture):
     else:
         display.error("La génération a échoué.")
         display.hint(log[-500:])
+        raise click.exceptions.Exit(1)
 
 
 @main.command()

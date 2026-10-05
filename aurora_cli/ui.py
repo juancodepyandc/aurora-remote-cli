@@ -134,6 +134,7 @@ class WorkspaceApp:
         self.models,self.health,self.journal = [],'Diagnostic en cours…',''
         self.partial = ''
         self._refresh_handle = None
+        self._memory_warning = ''
         self.transcript = ''.join(f"\n{'VOUS' if m['role']=='user' else 'JOBIA'}\n{plain(m['content'])}\n" for m in self.history)
         self.loop = None
         self.body = TextArea(text=self.transcript or 'Bienvenue dans JOBIA.\n\nDécris le résultat que tu veux obtenir.\n/help affiche les commandes et raccourcis.',
@@ -325,12 +326,23 @@ class WorkspaceApp:
         try:
             if config.is_configured():
                 def remote():
-                    with self.bridge_factory(timeout=5) as client:
+                    # Doctor checks several services; its response can take
+                    # longer than the former five-second read budget.
+                    with self.bridge_factory(timeout=30) as client:
                         doctor,models = client.doctor(),client.models()
                     return doctor,models
                 doctor,models = await asyncio.to_thread(remote)
                 ready = doctor.get('ok') and doctor.get('ready', True)
-                self.health = 'Pont prêt' if ready else 'Pont indisponible ou dégradé'
+                unavailable = [check['name'] for check in doctor.get('checks', [])
+                               if check.get('name') in {'GPU', 'ComfyUI'} and check.get('ok') is False]
+                if doctor.get('gpu_ready') is False and 'GPU' not in unavailable:
+                    unavailable.insert(0, 'GPU')
+                if unavailable:
+                    self.health = 'Pont dégradé · ' + ' · '.join(name + ' indisponible' for name in unavailable)
+                elif ready:
+                    self.health = 'Pont prêt pour les missions'
+                else:
+                    self.health = 'Pont indisponible ou dégradé'
                 self.health += ' · '+plain(config.resolve_server_url())
                 if not ready:
                     reason = doctor.get('error') or '; '.join(
@@ -341,6 +353,20 @@ class WorkspaceApp:
                 if config.get('mode', 'auto') == 'local':
                     self.health += ' · Mode local actif : les demandes sont exécutées sur cet ordinateur'
                 self.models = [m.get('name','') for m in models.get('models',[]) if isinstance(m,dict) and m.get('name')]
+                selected = config.get('default_model', '') or doctor.get('default_model', '')
+                selected_info = next((m for m in doctor.get('models', models.get('models', []))
+                                      if isinstance(m, dict) and m.get('name') == selected), {})
+                size = selected_info.get('size', 0)
+                ram = (doctor.get('hardware') or {}).get('ram_gb')
+                warning = ''
+                if (doctor.get('gpu_ready') is False and isinstance(size, (int, float))
+                        and isinstance(ram, (int, float)) and ram > 0 and size / 1024 ** 3 > ram):
+                    warning = (f'Modèle {selected} : {size / 1024 ** 3:.1f} Gio de poids sur disque, '
+                               f'{ram:.1f} Gio de RAM, GPU indisponible. '
+                               'La mémoire nécessaire au calcul reste à mesurer ; /models permet de choisir le modèle.')
+                if warning and warning != self._memory_warning:
+                    self.note(warning)
+                self._memory_warning = warning
             else:
                 from .core.discovery import scan
                 result = await asyncio.to_thread(scan,deep=False)
