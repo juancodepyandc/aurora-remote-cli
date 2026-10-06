@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import time
+from urllib.parse import urlsplit
 from typing import Any, Generator
 
 import httpx
@@ -341,8 +342,63 @@ class Bridge:
         return self.post("/api/cli/mission/start", payload)
 
     def mission_stream(self, mission_id: str, last_event_id: int = 0) -> Generator[dict, None, None]:
+        host = (urlsplit(self.server_url).hostname or '').lower()
+        if host.endswith('.trycloudflare.com'):
+            yield from self.mission_poll(mission_id, last_event_id)
+            return
         yield from self.stream_sse(f"/api/cli/mission/{mission_id}/stream", method="GET",
                                   resume=True, last_event_id=last_event_id)
+
+    def mission_poll(self, mission_id: str, last_event_id: int = 0) -> Generator[dict, None, None]:
+        """Replay durable events through finite authenticated GET responses."""
+        if type(last_event_id) is not int or last_event_id < 0:
+            raise ValueError('Mission cursor must be a non-negative integer')
+        retries = 0
+        while True:
+            result = self.get(f'/api/cli/mission/{mission_id}/events',
+                              headers={'Last-Event-ID':str(last_event_id)},
+                              params={'wait':20}, timeout=30)
+            if not result.get('ok'):
+                status = result.get('http_status')
+                retryable = status in (500,502,503,504) or result.get('error_kind') in ('timeout','connection')
+                if not retryable or retries >= 3:
+                    yield {'type':'error','error':result.get('error','Mission polling failed; update the bridge'),
+                           'error_kind':result.get('error_kind','http'),'last_event_id':last_event_id}
+                    return
+                retries += 1
+                yield {'type':'reconnecting','attempt':retries,'last_event_id':last_event_id,
+                       'message':result.get('error','Mission polling unavailable')}
+                time.sleep(min(2 ** (retries-1),4))
+                continue
+            try:
+                rows = result['events']
+                if not isinstance(rows,list):
+                    raise ValueError('events must be an array')
+                position = last_event_id
+                accepted = []
+                for row in rows:
+                    cursor, event = row['id'], row['event']
+                    if type(cursor) is not int or not isinstance(event,dict) or cursor != position+1:
+                        raise ValueError('Missing or invalid mission events; refusing an incomplete result')
+                    accepted.append(event)
+                    position = cursor
+                if result.get('cursor') != position or type(result.get('terminal')) is not bool:
+                    raise ValueError('Invalid mission polling cursor or terminal state')
+            except (KeyError,TypeError,ValueError) as exc:
+                yield {'type':'error','error':str(exc),'error_kind':'invalid_stream','last_event_id':last_event_id}
+                return
+            retries = 0
+            for event in accepted:
+                last_event_id += 1
+                yield event
+                if event.get('type') in ('mission_complete','error','mission_interrupted'):
+                    return
+            if result['terminal']:
+                yield {'type':'error','error':'Mission ended without a terminal event',
+                       'error_kind':'interrupted_stream','last_event_id':last_event_id}
+                return
+            if not rows:
+                yield {'type':'heartbeat','transport':'poll'}
 
     def mission_status(self, mission_id: str) -> dict:
         return self.get(f"/api/cli/mission/{mission_id}/status")
