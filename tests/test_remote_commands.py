@@ -28,6 +28,47 @@ def test_failed_remote_mission_exits_nonzero_and_closes_client(monkeypatch):
     client.close.assert_called_once()
 
 
+@pytest.mark.parametrize("permissions,expected", [(None, "SAFE"), ("autonomous", "AUTONOMOUS")])
+def test_mission_permissions_are_explicit_without_changing_saved_default(monkeypatch, permissions, expected):
+    from aurora_cli import bridge, mission
+    client = Mock()
+    run = Mock(return_value=True)
+    monkeypatch.setattr(bridge, "Bridge", lambda: client)
+    monkeypatch.setattr(mission, "run_mission", run)
+    monkeypatch.setattr(config, "get", lambda key, default=None: "SAFE" if key == "default_permissions" else default)
+    save = Mock()
+    monkeypatch.setattr(config, "save", save)
+    args = ["mission", "deliver a file"]
+    if permissions:
+        args += ["--permissions", permissions]
+    result = CliRunner().invoke(cli.main, args)
+    assert result.exit_code == 0, result.output
+    assert run.call_args.kwargs["permissions"] == expected
+    save.assert_not_called()
+    client.close.assert_called_once()
+
+
+@pytest.mark.parametrize("status,expected_exit", [(200, 0), (401, 1), (503, 1)])
+def test_connect_command_reaches_registration_and_reports_failures(monkeypatch, status, expected_exit):
+    import httpx
+    from aurora_cli import connect
+    response = httpx.Response(status, json={"ok": status == 200},
+                              request=httpx.Request("POST", "https://bridge.test/api/cli/register"))
+    register = Mock(return_value=response)
+    monkeypatch.setattr(connect, "_register", register)
+    save = Mock()
+    monkeypatch.setattr(config, "set_key", save)
+    result = CliRunner().invoke(cli.main, ["connect", "--server", "https://bridge.test",
+                                           "--api-key", "fixture-key"])
+    assert result.exit_code == expected_exit, result.output
+    register.assert_called_once_with("https://bridge.test", "fixture-key")
+    assert "Traceback" not in result.output
+    if expected_exit:
+        save.assert_not_called()
+    else:
+        assert save.call_args_list[0].args == ("server_url", "https://bridge.test")
+
+
 @pytest.mark.parametrize("command", [["agents", "list"], ["agents", "disable", "reviewer"], ["mcp", "list"], ["skills", "list"]])
 def test_remote_management_uses_real_bridge_methods_and_closes(monkeypatch, command):
     from aurora_cli.bridge import Bridge

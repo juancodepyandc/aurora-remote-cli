@@ -161,11 +161,15 @@ def main(ctx, theme_opt, color, anim_opt):
 @main.command()
 @click.option("--server", default="", help="Bridge address; otherwise discover the tunnel.")
 @click.option("--api-key", envvar=brand.env_legacy("api_key"), default="", help="Key already allowed by the bridge.")
-def connect(server, api_key):
+@click.option("--interactive/--no-interactive", default=None, help="Open chat after pairing (default: interactive terminals only).")
+def connect(server, api_key, interactive):
     """Pair this machine with a remote bridge."""
     from aurora_cli.connect import connect as do_connect
 
-    do_connect(server_url=server, api_key=api_key)
+    if interactive is None:
+        interactive = sys.stdin.isatty() and sys.stdout.isatty()
+    if not do_connect(server=server, api_key=api_key, then_interactive=interactive):
+        raise click.ClickException("La connexion au pont a échoué.")
 
 
 @main.command()
@@ -277,7 +281,9 @@ def permissions(level):
 @click.argument("request", required=True)
 @click.option("--model", default="", help="Server model to use.")
 @click.option("--server-workspace", default=None, help="Working directory on the bridge host.")
-def mission(request, model, server_workspace):
+@click.option("--permissions", type=click.Choice(config.PERMISSION_LEVELS, case_sensitive=False),
+              default=None, help="Permissions for this mission; otherwise use the saved setting.")
+def mission(request, model, server_workspace, permissions):
     """Send one request to the remote bridge."""
     from aurora_cli.mission import run_mission
     from aurora_cli.bridge import Bridge
@@ -285,7 +291,7 @@ def mission(request, model, server_workspace):
     try:
         if not run_mission(client, request, workspace=str(Path.cwd()), model=model,
                            server_workspace=server_workspace,
-                           permissions=config.get('default_permissions', 'AUTONOMOUS')):
+                           permissions=permissions or config.get('default_permissions', 'AUTONOMOUS')):
             raise click.ClickException("La mission distante ne s'est pas terminée avec succès.")
     finally:
         client.close()
