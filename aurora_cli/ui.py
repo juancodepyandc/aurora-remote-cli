@@ -73,7 +73,7 @@ class MissionView:
             self.record(('Outil terminé · ' if event.get('ok') else 'Échec outil · ')+str(event.get('tool','Outil'))+
                         ' · '+observation_text(event, 180),
                         'success' if event.get('ok') else 'failure')
-        elif kind in {'command_output','recovery_observation','completion_observation','stagnation_notice',
+        elif kind in {'environment_observation','command_output','recovery_observation','completion_observation','stagnation_notice',
                       'recovery_start','recovery_proposal','recovery_rejected','review_result'}:
             detail = observation_text(event, 220)
             if detail:
@@ -327,7 +327,7 @@ class WorkspaceApp:
             self.note('Fichier reçu et vérifié : '+event['path'])
         elif kind=='plan' and not event.get('worker'):
             self.note('PLAN REÇU\n'+'\n'.join(f'{i+1}. {plain(step)}' for i,step in enumerate(event.get('steps',[]))))
-        elif kind in {'tool_result','recovery_observation','completion_observation','stagnation_notice',
+        elif kind in {'environment_observation','tool_result','recovery_observation','completion_observation','stagnation_notice',
                       'recovery_start','recovery_proposal','recovery_rejected','review_result'}:
             detail = observation_text(event)
             if detail:

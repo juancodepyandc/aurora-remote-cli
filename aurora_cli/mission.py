@@ -144,7 +144,7 @@ def run_mission(client: Bridge, request: str, workspace: str = "", permissions: 
                     display.view.console.print(token, end="", markup=False, highlight=False, soft_wrap=True)
                     tokens_printed = True
                 
-            elif etype in {'tool_result','command_output','recovery_observation','completion_observation',
+            elif etype in {'environment_observation','tool_result','command_output','recovery_observation','completion_observation',
                            'stagnation_notice','recovery_start','recovery_proposal','recovery_rejected','review_result'}:
                 detail = observation_text(event, 1200)
                 if detail:

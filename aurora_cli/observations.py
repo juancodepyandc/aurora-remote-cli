@@ -37,10 +37,19 @@ def observation_text(event, limit=600):
                 detail = _text(result['path'])
                 if 'bytes' in result:
                     detail += f" · {result['bytes']} octets"
+                fields = {key:result[key] for key in ('exists','type','content_kind','nearest_existing_parent','encoding_status') if key in result}
+                if fields:
+                    detail += ' · '+_text(fields)
             else:
                 detail = _text(result)
         elif result is not None:
             detail = _text(result)
+    elif kind == 'environment_observation':
+        runtime = event.get('runtime', {})
+        tools = [item.get('name','') for item in event.get('source_tools',[]) if isinstance(item,dict)]
+        detail = ('Dossier de mission : '+str(runtime.get('workspace','non précisé'))+
+                  '\nLivraison : '+str(runtime.get('delivery_directory','non précisée'))+
+                  '\nScripts découverts (moteurs à vérifier) : '+', '.join(tools))
     elif kind == 'command_output':
         detail = event.get('content', '')
     elif kind == 'stagnation_notice':

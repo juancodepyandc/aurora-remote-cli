@@ -39,3 +39,22 @@ def test_tool_output_cannot_emit_terminal_control_sequences():
     detail = observation_text({'type':'command_output','content':'\x1b[31mError\x1b[0m\x00\x9b'})
     assert detail == 'Error'
     assert len(observation_text({'type':'command_output','content':'many characters'}, 3)) <= 3
+
+
+def test_environment_discovery_is_visible_without_claiming_runtime_readiness():
+    event = {'type':'environment_observation',
+             'runtime':{'workspace':'/actual/workspace','delivery_directory':'/actual/delivery'},
+             'source_tools':[{'name':'actual_export.py','availability':'source_present_not_runtime_verified'}]}
+    state = MissionView()
+    state.consume(event)
+    detail = observation_text(event)
+    assert '/actual/workspace' in state.activity[-1][1]
+    assert '/actual/delivery' in detail and 'actual_export.py' in detail
+    assert 'moteurs à vérifier' in detail
+    assert not state.verified and not state.evidence
+
+
+def test_path_observation_reports_missing_file_and_real_parent():
+    detail = observation_text({'type':'tool_result','tool':'inspect_path','ok':True,
+        'result':{'path':'/actual/missing.blend','exists':False,'type':'missing','nearest_existing_parent':'/actual'}})
+    assert 'false' in detail and 'missing' in detail and 'nearest_existing_parent' in detail
