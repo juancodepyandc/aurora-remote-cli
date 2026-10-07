@@ -16,7 +16,8 @@ def main():
     request = json.load(sys.stdin)
     history = request.get('history', [])
     try:
-        ok = bool(execute(request['request'],history,local_only=True))
+        ok = bool(execute(request['request'],history,local_only=True,
+                          allow_model_selection=bool(request.get('allow_model_selection',False))))
         result = next((m['content'] for m in reversed(history) if m.get('role')=='assistant'), '') if ok else ''
         payload = {'ok':ok,'result':result,'history':history,
                    'error':'' if ok else 'Le pipeline local n’a pas confirmé le résultat demandé. Consulte le journal.'}

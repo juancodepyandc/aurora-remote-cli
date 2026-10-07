@@ -25,6 +25,13 @@ def isolated_config(tmp_path, monkeypatch):
     monkeypatch.setenv("JOBIA_COLOR", "truecolor")
     monkeypatch.setenv("JOBIA_ANIM", "none")
     from aurora_cli.core import locations
+    from aurora_cli import brand
+    for key in ('api_key','server_url','mode','provider','model'):
+        for name in (brand.env(key),brand.env_legacy(key)):
+            monkeypatch.delenv(name,raising=False)
+    # An empty temporary config must not migrate this machine's real legacy
+    # credentials and then dispatch a supposedly isolated test to its server.
+    monkeypatch.setattr(locations,'legacy_config_files',lambda: [])
 
     # locations reads the env vars at call time, so no cache to clear.
     assert locations.config_dir() == config_dir

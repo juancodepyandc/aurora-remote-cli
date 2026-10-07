@@ -88,7 +88,7 @@ class Bridge:
             transport=transport,
             base_url=self.server_url,
             headers={"Authorization": f"Bearer {self.api_key}"},
-            timeout=httpx.Timeout(timeout, connect=10.0),
+            timeout=httpx.Timeout(timeout, connect=min(10.0,timeout)),
             follow_redirects=True,
         )
 

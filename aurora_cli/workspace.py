@@ -107,16 +107,30 @@ def prepare(request: str, *, yes=False):
     return True
 
 
-def execute(request: str, history: list, *, local_only=False):
+def execute(request: str, history: list, *, local_only=False, allow_model_selection=False):
     result = scan(deep=True)
     plan = recommend(request, profile(),
                      [m for p in result.providers for m in p.models] + result.loose_models)
     media = any(s.agent.capability not in {"llm", "code"} for s in plan.steps)
     mode = "local" if local_only else config.get("mode", "auto")
-    if any(s.agent.id in {"3d", "3d-texture"} for s in plan.steps):
-        from .core.pipeline import run_pipeline
+    is_3d = any(s.agent.id in {"3d", "3d-texture"} for s in plan.steps)
+    spec = None
+    if is_3d:
         from .core.request_spec import parse_creation_request
         spec = parse_creation_request(request)
+    remote_available = False
+    if mode=='auto' and config.is_configured() and not (spec and spec.input_image is not None):
+        from .routing import remote_readiness
+        remote_available, reason = remote_readiness()
+        if not remote_available:
+            display.hint('PC fixe indisponible : '+reason+' · utilisation des moteurs de cet ordinateur.')
+            mode = 'local'
+            allow_model_selection = True
+    if mode=='remote' and not config.is_configured():
+        display.error('Mode distant : configure le pont avec jobia connect avant de lancer la mission.')
+        return False
+    if is_3d:
+        from .core.pipeline import run_pipeline
         # A configured bridge is the fixed workstation requested by the user.
         # Try it first for complex 3D work; local execution remains an
         # automatic fallback if the bridge is temporarily unreachable.
@@ -124,7 +138,7 @@ def execute(request: str, history: list, *, local_only=False):
             # The bridge currently transports text, not local attachments. A
             # path on this computer is not evidence the remote host can read it.
             display.hint("Image locale fournie : exécution locale ; le pont ne transfère pas encore les références.")
-        if spec.input_image is None and mode != "local" and config.is_configured():
+        if spec.input_image is None and (mode=='remote' or remote_available):
             display.info("Demande 3D complexe : utilisation automatique du PC fixe via AuroraIA.")
             # An accepted mission can fail after side effects. Do not regenerate
             # locally merely because the remote stream did not finish.
@@ -152,6 +166,9 @@ def execute(request: str, history: list, *, local_only=False):
         _remember_result(history, request, f"3D : {'livrée' if result_3d.success else 'non livrée'}. "
                          f"Fichier : {result_3d.final_output}. Diagnostics : {result_3d.checkpoint}. {pending}")
         return bool(result_3d.success and not remaining)
+    if remote_available:
+        display.info('Exécution sur le PC fixe via le pont ; réception des résultats dans ce dossier.')
+        return _remote_mission(request, history)
     if media and mode != "remote" and all(s.agent.id == "image" for s in plan.steps):
         from aurora_cli.core.images import generate
         output = generate(request, result)
@@ -172,7 +189,7 @@ def execute(request: str, history: list, *, local_only=False):
         display.hint("Pour exécuter cette création avec les pipelines du PC fixe : jobia connect, puis réessaie.")
         return
     router = Router(mode=mode, prefer=config.get("provider", ""), result=result)
-    router.note_remote(config.is_configured() and not local_only)
+    router.note_remote(remote_available or (mode=='remote' and config.is_configured()))
     route = router.route()
     if route.kind == "remote":
         return _remote_mission(request, history)
@@ -188,8 +205,11 @@ def execute(request: str, history: list, *, local_only=False):
     role = next((s.agent.id for s in plan.steps if s.agent.capability in {'llm', 'code'}), 'resume')
     preferred = config.get('default_model', '')
     if preferred and preferred not in {m.name for m in route.models}:
-        display.error('Le modèle choisi n’est pas servi par ce moteur : '+preferred)
-        return False
+        if not allow_model_selection:
+            display.error('Le modèle choisi n’est pas servi par ce moteur : '+preferred)
+            return False
+        display.hint('Le modèle distant '+preferred+' est absent ici ; sélection parmi les modèles réellement servis localement.')
+        preferred = ''
     chosen = preferred or router.pick_model(route=route, role=role)
     if not chosen:
         display.warning('Aucun modèle servi ne tient dans le budget mémoire disponible pour cette tâche.')

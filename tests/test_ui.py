@@ -36,7 +36,7 @@ class FakeBridge:
     def mission_status(self,mid):
         return {'ok':True,'id':mid,'status':'running','plan':[],'criteria':[],'evidence':[]}
     def doctor(self):
-        return {'ok':True}
+        return {'ok':True,'ready':True}
     def models(self):
         return {'models':[{'name':'observed:local'}]}
     def mission_stop(self,mid):

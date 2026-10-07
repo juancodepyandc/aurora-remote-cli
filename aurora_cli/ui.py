@@ -65,6 +65,9 @@ class MissionView:
         elif kind == 'plan' and not event.get('worker'):
             self.plan,self.criteria = event.get('steps',[]),event.get('criteria',[])
             self.record(f'Plan reçu · {len(self.plan)} étapes')
+        elif kind == 'plan_revision' and not event.get('worker'):
+            self.plan = event.get('steps',self.plan)
+            self.record('Étapes adaptées · '+str(event.get('reason','Observations nouvelles')))
         elif kind == 'token':
             self.received_chars += len(event.get('content',''))
         elif kind == 'tool_result':
@@ -327,6 +330,9 @@ class WorkspaceApp:
             self.note('Fichier reçu et vérifié : '+event['path'])
         elif kind=='plan' and not event.get('worker'):
             self.note('PLAN REÇU\n'+'\n'.join(f'{i+1}. {plain(step)}' for i,step in enumerate(event.get('steps',[]))))
+        elif kind=='plan_revision' and not event.get('worker'):
+            self.note('ÉTAPES ADAPTÉES · '+plain(event.get('reason','Observations nouvelles'))+'\n'+
+                      '\n'.join(f'{i+1}. {plain(step)}' for i,step in enumerate(event.get('steps',[]))))
         elif kind in {'environment_observation','tool_result','recovery_observation','completion_observation','stagnation_notice',
                       'recovery_start','recovery_proposal','recovery_rejected','review_result'}:
             detail = observation_text(event)
@@ -538,7 +544,17 @@ class WorkspaceApp:
             if hasattr(self.history,'save'):
                 self.history.save()
         try:
-            if pending or attach or resume or config.get('mode','auto')=='remote' or (config.get('mode','auto')!='local' and config.is_configured()):
+            mode = config.get('mode','auto')
+            remote = bool(pending or attach or resume or mode=='remote')
+            fallback = False
+            if not remote and mode=='auto' and config.is_configured():
+                from .routing import remote_readiness
+                remote, reason = await asyncio.to_thread(remote_readiness,self.bridge_factory)
+                if not remote:
+                    fallback = True
+                    self.note('PC fixe indisponible · '+plain(reason)+'\nExécution sur cet ordinateur avec les moteurs locaux disponibles.')
+            if remote:
+                self.note('Exécution sur le serveur · '+plain(config.resolve_server_url()))
                 if not attach and not resume and not pending:
                     from urllib.parse import urlsplit
                     local_server = urlsplit(config.resolve_server_url()).hostname in {'127.0.0.1','localhost','::1'}
@@ -552,13 +568,16 @@ class WorkspaceApp:
                         self.history.save()
                 await asyncio.to_thread(self._remote,raw,resume=resume,attach=attach,pending=pending)
             else:
-                await self.local(raw)
+                if fallback:
+                    await self.local(raw,automatic=True)
+                else:
+                    await self.local(raw)
         except Exception as exc:
             self.event({'type':'error','message':str(exc) or type(exc).__name__})
         finally:
             self.app.invalidate()
 
-    async def local(self,raw):
+    async def local(self,raw,*,automatic=False):
         from .core import locations
         receipt = locations.data_dir()/'ui-runs'/f'{uuid4().hex}.json'
         receipt.parent.mkdir(parents=True,exist_ok=True,mode=0o700)
@@ -569,7 +588,8 @@ class WorkspaceApp:
             self.history.save()
         env = os.environ.copy()
         env.update(PYTHONUNBUFFERED='1',JOBIA_COLOR='never',JOBIA_ANIMATION='none')
-        payload = {'request':raw,'history':list(self.history[:-1]),'model':config.get('default_model','')}
+        payload = {'request':raw,'history':list(self.history[:-1]),'model':config.get('default_model',''),
+                   'allow_model_selection':automatic}
         options = dict(stdin=asyncio.subprocess.PIPE,stdout=asyncio.subprocess.PIPE,stderr=asyncio.subprocess.STDOUT,
                        env=env,start_new_session=os.name=='posix')
         self.local_process = await asyncio.create_subprocess_exec(sys.executable,'-m','aurora_cli.ui_worker','--receipt',str(receipt),**options)
