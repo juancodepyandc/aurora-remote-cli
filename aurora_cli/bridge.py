@@ -331,7 +331,8 @@ class Bridge:
     # --- Missions ---
 
     def mission_start(self, request: str, workspace: str = "", permissions: str = "AUTONOMOUS",
-                      session_id: str = "", model: str = "", idempotency_key: str = "", history: list | None = None) -> dict:
+                      session_id: str = "", model: str = "", idempotency_key: str = "", history: list | None = None,
+                      context_tokens: int | None = None) -> dict:
         payload = {
             "request": request, "workspace": workspace, "permissions": permissions,
             "session_id": session_id, "model": model,
@@ -339,6 +340,10 @@ class Bridge:
         }
         if history is not None:
             payload['history'] = history
+        if context_tokens is not None:
+            if type(context_tokens) is not int or not 1024 <= context_tokens <= 131072:
+                raise ValueError('context_tokens must be an integer from 1024 to 131072')
+            payload['context_tokens'] = context_tokens
         return self.post("/api/cli/mission/start", payload)
 
     def mission_stream(self, mission_id: str, last_event_id: int = 0) -> Generator[dict, None, None]:

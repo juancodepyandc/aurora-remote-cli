@@ -283,7 +283,9 @@ def permissions(level):
 @click.option("--server-workspace", default=None, help="Working directory on the bridge host.")
 @click.option("--permissions", type=click.Choice(config.PERMISSION_LEVELS, case_sensitive=False),
               default=None, help="Permissions for this mission; otherwise use the saved setting.")
-def mission(request, model, server_workspace, permissions):
+@click.option("--context-tokens", type=click.IntRange(1024, 131072), default=None,
+              help="Ollama context for this mission (more context needs more memory); otherwise use server defaults.")
+def mission(request, model, server_workspace, permissions, context_tokens):
     """Send one request to the remote bridge."""
     from aurora_cli.mission import run_mission
     from aurora_cli.bridge import Bridge
@@ -291,6 +293,7 @@ def mission(request, model, server_workspace, permissions):
     try:
         if not run_mission(client, request, workspace=str(Path.cwd()), model=model,
                            server_workspace=server_workspace,
+                           context_tokens=context_tokens,
                            permissions=permissions or config.get('default_permissions', 'AUTONOMOUS')):
             raise click.ClickException("La mission distante ne s'est pas terminée avec succès.")
     finally:

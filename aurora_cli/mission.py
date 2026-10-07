@@ -37,15 +37,16 @@ def _safe_target(root: Path, raw: str, for_write: bool = False) -> Path | None:
     return resolved
 
 
-def run_mission(client: Bridge, request: str, workspace: str = "", permissions: str = "AUTONOMOUS", model: str = "", session_id: str = "", *, server_workspace: str | None = None, resume_id: str = "", watch_id: str = "") -> bool:
+def run_mission(client: Bridge, request: str, workspace: str = "", permissions: str = "AUTONOMOUS", model: str = "", session_id: str = "", *, server_workspace: str | None = None, resume_id: str = "", watch_id: str = "", context_tokens: int | None = None) -> bool:
     """Start and monitor an autonomous mission."""
     if server_workspace is None:
         local_server = urlsplit(client.server_url).hostname in ("localhost", "127.0.0.1", "::1")
         server_workspace = workspace if local_server else ""
     try:
+        options = {'context_tokens':context_tokens} if context_tokens is not None else {}
         data = (client.mission_status(watch_id) if watch_id else client.mission_resume(resume_id,model=model) if resume_id else
                 client.mission_start(request, workspace=server_workspace, permissions=permissions,
-                                     model=model, session_id=session_id, idempotency_key=uuid4().hex))
+                                     model=model, session_id=session_id, idempotency_key=uuid4().hex, **options))
         if watch_id and data.get("ok"):
             data.update(mission_id=watch_id,cursor=data.get("stream_start_cursor",0))
         mission_id = data.get("mission_id")

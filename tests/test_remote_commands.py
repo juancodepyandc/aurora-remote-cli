@@ -48,6 +48,24 @@ def test_mission_permissions_are_explicit_without_changing_saved_default(monkeyp
     client.close.assert_called_once()
 
 
+@pytest.mark.parametrize('value,expected_exit', [('8192',0),('0',2),('131073',2),('invalid',2)])
+def test_context_option_is_per_mission_and_rejects_invalid_sizes(monkeypatch,value,expected_exit):
+    from aurora_cli import bridge, mission
+    client = Mock()
+    run = Mock(return_value=True)
+    monkeypatch.setattr(bridge,'Bridge',lambda:client)
+    monkeypatch.setattr(mission,'run_mission',run)
+    save = Mock()
+    monkeypatch.setattr(config,'save',save)
+    result = CliRunner().invoke(cli.main,['mission','inspect','--context-tokens',value])
+    assert result.exit_code == expected_exit, result.output
+    if expected_exit == 0:
+        assert run.call_args.kwargs['context_tokens'] == 8192
+    else:
+        run.assert_not_called()
+    save.assert_not_called()
+
+
 @pytest.mark.parametrize("status,expected_exit", [(200, 0), (401, 1), (503, 1)])
 def test_connect_command_reaches_registration_and_reports_failures(monkeypatch, status, expected_exit):
     import httpx

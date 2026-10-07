@@ -44,6 +44,21 @@ def test_timed_out_mission_start_is_not_reposted():
     assert json.loads(requests[0].content)['idempotency_key'] == 'original-key'
 
 
+def test_context_override_crosses_client_transport_without_changing_default():
+    payloads = []
+    def handler(request):
+        payloads.append(json.loads(request.content))
+        return httpx.Response(200,json={'ok':True,'mission_id':'fixture'})
+    with client_with(handler) as client:
+        client.mission_start('Explicit',context_tokens=8192)
+        client.mission_start('Native')
+        with pytest.raises(ValueError):
+            client.mission_start('Invalid',context_tokens=True)
+    assert payloads[0]['context_tokens'] == 8192
+    assert 'context_tokens' not in payloads[1]
+    assert len(payloads) == 2
+
+
 class BrokenStream(httpx.SyncByteStream):
     def __init__(self, payload):
         self.payload = payload
