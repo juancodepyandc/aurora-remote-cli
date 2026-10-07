@@ -14,6 +14,7 @@ from rich.text import Text
 from aurora_cli import display
 from aurora_cli.bridge import Bridge
 from aurora_cli.transfers import receive_file
+from aurora_cli.observations import observation_text
 
 
 def _safe_target(root: Path, raw: str, for_write: bool = False) -> Path | None:
@@ -143,6 +144,17 @@ def run_mission(client: Bridge, request: str, workspace: str = "", permissions: 
                     display.view.console.print(token, end="", markup=False, highlight=False, soft_wrap=True)
                     tokens_printed = True
                 
+            elif etype in {'tool_result','command_output','recovery_observation','completion_observation',
+                           'stagnation_notice','recovery_start','recovery_proposal','recovery_rejected','review_result'}:
+                detail = observation_text(event, 1200)
+                if detail:
+                    if live_spinner:
+                        live_spinner.stop()
+                        live_spinner = None
+                    _separate_from_tokens()
+                    label = ('Outil · '+str(event.get('tool', ''))+' · '+('réussi' if event.get('ok') else 'échec')) if etype=='tool_result' else 'Observation'
+                    display.view.console.print(Text(label+'\n'+detail))
+
             elif etype == "file_diff":
                 if live_spinner:
                     live_spinner.stop()

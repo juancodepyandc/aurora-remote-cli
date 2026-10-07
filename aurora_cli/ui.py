@@ -24,6 +24,7 @@ from prompt_toolkit.styles import Style
 from prompt_toolkit.widgets import Frame, TextArea
 
 from . import config, display, themes
+from .observations import observation_text, terminal_text
 
 
 @dataclass
@@ -69,8 +70,14 @@ class MissionView:
         elif kind == 'tool_result':
             if not any(e.get('id')==event.get('id') for e in self.evidence):
                 self.evidence.append(event)
-            self.record(('Outil terminé · ' if event.get('ok') else 'Échec outil · ')+str(event.get('tool','Outil')),
+            self.record(('Outil terminé · ' if event.get('ok') else 'Échec outil · ')+str(event.get('tool','Outil'))+
+                        ' · '+observation_text(event, 180),
                         'success' if event.get('ok') else 'failure')
+        elif kind in {'command_output','recovery_observation','completion_observation','stagnation_notice',
+                      'recovery_start','recovery_proposal','recovery_rejected','review_result'}:
+            detail = observation_text(event, 220)
+            if detail:
+                self.record(detail, 'warning' if kind in {'stagnation_notice','recovery_rejected','review_result'} else 'activity')
         elif kind == 'mission_snapshot':
             self.goal = event.get('request','')
             self.plan,self.criteria = event.get('plan',[]),event.get('criteria',[])
@@ -100,8 +107,7 @@ class MissionView:
 
 def plain(text):
     """Escape terminal control characters from model/tool output."""
-    text = re.sub(r'\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\))', '', str(text))
-    return ''.join(c for c in text if c in '\n\t' or (ord(c)>=32 and not 127<=ord(c)<=159))
+    return terminal_text(text)
 
 
 def retry_payload_valid(pending):
@@ -244,7 +250,7 @@ class WorkspaceApp:
             style = 'failure' if state.status in {'failed', 'interrupted'} else 'activity'
         rows = 1 if self.app.output.get_size().rows < 28 else 5
         fragments = [(f'class:{style}', '  '+label+'\n'),
-                     ('class:footer', f'  {len(state.evidence)} preuves · {len(state.files)} fichiers · {state.received_chars} caractères reçus\n')]
+                     ('class:footer', f'  {len(state.evidence)} observations · {len(state.files)} fichiers · {state.received_chars} caractères reçus\n')]
         fragments.extend((f'class:{tone}', '  '+text+'\n') for tone,text in state.activity[-rows:])
         return fragments
 
@@ -262,8 +268,9 @@ class WorkspaceApp:
         lines.extend(['','CRITÈRES'])
         ok, pending, failed = ('✓ ','○ ','× ') if display.view.caps.unicode else ('+ ','o ','x ')
         lines.extend((ok if c in state.verified else pending)+plain(c) for c in state.criteria)
-        lines.extend(['','PREUVES'])
-        lines.extend((ok if e.get('ok') else failed)+e.get('tool','')+' · '+e.get('id','') for e in state.evidence[-8:])
+        lines.extend(['','OBSERVATIONS'])
+        lines.extend((ok if e.get('ok') else failed)+e.get('tool','')+' · '+e.get('id','')+
+                     '\n  '+observation_text(e, 250) for e in state.evidence[-8:])
         if state.metrics.get('tokens_per_second') is not None:
             lines.extend(['',f"Débit observé : {state.metrics['tokens_per_second']:.1f} tokens/s"])
         lines.append(f'Fichiers reçus : {len(state.files)}')
@@ -320,6 +327,12 @@ class WorkspaceApp:
             self.note('Fichier reçu et vérifié : '+event['path'])
         elif kind=='plan' and not event.get('worker'):
             self.note('PLAN REÇU\n'+'\n'.join(f'{i+1}. {plain(step)}' for i,step in enumerate(event.get('steps',[]))))
+        elif kind in {'tool_result','recovery_observation','completion_observation','stagnation_notice',
+                      'recovery_start','recovery_proposal','recovery_rejected','review_result'}:
+            detail = observation_text(event)
+            if detail:
+                label = ('OUTIL · '+str(event.get('tool', ''))+' · '+('réussi' if event.get('ok') else 'échec')) if kind=='tool_result' else 'OBSERVATION'
+                self.note(label+'\n'+detail)
         self.schedule_refresh()
 
     async def discover(self):
