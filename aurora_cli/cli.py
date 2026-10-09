@@ -1556,5 +1556,8 @@ def audio_cmd(text, source, output, model):
         raise click.ClickException(str(exc)) from exc
 
 
+from .print_export import export3d
+main.add_command(export3d)
+
 if __name__ == "__main__":
     main()
