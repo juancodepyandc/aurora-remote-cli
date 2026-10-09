@@ -3,12 +3,13 @@ from __future__ import annotations
 
 import json
 import time
+import os
 from urllib.parse import urlsplit
 from typing import Any, Generator
 
 import httpx
 
-from aurora_cli import config
+from aurora_cli import brand, config
 from aurora_cli.core import locations
 
 
@@ -81,6 +82,9 @@ class Bridge:
         self.server_url = config.resolve_server_url(server_url, cfg)
         self.api_key = api_key or config.get("api_key", "")
         self.timeout = timeout
+        self._discoverable = (not server_url and not os.environ.get(brand.env('server_url'))
+                              and not os.environ.get(brand.env_legacy('server_url'))
+                              and (urlsplit(self.server_url).hostname or '').endswith('.trycloudflare.com'))
         
         # Expert mode: Robust connection transport with retries
         transport = httpx.HTTPTransport(retries=3)
@@ -220,7 +224,27 @@ class Bridge:
         return self.get("/api/cli/status")
 
     def doctor(self) -> dict:
-        return self.get("/api/cli/doctor")
+        result = self.get('/api/cli/doctor')
+        unavailable = result.get('error_kind') in {'connection', 'timeout'} or result.get('http_status') in {502, 503, 504, 530}
+        if not self._discoverable or not unavailable:
+            return result
+        # Refresh only a pre-dispatch diagnostic. Accepted missions keep their
+        # host and cursor; POSTs and mission streams are never moved or replayed.
+        from .connect import discover_tunnel
+        try:
+            refreshed = discover_tunnel()
+            if refreshed == self.server_url:
+                return result
+            with Bridge(server_url=refreshed, api_key=self.api_key, timeout=self.timeout) as candidate:
+                diagnostic = candidate.get('/api/cli/doctor')
+            if not diagnostic.get('ok'):
+                return result
+            self._client.base_url = refreshed
+            self.server_url = refreshed
+            config.set_key('server_url', refreshed)
+            return diagnostic
+        except (httpx.HTTPError, ValueError, KeyError, OSError):
+            return result
 
     def version(self) -> dict:
         return self.get("/api/cli/version")
