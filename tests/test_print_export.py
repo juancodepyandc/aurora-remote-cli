@@ -49,3 +49,36 @@ def test_cli_assembly_demands_profile_before_upload(tmp_path):
     mesh=tmp_path/'source.stl';mesh.write_bytes(b'mesh')
     result=CliRunner().invoke(main,['export3d',str(mesh),'--variant','assembly'])
     assert result.exit_code!=0 and '--profile' in result.output
+
+
+def test_cli_opens_delivered_assembly_and_forwards_constraints(tmp_path,monkeypatch):
+    from contextlib import nullcontext
+    mesh=tmp_path/'source.glb';mesh.write_bytes(b'mesh')
+    profile=tmp_path/'printer.json';profile.write_text('{"name":"Printer"}')
+    constraints=tmp_path/'constraints.json';constraints.write_text('{"protected_zones_mm": [[[1,2,3],[4,5,6]]]}')
+    seen={}
+    monkeypatch.setattr(print_export,'Bridge',lambda:nullcontext('client'))
+    def export(client,source,options,output):
+        seen['options']=options;output.write_bytes(b'verified delivery')
+        return {'piece_count':3,'pin_count':4}
+    def view(path,**kwargs):
+        assert path.read_bytes()==b'verified delivery';seen['viewer']=kwargs
+        return 'http://127.0.0.1:1234/viewer.html',True
+    monkeypatch.setattr(print_export,'prepare_export',export)
+    monkeypatch.setattr(print_export,'launch_viewer',view)
+    result=CliRunner().invoke(main,['export3d',str(mesh),'--variant','assembly','--profile',str(profile),
+        '--constraints',str(constraints),'--viewer','textured','--output',str(tmp_path/'out.zip')])
+    assert result.exit_code==0,result.output
+    assert 'Viewer : http://127.0.0.1:1234' in result.output
+    assert seen['viewer']=={'open_browser':True,'appearance':'textured','exploded':True}
+    assert seen['options']['protected_zones_mm']==[[[1,2,3],[4,5,6]]]
+
+
+def test_cli_view3d_reopens_without_any_bridge_or_export(tmp_path,monkeypatch):
+    source=tmp_path/'assembly.zip';source.write_bytes(b'archive')
+    monkeypatch.setattr(print_export,'Bridge',lambda:pytest.fail('Reopening must not connect to bridge'))
+    calls=[]
+    monkeypatch.setattr(print_export,'launch_viewer',lambda path,**kw:(calls.append(kw) or 'http://127.0.0.1:1234',False))
+    result=CliRunner().invoke(main,['view3d',str(source),'--no-open','--exploded'])
+    assert result.exit_code==0,result.output
+    assert calls==[{'open_browser':False,'appearance':'colors','exploded':True}]

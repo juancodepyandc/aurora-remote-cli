@@ -9,6 +9,7 @@ import time
 import click
 
 from .bridge import Bridge
+from .assembly_viewer import launch_viewer
 
 
 def prepare_export(client, source, options, output, *, wait_seconds=210):
@@ -71,10 +72,20 @@ def prepare_export(client, source, options, output, *, wait_seconds=210):
 @click.option('--axis', type=click.Choice(['auto','x','y','z']), default='auto')
 @click.option('--cut-mm', multiple=True, type=click.FloatRange(min=0.01), help='Plan de coupe, répétable.')
 @click.option('--output', type=click.Path(dir_okay=False, path_type=Path), default='aurora-3d.zip')
-def export3d(mesh, variant, size_mm, profile, axis, cut_mm, output):
+@click.option('--constraints', type=click.Path(exists=True, dir_okay=False, path_type=Path),
+              help='JSON : protected_zones_mm et/ou connector_centers_mm, dans les coordonnées finales du modèle.')
+@click.option('--viewer', type=click.Choice(['colors','textured']), default='colors',
+              help='Aspect du viewer d’assemblage ; textured commence en vue éclatée.')
+@click.option('--open/--no-open', 'open_browser', default=True, help='Ouvrir le navigateur après un assemblage ; sinon afficher son URL locale.')
+def export3d(mesh, variant, size_mm, profile, axis, cut_mm, output, constraints, viewer, open_browser):
     """Exporter géométrie, texture ou pièces d'assemblage via le bridge."""
     try:
         options = dict(mode=variant, size_mm=size_mm, axis=axis, cuts_mm=list(cut_mm))
+        if constraints:
+            rules = json.loads(constraints.read_text(encoding='utf-8'))
+            if not isinstance(rules, dict) or set(rules)-{'protected_zones_mm','connector_centers_mm'}:
+                raise ValueError('Contraintes : protected_zones_mm et connector_centers_mm uniquement.')
+            options.update(rules)
         if variant == 'assembly':
             if profile is None:
                 raise ValueError('Assemblage : fournir --profile avec le profil imprimante JSON.')
@@ -84,5 +95,25 @@ def export3d(mesh, variant, size_mm, profile, axis, cut_mm, output):
         click.echo(f'Archive vérifiée : {output}')
         if variant == 'assembly':
             click.echo(f"{report['piece_count']} pièce(s), {report['pin_count']} pion(s). Ajustement physique à calibrer.")
+            url, opened = launch_viewer(output, open_browser=open_browser, appearance=viewer, exploded=viewer=='textured')
+            click.echo(f'Viewer : {url}')
+            if open_browser and not opened:
+                click.echo('Navigateur indisponible : ouvrir cette URL sur cette machine.')
+    except Exception as exc:
+        raise click.ClickException(str(exc)) from exc
+
+
+@click.command('view3d')
+@click.argument('archive', type=click.Path(exists=True, dir_okay=False, path_type=Path))
+@click.option('--viewer', type=click.Choice(['colors','textured']), default='colors')
+@click.option('--exploded', is_flag=True, help='Commencer en vue éclatée.')
+@click.option('--open/--no-open', 'open_browser', default=True)
+def view3d(archive, viewer, exploded, open_browser):
+    """Rouvrir le viewer d'une archive livrée, sans relancer son export."""
+    try:
+        url, opened = launch_viewer(archive, open_browser=open_browser, appearance=viewer, exploded=exploded or viewer=='textured')
+        click.echo(f'Viewer : {url}')
+        if open_browser and not opened:
+            click.echo('Navigateur indisponible : ouvrir cette URL sur cette machine.')
     except Exception as exc:
         raise click.ClickException(str(exc)) from exc
