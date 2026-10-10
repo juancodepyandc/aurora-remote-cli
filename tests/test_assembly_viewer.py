@@ -20,7 +20,9 @@ def package(tmp_path):
     return path
 
 
-def test_real_http_loopback_viewer_serves_only_render_assets(tmp_path):
+def test_real_http_loopback_viewer_serves_only_render_assets(tmp_path,monkeypatch):
+    import socket
+    monkeypatch.setattr(socket,'getfqdn',lambda *a:pytest.fail('Loopback listener must not depend on DNS'))
     archive=package(tmp_path);server=make_server(archive)
     thread=threading.Thread(target=server.serve_forever,daemon=True);thread.start()
     try:

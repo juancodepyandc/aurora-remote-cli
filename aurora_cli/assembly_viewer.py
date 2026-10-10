@@ -6,6 +6,7 @@ import mimetypes
 import os
 from pathlib import Path, PurePosixPath
 import subprocess
+from socketserver import TCPServer
 import sys
 import tempfile
 import time
@@ -65,7 +66,15 @@ def make_server(path):
             self.send_header('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; connect-src 'self' blob: data:; object-src 'none'; frame-ancestors 'none'")
             self.end_headers()
             self.wfile.write(data)
-    server = ThreadingHTTPServer(('127.0.0.1',0), Handler)
+    class LoopbackServer(ThreadingHTTPServer):
+        def server_bind(self):
+            # HTTPServer normally reverse-resolves its bind address. That can
+            # block startup on hosts with broken/slow DNS (macOS runners too).
+            # Our host is already numeric loopback and needs no DNS lookup.
+            TCPServer.server_bind(self)
+            self.server_name = 'localhost'
+            self.server_port = self.server_address[1]
+    server = LoopbackServer(('127.0.0.1',0), Handler)
     server.daemon_threads = True
     server.last_request = time.monotonic()
     return server
