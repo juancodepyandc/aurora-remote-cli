@@ -82,3 +82,23 @@ def test_cli_view3d_reopens_without_any_bridge_or_export(tmp_path,monkeypatch):
     result=CliRunner().invoke(main,['view3d',str(source),'--no-open','--exploded'])
     assert result.exit_code==0,result.output
     assert calls==[{'open_browser':False,'appearance':'colors','exploded':True}]
+
+
+def test_cli_forwards_filament_plan_before_verified_delivery(tmp_path,monkeypatch):
+    from contextlib import nullcontext
+    mesh=tmp_path/'model.stl';mesh.write_bytes(b'mesh')
+    profile=tmp_path/'printer.json';profile.write_text('{"name":"Ender-3 V3 SE","color_capability":"single"}')
+    filaments=tmp_path/'filaments.json';filaments.write_text('[{"name":"PLA bleu","color":"#245caa"}]')
+    seen={}
+    monkeypatch.setattr(print_export,'Bridge',lambda:nullcontext('client'))
+    def export(client,source,options,output):
+        seen.update(options);output.write_bytes(b'archive');return {'piece_count':1,'pin_count':0}
+    monkeypatch.setattr(print_export,'prepare_export',export)
+    monkeypatch.setattr(print_export,'launch_viewer',lambda *a,**k:('http://127.0.0.1:1234',False))
+    result=CliRunner().invoke(main,['export3d',str(mesh),'--variant','assembly','--profile',str(profile),
+        '--filaments',str(filaments),'--no-open','--output',str(tmp_path/'out.zip')])
+    assert result.exit_code==0,result.output
+    assert seen['profile']['color_capability']=='single'
+    assert seen['piece_filaments']==[{'name':'PLA bleu','color':'#245caa'}]
+    failed=CliRunner().invoke(main,['export3d',str(mesh),'--filaments',str(filaments)])
+    assert failed.exit_code!=0 and 'réservé' in failed.output

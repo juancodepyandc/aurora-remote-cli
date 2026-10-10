@@ -74,10 +74,12 @@ def prepare_export(client, source, options, output, *, wait_seconds=210):
 @click.option('--output', type=click.Path(dir_okay=False, path_type=Path), default='aurora-3d.zip')
 @click.option('--constraints', type=click.Path(exists=True, dir_okay=False, path_type=Path),
               help='JSON : protected_zones_mm et/ou connector_centers_mm, dans les coordonnées finales du modèle.')
+@click.option('--filaments', type=click.Path(exists=True, dir_okay=False, path_type=Path),
+              help='JSON : un {name, color: #RRGGBB} par pièce, pour imprimer chaque couleur séparément puis assembler.')
 @click.option('--viewer', type=click.Choice(['colors','textured']), default='colors',
               help='Aspect du viewer d’assemblage ; textured commence en vue éclatée.')
 @click.option('--open/--no-open', 'open_browser', default=True, help='Ouvrir le navigateur après un assemblage ; sinon afficher son URL locale.')
-def export3d(mesh, variant, size_mm, profile, axis, cut_mm, output, constraints, viewer, open_browser):
+def export3d(mesh, variant, size_mm, profile, axis, cut_mm, output, constraints, filaments, viewer, open_browser):
     """Exporter géométrie, texture ou pièces d'assemblage via le bridge."""
     try:
         options = dict(mode=variant, size_mm=size_mm, axis=axis, cuts_mm=list(cut_mm))
@@ -86,6 +88,13 @@ def export3d(mesh, variant, size_mm, profile, axis, cut_mm, output, constraints,
             if not isinstance(rules, dict) or set(rules)-{'protected_zones_mm','connector_centers_mm'}:
                 raise ValueError('Contraintes : protected_zones_mm et connector_centers_mm uniquement.')
             options.update(rules)
+        if filaments:
+            if variant != 'assembly':
+                raise ValueError('--filaments est réservé aux assemblages.')
+            plan = json.loads(filaments.read_text(encoding='utf-8'))
+            if not isinstance(plan, list):
+                raise ValueError('Filaments : liste JSON requise.')
+            options['piece_filaments'] = plan
         if variant == 'assembly':
             if profile is None:
                 raise ValueError('Assemblage : fournir --profile avec le profil imprimante JSON.')
