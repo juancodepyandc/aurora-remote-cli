@@ -78,14 +78,27 @@ def launch_viewer(archive, *, open_browser=True, appearance='colors', exploded=F
     with tempfile.TemporaryDirectory(prefix='aurora-viewer-') as temporary:
         ready = Path(temporary)/'ready.json'
         kwargs = {'start_new_session':True} if os.name != 'nt' else {'creationflags':subprocess.CREATE_NEW_PROCESS_GROUP}
-        process = subprocess.Popen([sys.executable,'-m','aurora_cli.assembly_viewer',str(Path(archive).resolve()),'--ready',str(ready)],
-                                   stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, **kwargs)
+        # This entry point uses only stdlib. Run its exact installed file so
+        # launch is independent of cwd and child package-import configuration.
+        process = subprocess.Popen([sys.executable,str(Path(__file__).resolve()),str(Path(archive).resolve()),'--ready',str(ready)],
+                                   stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+                                   text=True, encoding='utf-8', errors='replace', **kwargs)
         deadline = time.monotonic()+15
-        while not ready.exists():
-            if process.poll() is not None or time.monotonic() > deadline:
-                process.terminate()
-                raise RuntimeError('Le serveur local du viewer n’a pas démarré.')
-            time.sleep(.05)
+        try:
+            while not ready.exists():
+                if process.poll() is not None or time.monotonic() > deadline:
+                    if process.poll() is None:
+                        process.terminate()
+                        try:
+                            process.wait(timeout=3)
+                        except subprocess.TimeoutExpired:
+                            process.kill(); process.wait()
+                    error = process.stderr.read(2048).strip().splitlines()
+                    detail = ': '+error[-1][:500] if error else ''
+                    raise RuntimeError('Le serveur local du viewer n’a pas démarré'+detail)
+                time.sleep(.05)
+        finally:
+            process.stderr.close()
         url = json.loads(ready.read_text(encoding='utf-8'))['url']
     url += f'?appearance={appearance}&exploded={int(exploded)}'
     opened = False
@@ -102,7 +115,15 @@ def serve():
     parser.add_argument('archive'); parser.add_argument('--ready',required=True)
     args = parser.parse_args()
     server = make_server(args.archive); server.timeout=1
-    Path(args.ready).write_text(json.dumps({'url':f'http://127.0.0.1:{server.server_port}/viewer.html'}),encoding='utf-8')
+    # Close the startup diagnostic pipe before acknowledging readiness. The
+    # detached server no longer depends on a descriptor owned by the CLI.
+    diagnostic = sys.stderr
+    sys.stderr = open(os.devnull,'w')
+    diagnostic.close()
+    ready = Path(args.ready)
+    temporary = ready.with_suffix('.tmp')
+    temporary.write_text(json.dumps({'url':f'http://127.0.0.1:{server.server_port}/viewer.html'}),encoding='utf-8')
+    os.replace(temporary,ready)
     try:
         # Browser tabs maintain the listener while visible; otherwise expire
         # after 30 idle minutes. Reopen at any time with jobia view3d.

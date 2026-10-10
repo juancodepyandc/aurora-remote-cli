@@ -42,6 +42,7 @@ def test_real_http_loopback_viewer_serves_only_render_assets(tmp_path):
 def test_detached_server_is_ready_after_cli_returns(tmp_path,monkeypatch):
     import aurora_cli.assembly_viewer as viewer
     archive=package(tmp_path);processes=[];original=viewer.subprocess.Popen
+    monkeypatch.chdir(tmp_path)  # no repository or importable package in cwd
     def spawn(*a,**kw):
         process=original(*a,**kw);processes.append(process);return process
     monkeypatch.setattr(viewer.subprocess,'Popen',spawn)
