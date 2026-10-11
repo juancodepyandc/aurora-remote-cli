@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import base64
 import os
+import re
 import socket
 import time
 from urllib.parse import urlsplit
@@ -21,6 +22,7 @@ from aurora_cli import brand, config, display
 TUNNEL_SOURCE = (
     "https://api.github.com/repos/juancodepyandc/aurora-live/contents/tunnel.txt"
 )
+TUNNEL_RAW_SOURCE = "https://raw.githubusercontent.com/juancodepyandc/aurora-live/main/tunnel.txt"
 ALLOWED_SCHEMES = ("http", "https")
 
 
@@ -31,7 +33,7 @@ def _valid_url(url: str, *, tunnel_only: bool = False) -> str:
         raise ValueError("Adresse de pont invalide")
     if parsed.username or parsed.password:
         raise ValueError("Identifiants dans l'URL non autorisés")
-    if tunnel_only and not parsed.hostname.endswith(".trycloudflare.com"):
+    if tunnel_only and not re.fullmatch(r"https://[a-z0-9-]+\.trycloudflare\.com", url):
         raise ValueError("Seuls les tunnels trycloudflare sont publiés")
     if tunnel_only and (parsed.port not in (None, 443) or parsed.path
                         or parsed.query or parsed.fragment):
@@ -41,17 +43,32 @@ def _valid_url(url: str, *, tunnel_only: bool = False) -> str:
 
 def discover_tunnel() -> str:
     """Read the current bridge address from its published file."""
-    response = httpx.get(
-        TUNNEL_SOURCE,
-        params={"_t": str(int(time.time()))},
-        headers={"Cache-Control": "no-cache", "Accept": "application/vnd.github.v3+json"},
-        timeout=10.0,
-    )
-    response.raise_for_status()
-    metadata = response.json()
-    if metadata.get("encoding") != "base64":
-        raise ValueError("Réponse de découverte invalide")
-    published = base64.b64decode(metadata["content"]).decode("utf-8").strip().rstrip("/")
+    request = dict(params={"_t": str(time.time_ns())},
+                   headers={"Cache-Control": "no-cache", "Accept": "application/vnd.github.v3+json"},
+                   timeout=10.0)
+    try:
+        response = httpx.get(TUNNEL_SOURCE, **request)
+        response.raise_for_status()
+    except httpx.HTTPError as exc:
+        # Same publisher, alternate reader. An authoritative empty or invalid
+        # API result never falls back to potentially stale CDN content.
+        if isinstance(exc, httpx.HTTPStatusError) and exc.response.status_code not in {403, 429, 500, 502, 503, 504}:
+            raise
+        response = httpx.get(TUNNEL_RAW_SOURCE, params=request['params'],
+                             headers={"Cache-Control": "no-cache"}, timeout=10.0)
+        response.raise_for_status()
+        if len(response.content) > 2048:
+            raise ValueError("Réponse de découverte trop volumineuse")
+        published = response.text.strip().rstrip("/")
+    else:
+        if len(response.content) > 16384:
+            raise ValueError("Réponse de découverte trop volumineuse")
+        metadata = response.json()
+        if (not isinstance(metadata, dict) or metadata.get("encoding") != "base64"
+                or not isinstance(metadata.get("content"), str)):
+            raise ValueError("Réponse de découverte invalide")
+        content = ''.join(metadata['content'].split())
+        published = base64.b64decode(content, validate=True).decode("utf-8").strip().rstrip("/")
     if not published:
         raise ValueError("Le pont distant semble éteint ou son tunnel n'est pas encore publié.")
     _valid_url(published, tunnel_only=True)
@@ -70,7 +87,8 @@ def _register(url: str, key: str) -> httpx.Response:
 def connect(server: str = "", api_key: str = "", *, then_interactive: bool = True) -> bool:
     """Register this device against a bridge and remember the credentials."""
     try:
-        auto_discover = not server and not os.environ.get(brand.env_legacy("server_url"))
+        auto_discover = (not server and not os.environ.get(brand.env("server_url"))
+                         and not os.environ.get(brand.env_legacy("server_url")))
         url = (server or config.resolve_server_url() or discover_tunnel()).rstrip("/")
         _valid_url(url)
 

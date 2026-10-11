@@ -109,6 +109,15 @@ class Bridge:
     # --- Low-level ---
 
     def get(self, path: str, **kwargs: Any) -> dict:
+        result = self._get_once(path, **kwargs)
+        # Shared, pre-dispatch metadata only. Accepted mission IDs, downloads,
+        # streams and all writes remain bound to their original host.
+        if path in {'/api/cli/doctor', '/api/cli/status', '/api/cli/version',
+                    '/api/cli/tools', '/api/cli/models'}:
+            return self._refresh_metadata(path, result, **kwargs)
+        return result
+
+    def _get_once(self, path: str, **kwargs: Any) -> dict:
         try:
             r = self._client.get(path, **kwargs)
             r.raise_for_status()
@@ -224,25 +233,25 @@ class Bridge:
         return self.get("/api/cli/status")
 
     def doctor(self) -> dict:
-        result = self.get('/api/cli/doctor')
+        return self.get('/api/cli/doctor')
+
+    def _refresh_metadata(self, path: str, result: dict, **kwargs: Any) -> dict:
         unavailable = result.get('error_kind') in {'connection', 'timeout'} or result.get('http_status') in {502, 503, 504, 530}
         if not self._discoverable or not unavailable:
             return result
-        # Refresh only a pre-dispatch diagnostic. Accepted missions keep their
-        # host and cursor; POSTs and mission streams are never moved or replayed.
         from .connect import discover_tunnel
         try:
             refreshed = discover_tunnel()
             if refreshed == self.server_url:
                 return result
             with Bridge(server_url=refreshed, api_key=self.api_key, timeout=self.timeout) as candidate:
-                diagnostic = candidate.get('/api/cli/doctor')
+                diagnostic = candidate._get_once('/api/cli/doctor')
             if not diagnostic.get('ok'):
                 return result
+            config.set_key('server_url', refreshed)
             self._client.base_url = refreshed
             self.server_url = refreshed
-            config.set_key('server_url', refreshed)
-            return diagnostic
+            return diagnostic if path == '/api/cli/doctor' else self._get_once(path, **kwargs)
         except (httpx.HTTPError, ValueError, KeyError, OSError):
             return result
 
