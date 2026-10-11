@@ -14,7 +14,6 @@ import socket
 import time
 from urllib.parse import urlsplit
 
-import click
 import httpx
 
 from aurora_cli import brand, config, display
@@ -94,7 +93,8 @@ def connect(server: str = "", api_key: str = "", *, then_interactive: bool = Tru
 
         key = api_key or config.get("api_key")
         if not key:
-            key = click.prompt("Clé autorisée par l'administrateur du pont", hide_input=True)
+            from aurora_cli.device_pairing import pair_device
+            key=pair_device(url)
 
         try:
             response = _register(url, key)
@@ -111,6 +111,10 @@ def connect(server: str = "", api_key: str = "", *, then_interactive: bool = Tru
             url = refreshed
             response = _register(url, key)
 
+        if response.status_code == 401 and not api_key:
+            from aurora_cli.device_pairing import pair_device
+            key=pair_device(url)
+            response=_register(url,key)
         if response.status_code == 401:
             display.error(
                 "Clé absente, invalide ou révoquée. Fournissez une clé déjà autorisée par le pont."
