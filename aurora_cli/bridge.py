@@ -82,6 +82,7 @@ class Bridge:
         self.server_url = config.resolve_server_url(server_url, cfg)
         self.api_key = api_key or config.get("api_key", "")
         self.timeout = timeout
+        self._mission_hosts: dict[str, str] = {}
         self._discoverable = (not server_url and not os.environ.get(brand.env('server_url'))
                               and not os.environ.get(brand.env_legacy('server_url'))
                               and (urlsplit(self.server_url).hostname or '').endswith('.trycloudflare.com'))
@@ -117,9 +118,17 @@ class Bridge:
             return self._refresh_metadata(path, result, **kwargs)
         return result
 
+    def _mission_path(self, path: str) -> str:
+        prefix = '/api/cli/mission/'
+        if path.startswith(prefix):
+            mid = path[len(prefix):].split('/', 1)[0]
+            if mid in self._mission_hosts:
+                return self._mission_hosts[mid].rstrip('/') + path
+        return path
+
     def _get_once(self, path: str, **kwargs: Any) -> dict:
         try:
-            r = self._client.get(path, **kwargs)
+            r = self._client.get(self._mission_path(path), **kwargs)
             r.raise_for_status()
             return _decode_json(r)
         except httpx.RequestError as e:
@@ -132,9 +141,16 @@ class Bridge:
 
     def post(self, path: str, data: dict | None = None, **kwargs: Any) -> dict:
         try:
-            r = self._client.post(path, json=data or {}, **kwargs)
+            dispatch_host = self.server_url
+            target = (dispatch_host.rstrip('/') + path if path == '/api/cli/mission/start'
+                      else self._mission_path(path))
+            r = self._client.post(target, json=data or {}, **kwargs)
             r.raise_for_status()
-            return _decode_json(r)
+            result = _decode_json(r)
+            mid = result.get('mission_id')
+            if path == '/api/cli/mission/start' and result.get('ok') and isinstance(mid, str) and mid and '/' not in mid:
+                self._mission_hosts[mid] = dispatch_host
+            return result
         except httpx.RequestError as e:
             return _request_failure(e, "POST", path, kwargs.get("timeout", self._client.timeout))
         except httpx.HTTPStatusError as e:
@@ -145,7 +161,7 @@ class Bridge:
 
     def delete(self, path: str, **kwargs: Any) -> dict:
         try:
-            r = self._client.delete(path, **kwargs)
+            r = self._client.delete(self._mission_path(path), **kwargs)
             r.raise_for_status()
             return _decode_json(r)
         except httpx.RequestError as e:
@@ -167,7 +183,7 @@ class Bridge:
             kwargs = {"json": data or {}} if method == "POST" else {}
             try:
                 with self._client.stream(
-                    method, path, headers=headers,
+                    method, self._mission_path(path), headers=headers,
                     timeout=stream_timeout,
                     **kwargs,
                 ) as response:

@@ -57,3 +57,24 @@ def test_environment_host_is_never_replaced_during_pairing(monkeypatch):
     monkeypatch.setattr(connect,'_register',lambda *a:(_ for _ in ()).throw(httpx.ConnectError('offline')))
     monkeypatch.setattr(connect,'discover_tunnel',lambda:pytest.fail('Explicit environment host replaced'))
     assert not connect.connect(api_key='fixture',then_interactive=False)
+
+@pytest.mark.parametrize('method,suffix',[('get','status'),('post','stop'),('delete','')])
+def test_metadata_refresh_cannot_move_an_accepted_mission(monkeypatch,method,suffix):
+    monkeypatch.setattr(config,'load',lambda:{'server_url':OLD})
+    monkeypatch.setattr(config,'set_key',lambda *a:None)
+    monkeypatch.setattr(connect,'discover_tunnel',lambda:NEW)
+    calls=[]
+    def handler(r):
+        calls.append((r.method,r.url.host,r.url.path))
+        if r.url.path=='/api/cli/mission/start':
+            return httpx.Response(200,json={'ok':True,'mission_id':'mis_accepted'})
+        if r.url.host=='old.trycloudflare.com':
+            return httpx.Response(530,json={'ok':False})
+        return httpx.Response(200,json={'ok':True})
+    monkeypatch.setattr(bridge.httpx,'HTTPTransport',lambda **kw:httpx.MockTransport(handler))
+    with bridge.Bridge(api_key='fixture') as b:
+        assert b.post('/api/cli/mission/start',{'request':'fixture'})['ok']
+        assert b.status()['ok'] and b.server_url==NEW
+        path='/api/cli/mission/mis_accepted'+('/'+suffix if suffix else '')
+        assert not getattr(b,method)(path)['ok']
+        assert calls[-1]==(method.upper(),'old.trycloudflare.com',path)
