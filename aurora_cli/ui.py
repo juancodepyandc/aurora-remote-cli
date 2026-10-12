@@ -237,26 +237,128 @@ class WorkspaceApp:
         return [('class:header',f'  JOBIA  {glyph}  {plain(self.state.phase)}{elapsed}\n'),
                 ('class:footer',f'  {mode} · {model} · {display.view.theme.id}')]
 
+
+
     def activity_text(self):
         state = self.state
         active = state.status in {'starting', 'running', 'queued'}
         quiet = max(0, int(time.monotonic() - (state.last_progress or state.started))) if state.started else 0
         signal_age = max(0, int(time.monotonic() - state.last_signal)) if state.last_signal else None
+
+        view = display.view
+        time_s = time.monotonic()
+
+        # Determine Phase Visuals
+        phase_lower = str(state.phase).lower()
+        phase_icon = "✦"
+        phase_color = "activity"
+
+        if state.status == "starting":
+            phase_icon = "🔌" if view.caps.unicode else "~"
+            phase_color = "primary"
+        elif "réfléch" in phase_lower or "plan" in phase_lower or "analys" in phase_lower:
+            phase_icon = "🧠" if view.caps.unicode else "?"
+            phase_color = "status"
+        elif "cherch" in phase_lower or "web" in phase_lower or "recherch" in phase_lower or "navig" in phase_lower:
+            phase_icon = "🔍" if view.caps.unicode else "O"
+            phase_color = "info"
+        elif "exécut" in phase_lower or "code" in phase_lower or "outil" in phase_lower or "bash" in phase_lower:
+            phase_icon = "💻" if view.caps.unicode else ">"
+            phase_color = "warning"
+        elif "connexion" in phase_lower or "reconnexion" in phase_lower or "attente" in phase_lower:
+            phase_icon = "🔌" if view.caps.unicode else "~"
+            phase_color = "primary"
+        elif state.status == "completed":
+            phase_icon = "✨" if view.caps.unicode else "*"
+            phase_color = "success"
+        elif state.status in {"failed", "interrupted"}:
+            phase_icon = "💥" if view.caps.unicode else "!"
+            phase_color = "failure"
+
         if active and quiet >= 15:
             label = f'Aucune avancée reçue depuis {quiet}s'
             label += ' · connexion vivante' if signal_age is not None and signal_age < 15 and self.local_process is None else ' · en attente de nouvelles'
             style = 'warning'
         else:
-            label = {'starting':'Envoi · attente d’acceptation', 'running':'Mission acceptée · suivi du serveur',
+            base_label = {'starting':'Envoi · attente d’acceptation', 'running':'Mission acceptée · suivi du serveur',
                      'completed':'Mission terminée', 'failed':'Mission en échec', 'interrupted':'Mission interrompue',
                      'stopped':'Mission arrêtée'}.get(state.status, state.status)
-            style = 'failure' if state.status in {'failed', 'interrupted'} else 'activity'
-        rows = 1 if self.app.output.get_size().rows < 28 else 5
-        fragments = [(f'class:{style}', '  '+label+'\n'),
-                     ('class:footer', f'  {len(state.evidence)} observations · {len(state.files)} fichiers · {state.received_chars} caractères reçus\n')]
-        fragments.extend((f'class:{tone}', '  '+text+'\n') for tone,text in state.activity[-rows:])
-        return fragments
 
+            if active:
+                label = f"{phase_icon}  {base_label} · {plain(state.phase)}"
+            else:
+                label = f"{phase_icon}  {base_label}"
+
+            style = 'failure' if state.status in {'failed', 'interrupted'} else phase_color
+
+        if active and view.caps.animate:
+            # Special spinner for connection phases
+            if state.status == "starting" or "connexion" in phase_lower:
+                spinner_frames = view.animator.frames_for("pulse")
+            else:
+                spinner_frames = view.animator.frames_for("dots")
+
+            frame_idx = int(time_s * 10) % len(spinner_frames)
+            spinner = spinner_frames[frame_idx]
+            label = f"{spinner}  {label}"
+        else:
+            label = f"  {label}"
+
+        rows = 1 if self.app.output.get_size().rows < 28 else 5
+        fragments = [(f'class:{style}', label + chr(10))]
+
+        progress = 0.0
+        if state.plan:
+            completed_steps = len([s for s in state.criteria if s in state.verified])
+            if completed_steps > 0:
+                progress = min(1.0, completed_steps / max(1, len(state.criteria)))
+            else:
+                progress = min(0.9, quiet / 60.0) if quiet else 0.1
+
+        try:
+            bar_width = self.app.output.get_size().columns - 40
+        except Exception:
+            bar_width = 40
+
+        if active and view.caps.animate and bar_width > 10:
+            import math
+            from .core import color as colour
+            filled = int(max(0.0, min(1.0, progress)) * bar_width)
+
+            # Pulse faster if in starting state to show connection excitement
+            pulse_speed = 8.0 if state.status == "starting" else 4.0
+            shimmer = int((math.sin(time_s * pulse_speed) + 1) / 2 * 3)
+
+            bar_tokens = []
+            if view.theme.motion.shimmer and view.caps.rich_palette:
+                # Determine colors based on phase
+                if state.status == "starting":
+                    ramp = view.theme.palette.ramp(8, ("primary", "info", "banner_alt"))
+                else:
+                    ramp = view.theme.palette.ramp(8, ("primary", "secondary", "banner_alt"))
+
+                for index in range(bar_width):
+                    if index < filled:
+                        c = colour.blend(ramp[index % len(ramp)], "#ffffff", 0.35 if abs(index - shimmer) < 2 else 0.0)
+                        pt_color = colour.to_prompt_toolkit(c, view.caps.color_depth)
+                        bar_tokens.append((f'fg:{pt_color}', '█'))
+                    # Animate empty space slightly when starting
+                    elif state.status == "starting":
+                        pulse_fade = (math.sin(time_s * 3.0 - index * 0.2) + 1.0) / 2.0
+                        c = colour.blend(view.theme.raw("border"), view.theme.raw("info"), 0.4 * pulse_fade)
+                        pt_color = colour.to_prompt_toolkit(c, view.caps.color_depth)
+                        bar_tokens.append((f'fg:{pt_color}', '·'))
+                    else:
+                        c = view.theme.raw("muted")
+                        pt_color = colour.to_prompt_toolkit(c, view.caps.color_depth)
+                        bar_tokens.append((f'fg:{pt_color}', '·'))
+                fragments.append(('', '  '))
+                fragments.extend(bar_tokens)
+                fragments.append(('', chr(10)))
+
+        fragments.append(('class:footer', f'  {len(state.evidence)} observations · {len(state.files)} fichiers · {state.received_chars} caractères reçus' + chr(10)))
+        fragments.extend((f'class:{tone}', '  '+text+chr(10)) for tone,text in state.activity[-rows:])
+        return fragments
     def footer(self):
         return [('class:footer','  F2 thème  F3 modèle  F4 vue  F5 diagnostic  Tab navigation  Ctrl+C arrêter  Ctrl+Q quitter\n'),
                 ('class:footer','  '+self.health)]
