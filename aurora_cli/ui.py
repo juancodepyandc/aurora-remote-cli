@@ -138,7 +138,8 @@ def retry_payload_valid(pending):
 
 
 
-class GlassFrame:
+class CyberGlassFrame:
+    """Refined glassmorphism frame with holographic badge headers and clean borders."""
     def __init__(self, body, title="", style="", width=None, height=None, key_bindings=None, modal=False):
         self.title = title
         self.body = body
@@ -148,80 +149,36 @@ class GlassFrame:
             view = display.view
             caps = view.caps
             box_style = view.theme.box_for(caps)
-            if box_style == "rounded":
-                b = view.theme.glyphs.border_round
-            elif box_style == "ascii":
-                b = view.theme.glyphs.border_ascii
+            if box_style == "ascii":
+                return {"TOP_LEFT": "+", "HORIZONTAL": "-", "TOP_RIGHT": "+",
+                        "VERTICAL_LEFT": "|", "VERTICAL_RIGHT": "|",
+                        "BOTTOM_LEFT": "+", "BOTTOM_RIGHT": "+"}.get(pos, "+")
+            elif box_style == "heavy":
+                return {"TOP_LEFT": "┏", "HORIZONTAL": "━", "TOP_RIGHT": "┓",
+                        "VERTICAL_LEFT": "┃", "VERTICAL_RIGHT": "┃",
+                        "BOTTOM_LEFT": "┗", "BOTTOM_RIGHT": "┛"}.get(pos, "┃")
             else:
-                b = view.theme.glyphs.border_heavy
+                return {"TOP_LEFT": "╭", "HORIZONTAL": "─", "TOP_RIGHT": "╮",
+                        "VERTICAL_LEFT": "│", "VERTICAL_RIGHT": "│",
+                        "BOTTOM_LEFT": "╰", "BOTTOM_RIGHT": "╯"}.get(pos, "│")
 
-            if len(b) >= 12:
-                chars = {
-                    "TOP_LEFT": b[0], "HORIZONTAL": b[1], "TOP_RIGHT": b[2],
-                    "VERTICAL_LEFT": b[3], "VERTICAL_RIGHT": b[4],
-                    "BOTTOM_LEFT": b[5], "BOTTOM_RIGHT": b[6],
-                    "T_LEFT": b[7], "T_RIGHT": b[8], "T_TOP": b[9], "T_BOTTOM": b[10], "CROSS": b[11]
-                }
-            elif len(b) >= 8:
-                chars = {
-                    "TOP_LEFT": b[0], "HORIZONTAL": b[1], "TOP_RIGHT": b[2],
-                    "VERTICAL_LEFT": b[1] if b[1] != b[0] else "|",
-                    "VERTICAL_RIGHT": b[1] if b[1] != b[0] else "|",
-                    "BOTTOM_LEFT": b[6], "BOTTOM_RIGHT": b[7],
-                    "T_LEFT": b[3], "T_RIGHT": b[5], "T_TOP": b[1], "T_BOTTOM": b[1], "CROSS": b[1]
-                }
-            else:
-                c = b[0] if len(b) > 0 else "+"
-                chars = {k: c for k in ["TOP_LEFT", "HORIZONTAL", "TOP_RIGHT", "VERTICAL_LEFT", "VERTICAL_RIGHT", "BOTTOM_LEFT", "BOTTOM_RIGHT", "T_LEFT", "T_RIGHT", "T_TOP", "T_BOTTOM", "CROSS"]}
-
-            return chars.get(pos, "+")
-
-        def get_horizontal_fragments():
-            view = display.view
-            time_s = time.monotonic()
-            fragments = []
-
-            try:
-                # We approximate width by checking global output (hack for lambda)
-                import shutil
-                w, _ = shutil.get_terminal_size()
-                bar_width = w - 4 # rough estimate
-            except:
-                bar_width = 80
-
-            is_otter = "otter" in view.theme.id.lower()
-            wave_chars = view.theme.glyphs.spin_wave if (is_otter and view.caps.unicode) else ""
-            char = get_border_char("HORIZONTAL")
-
-            # If animation is enabled and theme is otter
-            if is_otter and view.caps.animate and wave_chars:
-                for x in range(bar_width):
-                    # Sine wave pattern across the border
-                    phase = x * 0.2 + time_s * 2.0
-                    if math.sin(phase) > 0.6:
-                        idx = int((time_s * 4 + x) % len(wave_chars))
-                        c = wave_chars[idx]
-                    else:
-                        c = char
-                    fragments.append(("class:frame.border", c))
-            else:
-                fragments.append(("class:frame.border", char * bar_width))
-            return fragments
-
-        def get_title_fragments():
+        def horizontal_top():
             t = self.title() if callable(self.title) else self.title
-            return [("class:frame.label", t)] if t else []
+            t = plain(t).strip()
+            badge = f"─[ {t} ]─" if t else "──"
+            return [("class:frame.label", badge)]
 
-        horizontal_top = Window(content=FormattedTextControl(get_horizontal_fragments), height=1, wrap_lines=False)
-        horizontal_bottom = Window(content=FormattedTextControl(get_horizontal_fragments), height=1, wrap_lines=False)
+        def horizontal_fill():
+            char = get_border_char("HORIZONTAL")
+            return [("class:frame.border", char * 250)]
 
         self.container = HSplit(
             [
                 VSplit(
                     [
                         Window(width=1, height=1, char=lambda: get_border_char("TOP_LEFT"), style="class:frame.border"),
-                        Window(content=FormattedTextControl(get_title_fragments), dont_extend_width=True, height=1, style="class:frame.label"),
-                        horizontal_top,
+                        Window(content=FormattedTextControl(horizontal_top), dont_extend_width=True, height=1),
+                        Window(content=FormattedTextControl(horizontal_fill), height=1, wrap_lines=False),
                         Window(width=1, height=1, char=lambda: get_border_char("TOP_RIGHT"), style="class:frame.border"),
                     ],
                     height=1,
@@ -237,7 +194,7 @@ class GlassFrame:
                 VSplit(
                     [
                         Window(width=1, height=1, char=lambda: get_border_char("BOTTOM_LEFT"), style="class:frame.border"),
-                        horizontal_bottom,
+                        Window(content=FormattedTextControl(horizontal_fill), height=1, wrap_lines=False),
                         Window(width=1, height=1, char=lambda: get_border_char("BOTTOM_RIGHT"), style="class:frame.border"),
                     ],
                     height=1,
@@ -253,171 +210,120 @@ class GlassFrame:
     def __pt_container__(self):
         return self.container
 
-class OceanActivity:
+
+GlassFrame = CyberGlassFrame
+
+
+class CyberHoloHUD:
+    """Cyber-Aurora Holographic HUD: real-time multi-agent matrix & spectral quantum waveform."""
     def __init__(self, app_ref):
         self.app_ref = app_ref
 
     def get_text(self):
-        state = self.app_ref.state
-        active = state.status in {'starting', 'running', 'queued'}
-        quiet = max(0, int(time.monotonic() - (state.last_progress or state.started))) if state.started else 0
-
+        app = self.app_ref
+        state = app.state
         view = display.view
+        caps = view.caps
         time_s = time.monotonic()
 
         try:
-            width = self.app_ref.app.output.get_size().columns
-        except:
+            width = app.app.output.get_size().columns
+        except Exception:
             width = 80
+        width = max(48, width)
 
-        phase_lower = str(state.phase).lower()
-        phase_color = "info"
-        if state.status == "starting":
-            phase_color = "primary"
-        elif "réfléch" in phase_lower or "plan" in phase_lower or "analys" in phase_lower:
-            phase_color = "status"
-        elif "exécut" in phase_lower or "code" in phase_lower or "outil" in phase_lower:
-            phase_color = "warning"
-        elif state.status == "completed":
-            phase_color = "success"
-        elif state.status in {"failed", "interrupted"}:
-            phase_color = "failure"
+        active = state.status in {'starting', 'running', 'queued'}
+
+        phase_str = str(state.phase).lower()
+        tool_str = ""
+        if state.activity:
+            tool_str = state.activity[-1][1].lower()
+
+        active_agent = "CONVERSATION"
+        if any(k in phase_str or k in tool_str for k in ["code", "compil", "test", "patch", "git"]):
+            active_agent = "CODE"
+        elif any(k in phase_str or k in tool_str for k in ["image", "flux", "peint", "visuel"]):
+            active_agent = "IMAGE"
+        elif any(k in phase_str or k in tool_str for k in ["3d", "mesh", "texture", "trellis"]):
+            active_agent = "3D"
+        elif any(k in phase_str or k in tool_str for k in ["cyber", "secur", "audit", "sandbox"]):
+            active_agent = "CYBER"
+        elif any(k in phase_str or k in tool_str for k in ["learn", "acad", "cours", "tutoring"]):
+            active_agent = "LEARNING"
+        elif any(k in phase_str or k in tool_str for k in ["voice", "audio", "tts", "parole"]):
+            active_agent = "VOICE"
+        elif any(k in phase_str or k in tool_str for k in ["plan", "orchest", "dispatch", "analys"]):
+            active_agent = "ORCHESTRATOR"
+
+        fleet = [
+            ("⚡", "ORCHESTRATOR"),
+            ("💬", "CONVERSATION"),
+            ("💻", "CODE"),
+            ("🎨", "IMAGE"),
+            ("🧊", "3D"),
+            ("🛡", "CYBER"),
+            ("🔬", "LEARNING"),
+            ("🩺", "DOCTOR"),
+        ]
 
         fragments = []
-        is_otter = "otter" in view.theme.id.lower()
 
-        base_label = {'starting':'Envoi · attente', 'running':'Mission acceptée',
-                     'completed':'Mission terminée', 'failed':'Mission en échec', 'interrupted':'Mission interrompue',
-                     'stopped':'Mission arrêtée'}.get(state.status, state.status)
+        # --- LIGNE 1: FLEET AGENTS COCKPIT STRIP ---
+        fragments.append(("class:header", " ◈ FLEET "))
+        fragments.append(("class:frame.border", "│ "))
 
-        text_label = f" {base_label} · {plain(state.phase)} " if active else f" {base_label} "
-
-        # We will build 3 lines of ocean
-        for i in range(3):
-            line_tokens = []
-            if is_otter and active and view.caps.animate:
-                water_char = view.theme.glyphs.water if view.caps.unicode else "~"
-                ripple_char = view.theme.glyphs.ripple if view.caps.unicode else "="
-
-                # Center the text on the middle line
-                if i == 1:
-                    pad_len = max(0, (width - len(text_label)) // 2)
-                    for x in range(width):
-                        if x >= pad_len and x < pad_len + len(text_label):
-                            if x == pad_len:
-                                line_tokens.append((f"class:bold class:{phase_color}", text_label))
-                        else:
-                            # Draw waves
-                            phase = x * 0.45 + time_s * (2.4 if state.status == "starting" else 1.2)
-                            wave = math.sin(phase) + 0.4 * math.sin(phase * 2.3)
-                            char = water_char if wave > 0.3 else ripple_char
-                            c = core_color.blend(view.theme.raw(phase_color), view.theme.raw("info"), 0.5 + 0.3 * wave)
-                            pt_color = core_color.to_prompt_toolkit(c, view.caps.color_depth)
-                            line_tokens.append((f"fg:{pt_color}", char))
-                else:
-                    # Top and bottom lines just waves, occasionally otter floating
-                    otter_pos = int((math.sin(time_s * 0.5) + 1) / 2 * (width - 10)) + 5
-                    for x in range(width):
-                        if i == 0 and x == otter_pos and view.caps.unicode:
-                            line_tokens.append((f"class:{phase_color}", "◕"))
-                        else:
-                            phase = x * 0.5 + time_s * (3.0 if state.status == "starting" else 1.5) + (i * 2.0)
-                            wave = math.sin(phase) + 0.5 * math.sin(phase * 1.5)
-                            char = water_char if wave > 0 else ripple_char
-                            c = core_color.blend(view.theme.raw(phase_color), "#1a3a4f" if i==2 else "#2b6ca3", 0.5 + 0.4 * wave)
-                            pt_color = core_color.to_prompt_toolkit(c, view.caps.color_depth)
-                            line_tokens.append((f"fg:{pt_color}", char))
+        for icon, name in fleet:
+            is_cur = active and (name == active_agent)
+            if is_cur:
+                spin = "◜◠◝◞◡◟"[int(time_s * 6) % 6] if caps.animate else "●"
+                fragments.append(("class:warning", f"{icon} {name} [{spin} ACTIF]  "))
             else:
-                # Fallback for non-otter or static
-                if i == 1:
-                    pad_len = max(0, (width - len(text_label)) // 2)
-                    line_tokens = [
-                        (f"class:{phase_color}", "-" * pad_len),
-                        (f"class:bold class:{phase_color}", text_label),
-                        (f"class:{phase_color}", "-" * (width - pad_len - len(text_label)))
-                    ]
-                else:
-                    line_tokens = [(f"class:{phase_color}", "-" * width)]
+                fragments.append(("class:footer", f"{icon} {name} [●]  "))
 
-            fragments.extend(line_tokens)
-            if i < 2:
-                fragments.append(("", "\n"))
+        fragments.append(("", "\n"))
 
+        # --- LIGNE 2: QUANTUM SPECTRAL WAVEFORM HUD ---
+        wave_chars = " ▂▃▄▅▆▇█" if caps.unicode else ".-=*#*=-."
+        wave_width = max(20, width - 2)
+        spectral_stops = ["#05f19c", "#00f0ff", "#818cf8", "#c084fc", "#f43f5e"]
+
+        fragments.append(("class:frame.border", " "))
+        freq_mult = 2.8 if active else 1.2
+        amp_mult = 1.0 if active else 0.45
+
+        for x in range(wave_width):
+            p1 = math.sin(x * 0.16 + time_s * freq_mult)
+            p2 = 0.5 * math.sin(x * 0.38 - time_s * (freq_mult * 0.7))
+            p3 = 0.25 * math.cos(x * 0.09 + time_s * (freq_mult * 1.3))
+            raw_v = (p1 + p2 + p3) * amp_mult
+            norm_v = max(0.0, min(1.0, (raw_v + 1.75) / 3.5))
+            char_idx = min(len(wave_chars) - 1, int(norm_v * len(wave_chars)))
+            char = wave_chars[char_idx]
+
+            ratio = x / max(1, wave_width - 1)
+            stop_idx = int(ratio * (len(spectral_stops) - 1))
+            next_idx = min(len(spectral_stops) - 1, stop_idx + 1)
+            local_ratio = (ratio * (len(spectral_stops) - 1)) - stop_idx
+
+            hex_col = core_color.blend(spectral_stops[stop_idx], spectral_stops[next_idx], local_ratio)
+            pt_col = core_color.to_prompt_toolkit(hex_col, caps.color_depth)
+
+            fragments.append((f"fg:{pt_col}", char))
+
+        fragments.append(("", "\n"))
         return fragments
 
     def __pt_container__(self):
         return Window(
             content=FormattedTextControl(self.get_text),
-            height=3,
+            height=2,
             wrap_lines=False
         )
 
-class AmbientBackground:
-    def __init__(self, app_ref):
-        self.app_ref = app_ref
 
-    def get_text(self):
-        try:
-            output = self.app_ref.app.output
-            width = output.get_size().columns
-            height = output.get_size().rows
-        except:
-            width, height = 80, 24
+OceanActivity = CyberHoloHUD
+AmbientBackground = None
 
-        time_s = time.monotonic()
-        view = display.view
-
-        # Only animate if enabled
-        if not view.caps.animate:
-            return ""
-
-        # Draw some bubbles and stars depending on theme
-        fragments = []
-        is_otter = "otter" in view.theme.id.lower()
-
-        for y in range(height):
-            row_chars = [" "] * width
-
-            # Simple bubble logic
-            if is_otter:
-                bubble_count = width // 10
-                for i in range(bubble_count):
-                    seed_x = (i * 37) % width
-                    speed = 0.3 + ((i * 13) % 10) / 12.0
-                    phase = time_s * speed + (i * 0.7)
-                    bubble_y = height - 1 - (phase % height)
-                    drift = math.sin(phase * 1.4 + i) * 1.5
-                    bx = int(seed_x + drift)
-
-                    if int(bubble_y) == y and 0 <= bx < width:
-                        char = "o" if i % 2 == 0 else "O"
-                        if view.caps.unicode:
-                            char = view.theme.glyphs.bubble if i % 2 == 0 else view.theme.glyphs.bubble_big
-
-                        # Fade out near top
-                        fade = bubble_y / height
-                        if fade < 0.2:
-                            continue
-
-                        c = core_color.blend(view.theme.raw("info"), "#ffffff", 0.5)
-                        pt_color = core_color.to_prompt_toolkit(c, view.caps.color_depth)
-                        # Quick insertion, overriding space
-                        row_chars[bx] = char
-
-            # Just joining chars for now (optimizable)
-            fragments.append(("class:muted", "".join(row_chars)))
-            if y < height - 1:
-                fragments.append(("", "\n"))
-
-        return fragments
-
-    def __pt_container__(self):
-        return Window(
-            content=FormattedTextControl(self.get_text),
-            always_hide_cursor=True,
-            wrap_lines=False,
-            style="class:bg"
-        )
 
 class WorkspaceApp:
     def __init__(self, *, bridge_factory=None, history=None, input=None, output=None):
@@ -475,7 +381,7 @@ class WorkspaceApp:
             event.app.create_background_task(self.choose_model())
         @bindings.add('f4')
         def page(event):
-            pages = ['conversation','journal','fichiers']
+            pages = ['conversation','agents','journal','fichiers']
             self.page = pages[(pages.index(self.page)+1)%len(pages)]
             self.refresh_body()
         @bindings.add('f5')
@@ -485,37 +391,99 @@ class WorkspaceApp:
         def fresh(event):
             if not self.busy:
                 self.new_conversation()
+
         header = Window(FormattedTextControl(self.header),height=2,style='class:header')
-        sidebar = ConditionalContainer(GlassFrame(self.sidebar,title='Mission · preuves'),Condition(lambda:self.app.output.get_size().columns>=96))
+        hud = CyberHoloHUD(self)
+        sidebar = ConditionalContainer(CyberGlassFrame(self.sidebar,title='Mission · preuves & télémétrie'),Condition(lambda:self.app.output.get_size().columns>=96))
 
-        main_body = VSplit([GlassFrame(self.body,title=lambda:' '+self.page.capitalize()+' '),sidebar],padding=1)
+        main_body = VSplit([CyberGlassFrame(self.body,title=lambda:' ⌘ '+self.page_title()+' '),sidebar],padding=1)
 
-        # We will use FloatContainer to stack everything
-        # Background goes on the bottom
-        ambient_bg = AmbientBackground(self)
-
-        # Foreground layout
-        fg_layout = HSplit([
+        layout = HSplit([
             header,
-            OceanActivity(self),
+            hud,
             main_body,
-            GlassFrame(self.prompt,title='Demande · Entrée envoyer · Alt+Entrée nouvelle ligne'),
+            CyberGlassFrame(self.prompt,title='Demande · Entrée envoyer · Alt+Entrée nouvelle ligne'),
             Window(FormattedTextControl(self.footer),height=2,style='class:footer')
         ])
 
-        layout = FloatContainer(
-            content=ambient_bg,
-            floats=[
-                Float(
-                    content=fg_layout,
-                    top=0, left=0, right=0, bottom=0,
-                    transparent=True
-                )
-            ]
-        )
         self.app = Application(layout=Layout(layout,focused_element=self.prompt),key_bindings=bindings,
                                full_screen=True,mouse_support=True,style=self.style(),
                                input=input,output=output,min_redraw_interval=.05,max_render_postpone_time=.1)
+
+    def page_title(self):
+        titles = {
+            'conversation': 'CONVERSATION & STREAM',
+            'agents': 'MATRICE DES AGENTS & CAPACITÉS',
+            'journal': 'JOURNAL & ÉVÉNEMENTS',
+            'fichiers': 'FICHIERS & ARTEFACTS'
+        }
+        return titles.get(self.page, self.page.upper())
+
+    def agents_matrix_text(self):
+        state = self.state
+        active = state.status in {'starting', 'running', 'queued'}
+        tokens = state.metrics.get('tokens_per_second')
+        tok_str = f"{tokens:.1f} t/s" if tokens is not None else "0.0 t/s"
+        phase_low = str(state.phase).lower()
+
+        is_orch = active and any(k in phase_low for k in ["plan", "orchest", "dispatch"])
+        is_code = active and any(k in phase_low for k in ["code", "compil", "test", "patch", "git"])
+        is_img  = active and any(k in phase_low for k in ["image", "flux", "peint", "visuel"])
+        is_3d   = active and any(k in phase_low for k in ["3d", "mesh", "texture", "trellis"])
+        is_chat = active and any(k in phase_low for k in ["convers", "dialog", "repons"])
+
+        lines = [
+            "══════════════════════════════════════════════════════════════════════════════════",
+            "  ◈ AURORA INTELLIGENCE FLEET // MATRICE D'ORCHESTRATION & AGENTS",
+            "══════════════════════════════════════════════════════════════════════════════════",
+            f"  Statut : {state.status.upper()}  │  Phase : {plain(state.phase)}  │  Débit : {tok_str}",
+            f"  Modèle actif : {config.get('default_model', 'local/auto')}  │  Permissions : {config.get('default_permissions', 'SAFE')}",
+            "──────────────────────────────────────────────────────────────────────────────────",
+            "",
+            "  [1] ⚡ AURORA-ORCHESTRATOR    " + ("[⚙ EN ACTION]" if is_orch else "[● VEILLE]"),
+            "      • Mission   : Planification dynamique, coordination et arbitrage des outils",
+            "      • Capacité  : Meta-Orchestration, Découpage DAG, Auto-Correction",
+            "      • Ressource : 8 Go unifiée  │  Priorité : Haute",
+            "",
+            "  [2] 💻 CODE-LEAD             " + ("[⚙ EN ACTION]" if is_code else "[● PRÊT]"),
+            "      • Mission   : Conception logicielle, refactorisation, suites de tests, scripts",
+            "      • Capacité  : Python, TypeScript, Rust, Shell, Git Automation",
+            "      • Ressource : 8 Go unifiée  │  Moteur : Qwen / Codex Local",
+            "",
+            "  [3] 🎨 IMAGE-LEAD            " + ("[⚙ EN ACTION]" if is_img else "[● PRÊT]"),
+            "      • Mission   : Génération graphique haute définition, context prompt, inpainting",
+            "      • Capacité  : Flux.2 / ComfyUI / Diffusion PBR",
+            "      • Ressource : 12 Go VRAM   │  Local GPU accéléré",
+            "",
+            "  [4] 🧊 3D-STUDIO-LEAD        " + ("[⚙ EN ACTION]" if is_3d else "[● PRÊT]"),
+            "      • Mission   : Synthèse géométrique 3D, rigging, maillage et texturation",
+            "      • Capacité  : TRELLIS.2 / Tripo / Export OBJ & GLB",
+            "      • Ressource : 16 Go VRAM   │  Pipeline hybride local/cloud",
+            "",
+            "  [5] 💬 CONVERSATION-LEAD     " + ("[⚙ EN ACTION]" if is_chat else "[● PRÊT]"),
+            "      • Mission   : Dialogue interactif, clarification, synthèse de connaissances",
+            "      • Capacité  : Contexte étendu, Mémoire vectorielle, Nuance",
+            "      • Ressource : 4 Go unifiée  │  Ollama / Qwen3-8B",
+            "",
+            "  [6] 🛡 CYBER-DEFENSE         [● SENTINELLE ACTIVE]",
+            "      • Mission   : Sandboxing des commandes, audit des dépendances, politique de secrets",
+            "      • Capacité  : Analyse statique, permissions SAFE/AUTONOMOUS, intégrité",
+            "      • Ressource : 2 Go unifiée  │  Surveillance permanente",
+            "",
+            "  [7] 🔬 LEARNING-LEAD         [● PRÊT]",
+            "      • Mission   : Diagnostic pédagogique, fiches mémo et vectorisation durable",
+            "      • Capacité  : Adaptive Learning System, Synthèse multi-documents",
+            "      • Ressource : 6 Go unifiée  │  Local disponible",
+            "",
+            "  [8] 🩺 BRIDGE-DOCTOR         [✓ OPÉRATIONNEL]",
+            "      • Mission   : Surveillance des sockets, détection des pannes et auto-récupération",
+            "      • Capacité  : Probe réseau, contrôle VRAM/OOM, heartbeat continu",
+            "      • Ressource : 1 Go unifiée  │  Background Daemon",
+            "",
+            "──────────────────────────────────────────────────────────────────────────────────",
+            "  Navigation : Appuie sur F4 pour revenir à la Conversation, au Journal ou aux Fichiers."
+        ]
+        return "\n".join(lines)
 
     @property
     def busy(self):
@@ -563,12 +531,12 @@ class WorkspaceApp:
         return fragments
 
     def footer(self):
-        return [('class:footer','  F2 thème  F3 modèle  F4 vue  F5 diagnostic  Tab navigation  Ctrl+C arrêter  Ctrl+Q quitter\n'),
+        return [('class:footer','  F2 Thème  │  F3 Modèle  │  F4 Vues (Chat/Agents/Logs/Fichiers)  │  F5 Diagnostic  │  Tab Nav  │  Ctrl+C Arrêt  │  Ctrl+Q Quitter\n'),
                 ('class:footer','  '+self.health)]
 
     def sidebar_text(self):
         state = self.state
-        lines = [state.id or 'Aucune mission distante',f'État : {state.status}',
+        lines = [state.id or 'Aucune mission distante',f'État : {state.status.upper()}',
                  'Permissions : '+config.get('default_permissions','SAFE'),'','OBJECTIF',plain(state.goal),'','PLAN']
         lines.extend(f'{i+1}. {plain(step)}' for i,step in enumerate(state.plan))
         if not state.plan:
@@ -576,6 +544,15 @@ class WorkspaceApp:
         lines.extend(['','CRITÈRES'])
         ok, pending, failed = ('✓ ','○ ','× ') if display.view.caps.unicode else ('+ ','o ','x ')
         lines.extend((ok if c in state.verified else pending)+plain(c) for c in state.criteria)
+
+        if state.criteria:
+            done_cnt = len([c for c in state.criteria if c in state.verified])
+            pct = int((done_cnt / len(state.criteria)) * 100)
+            bar_len = 10
+            filled = int(bar_len * (pct / 100))
+            bar = "▰" * filled + "▱" * (bar_len - filled)
+            lines.extend(["", f"PROGRESSION : [{bar}] {pct}%"])
+
         lines.extend(['','OBSERVATIONS'])
         lines.extend((ok if e.get('ok') else failed)+e.get('tool','')+' · '+e.get('id','')+
                      '\n  '+observation_text(e, 250) for e in state.evidence[-8:])
@@ -589,7 +566,14 @@ class WorkspaceApp:
             self._refresh_handle.cancel()
             self._refresh_handle = None
         follow = self.app.layout.has_focus(self.prompt)
-        text = self.transcript if self.page=='conversation' else self.journal if self.page=='journal' else '\n'.join(self.state.files) or 'Aucun fichier reçu.'
+        if self.page == 'conversation':
+            text = self.transcript
+        elif self.page == 'agents':
+            text = self.agents_matrix_text()
+        elif self.page == 'journal':
+            text = self.journal
+        else:
+            text = '\n'.join(self.state.files) or 'Aucun fichier reçu.'
         if self.page == 'conversation' and self.partial:
             tail = ' · derniers 16 000 caractères' if len(self.partial) == 16000 else ''
             text += '\n\nSORTIE REÇUE · résultat non encore confirmé'+tail+'\n'+self.partial
@@ -962,8 +946,8 @@ class WorkspaceApp:
                 self.note('Une demande conservée a un format de reprise incomplet. /retry permet de la récupérer sans la lancer.')
         async def tick():
             while True:
-                await asyncio.sleep(.25 if display.view.caps.animate else 1)
-                if self.busy:
+                await asyncio.sleep(.15 if display.view.caps.animate else 1)
+                if self.busy or (display.view.caps.animate and display.view.caps.animation != 'none'):
                     self.app.invalidate()
         def start():
             self.app.create_background_task(self.discover())
