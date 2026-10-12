@@ -27,6 +27,7 @@ from prompt_toolkit.widgets import Frame, TextArea
 from . import config, display, themes
 from .core import color as core_color
 from .observations import observation_text, terminal_text
+from .mission_domain import domain_label
 
 
 @dataclass
@@ -240,7 +241,9 @@ class CyberHoloHUD:
             tool_str = state.activity[-1][1].lower()
 
         active_agent = "CONVERSATION"
-        if any(k in phase_str or k in tool_str for k in ["code", "compil", "test", "patch", "git"]):
+        if domain_label(state.goal)=="3D":
+            active_agent = "3D"
+        elif any(k in phase_str or k in tool_str for k in ["code", "compil", "test", "patch", "git"]):
             active_agent = "CODE"
         elif any(k in phase_str or k in tool_str for k in ["image", "flux", "peint", "visuel"]):
             active_agent = "IMAGE"
@@ -269,7 +272,7 @@ class CyberHoloHUD:
         fragments = []
 
         # --- LIGNE 1: FLEET AGENTS COCKPIT STRIP ---
-        fragments.append(("class:header", " ◈ FLEET "))
+        fragments.append(("class:header", " ◈ MODULES "))
         fragments.append(("class:frame.border", "│ "))
 
         for icon, name in fleet:
@@ -412,8 +415,8 @@ class WorkspaceApp:
 
     def page_title(self):
         titles = {
-            'conversation': 'CONVERSATION & STREAM',
-            'agents': 'MATRICE DES AGENTS & CAPACITÉS',
+            'conversation': domain_label(self.state.goal)+' · DIALOGUE DE MISSION',
+            'agents': 'MODULES & ACTIVITÉ OBSERVÉE',
             'journal': 'JOURNAL & ÉVÉNEMENTS',
             'fichiers': 'FICHIERS & ARTEFACTS'
         }
@@ -429,56 +432,56 @@ class WorkspaceApp:
         is_orch = active and any(k in phase_low for k in ["plan", "orchest", "dispatch"])
         is_code = active and any(k in phase_low for k in ["code", "compil", "test", "patch", "git"])
         is_img  = active and any(k in phase_low for k in ["image", "flux", "peint", "visuel"])
-        is_3d   = active and any(k in phase_low for k in ["3d", "mesh", "texture", "trellis"])
-        is_chat = active and any(k in phase_low for k in ["convers", "dialog", "repons"])
+        is_3d   = active and (domain_label(state.goal)=="3D" or any(k in phase_low for k in ["3d", "mesh", "texture", "trellis"]))
+        is_chat = active and not is_3d and any(k in phase_low for k in ["convers", "dialog", "repons"])
 
         lines = [
             "══════════════════════════════════════════════════════════════════════════════════",
-            "  ◈ AURORA INTELLIGENCE FLEET // MATRICE D'ORCHESTRATION & AGENTS",
+            "  ◈ AURORA INTELLIGENCE FLEET // MODULES DE LA MISSION",
             "══════════════════════════════════════════════════════════════════════════════════",
             f"  Statut : {state.status.upper()}  │  Phase : {plain(state.phase)}  │  Débit : {tok_str}",
             f"  Modèle actif : {config.get('default_model', 'local/auto')}  │  Permissions : {config.get('default_permissions', 'SAFE')}",
             "──────────────────────────────────────────────────────────────────────────────────",
             "",
-            "  [1] ⚡ AURORA-ORCHESTRATOR    " + ("[⚙ EN ACTION]" if is_orch else "[● VEILLE]"),
+            "  [1] ⚡ AURORA-ORCHESTRATOR    " + ("[◉ MISSION]" if is_orch else "[● VEILLE]"),
             "      • Mission   : Planification dynamique, coordination et arbitrage des outils",
             "      • Capacité  : Meta-Orchestration, Découpage DAG, Auto-Correction",
-            "      • Ressource : 8 Go unifiée  │  Priorité : Haute",
+            "      • Ressource : allocation non mesurée dans ce panneau",
             "",
-            "  [2] 💻 CODE-LEAD             " + ("[⚙ EN ACTION]" if is_code else "[● PRÊT]"),
+            "  [2] 💻 CODE-LEAD             " + ("[◉ MISSION]" if is_code else "[○ INACTIF]"),
             "      • Mission   : Conception logicielle, refactorisation, suites de tests, scripts",
             "      • Capacité  : Python, TypeScript, Rust, Shell, Git Automation",
-            "      • Ressource : 8 Go unifiée  │  Moteur : Qwen / Codex Local",
+            "      • Ressource : allocation non mesurée dans ce panneau",
             "",
-            "  [3] 🎨 IMAGE-LEAD            " + ("[⚙ EN ACTION]" if is_img else "[● PRÊT]"),
+            "  [3] 🎨 IMAGE-LEAD            " + ("[◉ MISSION]" if is_img else "[○ INACTIF]"),
             "      • Mission   : Génération graphique haute définition, context prompt, inpainting",
             "      • Capacité  : Flux.2 / ComfyUI / Diffusion PBR",
-            "      • Ressource : 12 Go VRAM   │  Local GPU accéléré",
+            "      • Ressource : allocation non mesurée dans ce panneau",
             "",
-            "  [4] 🧊 3D-STUDIO-LEAD        " + ("[⚙ EN ACTION]" if is_3d else "[● PRÊT]"),
+            "  [4] 🧊 3D-STUDIO-LEAD        " + ("[◉ MISSION]" if is_3d else "[○ INACTIF]"),
             "      • Mission   : Synthèse géométrique 3D, rigging, maillage et texturation",
             "      • Capacité  : TRELLIS.2 / Tripo / Export OBJ & GLB",
-            "      • Ressource : 16 Go VRAM   │  Pipeline hybride local/cloud",
+            "      • Ressource : allocation non mesurée dans ce panneau",
             "",
-            "  [5] 💬 CONVERSATION-LEAD     " + ("[⚙ EN ACTION]" if is_chat else "[● PRÊT]"),
+            "  [5] 💬 CONVERSATION-LEAD     " + ("[◉ MISSION]" if is_chat else "[○ INACTIF]"),
             "      • Mission   : Dialogue interactif, clarification, synthèse de connaissances",
             "      • Capacité  : Contexte étendu, Mémoire vectorielle, Nuance",
-            "      • Ressource : 4 Go unifiée  │  Ollama / Qwen3-8B",
+            "      • Ressource : allocation non mesurée dans ce panneau",
             "",
-            "  [6] 🛡 CYBER-DEFENSE         [● SENTINELLE ACTIVE]",
+            "  [6] 🛡 CYBER-DEFENSE         [○ À VÉRIFIER]",
             "      • Mission   : Sandboxing des commandes, audit des dépendances, politique de secrets",
             "      • Capacité  : Analyse statique, permissions SAFE/AUTONOMOUS, intégrité",
-            "      • Ressource : 2 Go unifiée  │  Surveillance permanente",
+            "      • Ressource : allocation non mesurée dans ce panneau",
             "",
-            "  [7] 🔬 LEARNING-LEAD         [● PRÊT]",
+            "  [7] 🔬 LEARNING-LEAD         [○ INACTIF]",
             "      • Mission   : Diagnostic pédagogique, fiches mémo et vectorisation durable",
             "      • Capacité  : Adaptive Learning System, Synthèse multi-documents",
-            "      • Ressource : 6 Go unifiée  │  Local disponible",
+            "      • Ressource : allocation non mesurée dans ce panneau",
             "",
-            "  [8] 🩺 BRIDGE-DOCTOR         [✓ OPÉRATIONNEL]",
+            "  [8] 🩺 BRIDGE-DOCTOR         [○ À VÉRIFIER]",
             "      • Mission   : Surveillance des sockets, détection des pannes et auto-récupération",
             "      • Capacité  : Probe réseau, contrôle VRAM/OOM, heartbeat continu",
-            "      • Ressource : 1 Go unifiée  │  Background Daemon",
+            "      • Ressource : allocation non mesurée dans ce panneau",
             "",
             "──────────────────────────────────────────────────────────────────────────────────",
             "  Navigation : Appuie sur F4 pour revenir à la Conversation, au Journal ou aux Fichiers."
@@ -507,7 +510,7 @@ class WorkspaceApp:
         elapsed = f" · {int(time.monotonic()-self.state.started)}s" if self.busy and self.state.started else ''
         frames = '|/-\\'
         glyph = frames[int(time.monotonic()*4)%len(frames)] if self.busy and display.view.caps.animate else '·'
-        return [('class:header',f'  JOBIA  {glyph}  {plain(self.state.phase)}{elapsed}\n'),
+        return [('class:header',f'  JOBIA · {domain_label(self.state.goal)}  {glyph}  {plain(self.state.phase)}{elapsed}\n'),
                 ('class:footer',f'  {mode} · {model} · {display.view.theme.id}')]
 
     def activity_text(self):
