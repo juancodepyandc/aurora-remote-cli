@@ -17,7 +17,7 @@ from prompt_toolkit.completion import WordCompleter
 from prompt_toolkit.document import Document
 from prompt_toolkit.filters import Condition, has_focus
 from prompt_toolkit.key_binding import KeyBindings
-from prompt_toolkit.layout import Layout, HSplit, VSplit, Window, ConditionalContainer
+from prompt_toolkit.layout import Layout, HSplit, VSplit, Window, ConditionalContainer, FloatContainer, Float, Dimension
 from prompt_toolkit.layout.controls import FormattedTextControl
 from prompt_toolkit.shortcuts import radiolist_dialog
 from prompt_toolkit.styles import Style
@@ -134,20 +134,13 @@ def retry_payload_valid(pending):
 
 
 
-from prompt_toolkit.layout.containers import Container, DynamicContainer, HSplit, VSplit, Window
-from prompt_toolkit.layout.controls import FormattedTextControl
-from prompt_toolkit.layout.dimension import AnyDimension
-from prompt_toolkit.widgets.base import Border
-from prompt_toolkit.widgets import Label
-from prompt_toolkit.filters import Condition
-from prompt_toolkit.formatted_text import Template, AnyFormattedText
-from functools import partial
-import math
 
-class ThemeFrame:
+
+class GlassFrame:
     def __init__(self, body, title="", style="", width=None, height=None, key_bindings=None, modal=False):
         self.title = title
         self.body = body
+        self.style = style
 
         def get_border_char(pos):
             view = display.view
@@ -160,94 +153,89 @@ class ThemeFrame:
             else:
                 b = view.theme.glyphs.border_heavy
 
-            chars = {
-                "TOP_LEFT": b[0],
-                "HORIZONTAL": b[1],
-                "TOP_RIGHT": b[2],
-                "VERTICAL_LEFT": b[3],
-                "VERTICAL_RIGHT": b[4],
-                "BOTTOM_LEFT": b[5],
-                "BOTTOM_RIGHT": b[6],
-                "T_LEFT": b[7],
-                "T_RIGHT": b[8],
-                "T_TOP": b[9],
-                "T_BOTTOM": b[10],
-                "CROSS": b[11],
-            }
-            return chars.get(pos, " ")
+            if len(b) >= 12:
+                chars = {
+                    "TOP_LEFT": b[0], "HORIZONTAL": b[1], "TOP_RIGHT": b[2],
+                    "VERTICAL_LEFT": b[3], "VERTICAL_RIGHT": b[4],
+                    "BOTTOM_LEFT": b[5], "BOTTOM_RIGHT": b[6],
+                    "T_LEFT": b[7], "T_RIGHT": b[8], "T_TOP": b[9], "T_BOTTOM": b[10], "CROSS": b[11]
+                }
+            elif len(b) >= 8:
+                chars = {
+                    "TOP_LEFT": b[0], "HORIZONTAL": b[1], "TOP_RIGHT": b[2],
+                    "VERTICAL_LEFT": b[1] if b[1] != b[0] else "|",
+                    "VERTICAL_RIGHT": b[1] if b[1] != b[0] else "|",
+                    "BOTTOM_LEFT": b[6], "BOTTOM_RIGHT": b[7],
+                    "T_LEFT": b[3], "T_RIGHT": b[5], "T_TOP": b[1], "T_BOTTOM": b[1], "CROSS": b[1]
+                }
+            else:
+                c = b[0] if len(b) > 0 else "+"
+                chars = {k: c for k in ["TOP_LEFT", "HORIZONTAL", "TOP_RIGHT", "VERTICAL_LEFT", "VERTICAL_RIGHT", "BOTTOM_LEFT", "BOTTOM_RIGHT", "T_LEFT", "T_RIGHT", "T_TOP", "T_BOTTOM", "CROSS"]}
 
-        def horizontal_fill():
-            def get_horizontal_char():
-                view = display.view
-                if not view.caps.animate:
-                    return get_border_char("HORIZONTAL")
+            return chars.get(pos, "+")
 
-                theme_id = view.theme.id
-                time_s = time.monotonic()
+        def get_horizontal_fragments():
+            view = display.view
+            time_s = time.monotonic()
+            fragments = []
 
-                if theme_id == "otter":
-                    wave_frames = view.theme.glyphs.spin_wave
-                    if wave_frames:
-                        frame = wave_frames[int(time_s * 4) % len(wave_frames)]
-                        if int(time_s * 10) % 20 == 0:
-                            return view.theme.glyphs.bubble or get_border_char("HORIZONTAL")
-                        return frame
+            try:
+                # We approximate width by checking global output (hack for lambda)
+                import shutil
+                w, _ = shutil.get_terminal_size()
+                bar_width = w - 4 # rough estimate
+            except:
+                bar_width = 80
 
-                return get_border_char("HORIZONTAL")
-            return Window(width=None, height=1, char=get_horizontal_char, style="class:frame.border")
+            is_otter = "otter" in view.theme.id.lower()
+            wave_chars = view.theme.glyphs.spin_wave if (is_otter and view.caps.unicode) else ""
+            char = get_border_char("HORIZONTAL")
 
-        def vertical_fill(side):
-            return Window(width=1, height=None, char=lambda: get_border_char(side), style="class:frame.border")
+            # If animation is enabled and theme is otter
+            if is_otter and view.caps.animate and wave_chars:
+                for x in range(bar_width):
+                    # Sine wave pattern across the border
+                    phase = x * 0.2 + time_s * 2.0
+                    if math.sin(phase) > 0.6:
+                        idx = int((time_s * 4 + x) % len(wave_chars))
+                        c = wave_chars[idx]
+                    else:
+                        c = char
+                    fragments.append(("class:frame.border", c))
+            else:
+                fragments.append(("class:frame.border", char * bar_width))
+            return fragments
 
-        top_row_with_title = VSplit(
-            [
-                Window(width=1, height=1, char=lambda: get_border_char("TOP_LEFT"), style="class:frame.border"),
-                horizontal_fill(),
-                Window(width=1, height=1, char=" ", style="class:frame.border"),
-                Label(
-                    lambda: Template(" {} ").format(self.title),
-                    style="class:frame.label",
-                    dont_extend_width=True,
-                ),
-                Window(width=1, height=1, char=" ", style="class:frame.border"),
-                horizontal_fill(),
-                Window(width=1, height=1, char=lambda: get_border_char("TOP_RIGHT"), style="class:frame.border"),
-            ],
-            height=1,
-        )
+        def get_title_fragments():
+            t = self.title() if callable(self.title) else self.title
+            return [("class:frame.label", t)] if t else []
 
-        top_row_without_title = VSplit(
-            [
-                Window(width=1, height=1, char=lambda: get_border_char("TOP_LEFT"), style="class:frame.border"),
-                horizontal_fill(),
-                Window(width=1, height=1, char=lambda: get_border_char("TOP_RIGHT"), style="class:frame.border"),
-            ],
-            height=1,
-        )
-
-        @Condition
-        def has_title() -> bool:
-            return bool(self.title)
+        horizontal_top = Window(content=FormattedTextControl(get_horizontal_fragments), height=1, wrap_lines=False)
+        horizontal_bottom = Window(content=FormattedTextControl(get_horizontal_fragments), height=1, wrap_lines=False)
 
         self.container = HSplit(
             [
-                ConditionalContainer(
-                    content=top_row_with_title,
-                    filter=has_title,
-                    alternative_content=top_row_without_title,
+                VSplit(
+                    [
+                        Window(width=1, height=1, char=lambda: get_border_char("TOP_LEFT"), style="class:frame.border"),
+                        Window(content=FormattedTextControl(get_title_fragments), dont_extend_width=True, height=1, style="class:frame.label"),
+                        horizontal_top,
+                        Window(width=1, height=1, char=lambda: get_border_char("TOP_RIGHT"), style="class:frame.border"),
+                    ],
+                    height=1,
                 ),
                 VSplit(
                     [
-                        vertical_fill("VERTICAL_LEFT"),
-                        DynamicContainer(lambda: self.body),
-                        vertical_fill("VERTICAL_RIGHT"),
+                        Window(width=1, char=lambda: get_border_char("VERTICAL_LEFT"), style="class:frame.border"),
+                        self.body,
+                        Window(width=1, char=lambda: get_border_char("VERTICAL_RIGHT"), style="class:frame.border"),
                     ],
                     padding=0,
                 ),
                 VSplit(
                     [
                         Window(width=1, height=1, char=lambda: get_border_char("BOTTOM_LEFT"), style="class:frame.border"),
-                        horizontal_fill(),
+                        horizontal_bottom,
                         Window(width=1, height=1, char=lambda: get_border_char("BOTTOM_RIGHT"), style="class:frame.border"),
                     ],
                     height=1,
@@ -263,6 +251,171 @@ class ThemeFrame:
     def __pt_container__(self):
         return self.container
 
+class OceanActivity:
+    def __init__(self, app_ref):
+        self.app_ref = app_ref
+
+    def get_text(self):
+        state = self.app_ref.state
+        active = state.status in {'starting', 'running', 'queued'}
+        quiet = max(0, int(time.monotonic() - (state.last_progress or state.started))) if state.started else 0
+
+        view = display.view
+        time_s = time.monotonic()
+
+        try:
+            width = self.app_ref.app.output.get_size().columns
+        except:
+            width = 80
+
+        phase_lower = str(state.phase).lower()
+        phase_color = "info"
+        if state.status == "starting":
+            phase_color = "primary"
+        elif "réfléch" in phase_lower or "plan" in phase_lower or "analys" in phase_lower:
+            phase_color = "status"
+        elif "exécut" in phase_lower or "code" in phase_lower or "outil" in phase_lower:
+            phase_color = "warning"
+        elif state.status == "completed":
+            phase_color = "success"
+        elif state.status in {"failed", "interrupted"}:
+            phase_color = "failure"
+
+        fragments = []
+        is_otter = "otter" in view.theme.id.lower()
+
+        base_label = {'starting':'Envoi · attente', 'running':'Mission acceptée',
+                     'completed':'Mission terminée', 'failed':'Mission en échec', 'interrupted':'Mission interrompue',
+                     'stopped':'Mission arrêtée'}.get(state.status, state.status)
+
+        text_label = f" {base_label} · {plain(state.phase)} " if active else f" {base_label} "
+
+        # We will build 3 lines of ocean
+        for i in range(3):
+            line_tokens = []
+            if is_otter and active and view.caps.animate:
+                water_char = view.theme.glyphs.water if view.caps.unicode else "~"
+                ripple_char = view.theme.glyphs.ripple if view.caps.unicode else "="
+
+                # Center the text on the middle line
+                if i == 1:
+                    pad_len = max(0, (width - len(text_label)) // 2)
+                    for x in range(width):
+                        if x >= pad_len and x < pad_len + len(text_label):
+                            if x == pad_len:
+                                line_tokens.append((f"class:bold class:{phase_color}", text_label))
+                        else:
+                            # Draw waves
+                            phase = x * 0.45 + time_s * (2.4 if state.status == "starting" else 1.2)
+                            wave = math.sin(phase) + 0.4 * math.sin(phase * 2.3)
+                            char = water_char if wave > 0.3 else ripple_char
+                            c = core_color.blend(view.theme.raw(phase_color), view.theme.raw("info"), 0.5 + 0.3 * wave)
+                            pt_color = core_color.to_prompt_toolkit(c, view.caps.color_depth)
+                            line_tokens.append((f"fg:{pt_color}", char))
+                else:
+                    # Top and bottom lines just waves, occasionally otter floating
+                    otter_pos = int((math.sin(time_s * 0.5) + 1) / 2 * (width - 10)) + 5
+                    for x in range(width):
+                        if i == 0 and x == otter_pos and view.caps.unicode:
+                            line_tokens.append((f"class:{phase_color}", "◕"))
+                        else:
+                            phase = x * 0.5 + time_s * (3.0 if state.status == "starting" else 1.5) + (i * 2.0)
+                            wave = math.sin(phase) + 0.5 * math.sin(phase * 1.5)
+                            char = water_char if wave > 0 else ripple_char
+                            c = core_color.blend(view.theme.raw(phase_color), "#1a3a4f" if i==2 else "#2b6ca3", 0.5 + 0.4 * wave)
+                            pt_color = core_color.to_prompt_toolkit(c, view.caps.color_depth)
+                            line_tokens.append((f"fg:{pt_color}", char))
+            else:
+                # Fallback for non-otter or static
+                if i == 1:
+                    pad_len = max(0, (width - len(text_label)) // 2)
+                    line_tokens = [
+                        (f"class:{phase_color}", "-" * pad_len),
+                        (f"class:bold class:{phase_color}", text_label),
+                        (f"class:{phase_color}", "-" * (width - pad_len - len(text_label)))
+                    ]
+                else:
+                    line_tokens = [(f"class:{phase_color}", "-" * width)]
+
+            fragments.extend(line_tokens)
+            if i < 2:
+                fragments.append(("", "\n"))
+
+        return fragments
+
+    def __pt_container__(self):
+        return Window(
+            content=FormattedTextControl(self.get_text),
+            height=3,
+            wrap_lines=False
+        )
+
+class AmbientBackground:
+    def __init__(self, app_ref):
+        self.app_ref = app_ref
+
+    def get_text(self):
+        try:
+            output = self.app_ref.app.output
+            width = output.get_size().columns
+            height = output.get_size().rows
+        except:
+            width, height = 80, 24
+
+        time_s = time.monotonic()
+        view = display.view
+
+        # Only animate if enabled
+        if not view.caps.animate:
+            return ""
+
+        # Draw some bubbles and stars depending on theme
+        fragments = []
+        is_otter = "otter" in view.theme.id.lower()
+
+        for y in range(height):
+            row_chars = [" "] * width
+
+            # Simple bubble logic
+            if is_otter:
+                bubble_count = width // 10
+                for i in range(bubble_count):
+                    seed_x = (i * 37) % width
+                    speed = 0.3 + ((i * 13) % 10) / 12.0
+                    phase = time_s * speed + (i * 0.7)
+                    bubble_y = height - 1 - (phase % height)
+                    drift = math.sin(phase * 1.4 + i) * 1.5
+                    bx = int(seed_x + drift)
+
+                    if int(bubble_y) == y and 0 <= bx < width:
+                        char = "o" if i % 2 == 0 else "O"
+                        if view.caps.unicode:
+                            char = view.theme.glyphs.bubble if i % 2 == 0 else view.theme.glyphs.bubble_big
+
+                        # Fade out near top
+                        fade = bubble_y / height
+                        if fade < 0.2:
+                            continue
+
+                        c = core_color.blend(view.theme.raw("info"), "#ffffff", 0.5)
+                        pt_color = core_color.to_prompt_toolkit(c, view.caps.color_depth)
+                        # Quick insertion, overriding space
+                        row_chars[bx] = char
+
+            # Just joining chars for now (optimizable)
+            fragments.append(("class:muted", "".join(row_chars)))
+            if y < height - 1:
+                fragments.append(("", "\n"))
+
+        return fragments
+
+    def __pt_container__(self):
+        return Window(
+            content=FormattedTextControl(self.get_text),
+            always_hide_cursor=True,
+            wrap_lines=False,
+            style="class:bg"
+        )
 
 class WorkspaceApp:
     def __init__(self, *, bridge_factory=None, history=None, input=None, output=None):
@@ -331,14 +484,33 @@ class WorkspaceApp:
             if not self.busy:
                 self.new_conversation()
         header = Window(FormattedTextControl(self.header),height=2,style='class:header')
-        sidebar = ConditionalContainer(ThemeFrame(self.sidebar,title='Mission · preuves'),Condition(lambda:self.app.output.get_size().columns>=96))
-        activity = ConditionalContainer(
-            ThemeFrame(Window(FormattedTextControl(self.activity_text), height=lambda: 3 if self.app.output.get_size().rows<28 else 7,
-                         wrap_lines=False), title='Activité observée'),
-            Condition(lambda: self.state.status != 'idle'))
-        layout = HSplit([header,activity,VSplit([ThemeFrame(self.body,title=lambda:' '+self.page.capitalize()+' '),sidebar],padding=1),
-                         ThemeFrame(self.prompt,title='Demande · Entrée envoyer · Alt+Entrée nouvelle ligne'),
-                         Window(FormattedTextControl(self.footer),height=2,style='class:footer')])
+        sidebar = ConditionalContainer(GlassFrame(self.sidebar,title='Mission · preuves'),Condition(lambda:self.app.output.get_size().columns>=96))
+
+        main_body = VSplit([GlassFrame(self.body,title=lambda:' '+self.page.capitalize()+' '),sidebar],padding=1)
+
+        # We will use FloatContainer to stack everything
+        # Background goes on the bottom
+        ambient_bg = AmbientBackground(self)
+
+        # Foreground layout
+        fg_layout = HSplit([
+            header,
+            OceanActivity(self),
+            main_body,
+            GlassFrame(self.prompt,title='Demande · Entrée envoyer · Alt+Entrée nouvelle ligne'),
+            Window(FormattedTextControl(self.footer),height=2,style='class:footer')
+        ])
+
+        layout = FloatContainer(
+            content=ambient_bg,
+            floats=[
+                Float(
+                    content=fg_layout,
+                    top=0, left=0, right=0, bottom=0,
+                    transparent=True
+                )
+            ]
+        )
         self.app = Application(layout=Layout(layout,focused_element=self.prompt),key_bindings=bindings,
                                full_screen=True,mouse_support=True,style=self.style(),
                                input=input,output=output,min_redraw_interval=.05,max_render_postpone_time=.1)
@@ -368,128 +540,26 @@ class WorkspaceApp:
         return [('class:header',f'  JOBIA  {glyph}  {plain(self.state.phase)}{elapsed}\n'),
                 ('class:footer',f'  {mode} · {model} · {display.view.theme.id}')]
 
-
-
     def activity_text(self):
         state = self.state
         active = state.status in {'starting', 'running', 'queued'}
         quiet = max(0, int(time.monotonic() - (state.last_progress or state.started))) if state.started else 0
         signal_age = max(0, int(time.monotonic() - state.last_signal)) if state.last_signal else None
-
-        view = display.view
-        time_s = time.monotonic()
-
-        # Determine Phase Visuals
-        phase_lower = str(state.phase).lower()
-        phase_icon = "✦"
-        phase_color = "activity"
-
-        if state.status == "starting":
-            phase_icon = "🔌" if view.caps.unicode else "~"
-            phase_color = "primary"
-        elif "réfléch" in phase_lower or "plan" in phase_lower or "analys" in phase_lower:
-            phase_icon = "🧠" if view.caps.unicode else "?"
-            phase_color = "status"
-        elif "cherch" in phase_lower or "web" in phase_lower or "recherch" in phase_lower or "navig" in phase_lower:
-            phase_icon = "🔍" if view.caps.unicode else "O"
-            phase_color = "info"
-        elif "exécut" in phase_lower or "code" in phase_lower or "outil" in phase_lower or "bash" in phase_lower:
-            phase_icon = "💻" if view.caps.unicode else ">"
-            phase_color = "warning"
-        elif "connexion" in phase_lower or "reconnexion" in phase_lower or "attente" in phase_lower:
-            phase_icon = "🔌" if view.caps.unicode else "~"
-            phase_color = "primary"
-        elif state.status == "completed":
-            phase_icon = "✨" if view.caps.unicode else "*"
-            phase_color = "success"
-        elif state.status in {"failed", "interrupted"}:
-            phase_icon = "💥" if view.caps.unicode else "!"
-            phase_color = "failure"
-
         if active and quiet >= 15:
             label = f'Aucune avancée reçue depuis {quiet}s'
             label += ' · connexion vivante' if signal_age is not None and signal_age < 15 and self.local_process is None else ' · en attente de nouvelles'
             style = 'warning'
         else:
-            base_label = {'starting':'Envoi · attente d’acceptation', 'running':'Mission acceptée · suivi du serveur',
+            label = {'starting':'Envoi · attente d’acceptation', 'running':'Mission acceptée · suivi du serveur',
                      'completed':'Mission terminée', 'failed':'Mission en échec', 'interrupted':'Mission interrompue',
                      'stopped':'Mission arrêtée'}.get(state.status, state.status)
-
-            if active:
-                label = f"{phase_icon}  {base_label} · {plain(state.phase)}"
-            else:
-                label = f"{phase_icon}  {base_label}"
-
-            style = 'failure' if state.status in {'failed', 'interrupted'} else phase_color
-
-        if active and view.caps.animate:
-            # Special spinner for connection phases
-            if state.status == "starting" or "connexion" in phase_lower:
-                spinner_frames = view.animator.frames_for("pulse")
-            else:
-                spinner_frames = view.animator.frames_for("dots")
-
-            frame_idx = int(time_s * 10) % len(spinner_frames)
-            spinner = spinner_frames[frame_idx]
-            label = f"{spinner}  {label}"
-        else:
-            label = f"  {label}"
-
+            style = 'failure' if state.status in {'failed', 'interrupted'} else 'activity'
         rows = 1 if self.app.output.get_size().rows < 28 else 5
-        fragments = [(f'class:{style}', label + chr(10))]
-
-        progress = 0.0
-        if state.plan:
-            completed_steps = len([s for s in state.criteria if s in state.verified])
-            if completed_steps > 0:
-                progress = min(1.0, completed_steps / max(1, len(state.criteria)))
-            else:
-                progress = min(0.9, quiet / 60.0) if quiet else 0.1
-
-        try:
-            bar_width = self.app.output.get_size().columns - 40
-        except Exception:
-            bar_width = 40
-
-        if active and view.caps.animate and bar_width > 10:
-            import math
-            from .core import color as colour
-            filled = int(max(0.0, min(1.0, progress)) * bar_width)
-
-            # Pulse faster if in starting state to show connection excitement
-            pulse_speed = 8.0 if state.status == "starting" else 4.0
-            shimmer = int((math.sin(time_s * pulse_speed) + 1) / 2 * 3)
-
-            bar_tokens = []
-            if view.theme.motion.shimmer and view.caps.rich_palette:
-                # Determine colors based on phase
-                if state.status == "starting":
-                    ramp = view.theme.palette.ramp(8, ("primary", "info", "banner_alt"))
-                else:
-                    ramp = view.theme.palette.ramp(8, ("primary", "secondary", "banner_alt"))
-
-                for index in range(bar_width):
-                    if index < filled:
-                        c = colour.blend(ramp[index % len(ramp)], "#ffffff", 0.35 if abs(index - shimmer) < 2 else 0.0)
-                        pt_color = colour.to_prompt_toolkit(c, view.caps.color_depth)
-                        bar_tokens.append((f'fg:{pt_color}', '█'))
-                    # Animate empty space slightly when starting
-                    elif state.status == "starting":
-                        pulse_fade = (math.sin(time_s * 3.0 - index * 0.2) + 1.0) / 2.0
-                        c = colour.blend(view.theme.raw("border"), view.theme.raw("info"), 0.4 * pulse_fade)
-                        pt_color = colour.to_prompt_toolkit(c, view.caps.color_depth)
-                        bar_tokens.append((f'fg:{pt_color}', '·'))
-                    else:
-                        c = view.theme.raw("muted")
-                        pt_color = colour.to_prompt_toolkit(c, view.caps.color_depth)
-                        bar_tokens.append((f'fg:{pt_color}', '·'))
-                fragments.append(('', '  '))
-                fragments.extend(bar_tokens)
-                fragments.append(('', chr(10)))
-
-        fragments.append(('class:footer', f'  {len(state.evidence)} observations · {len(state.files)} fichiers · {state.received_chars} caractères reçus' + chr(10)))
-        fragments.extend((f'class:{tone}', '  '+text+chr(10)) for tone,text in state.activity[-rows:])
+        fragments = [(f'class:{style}', '  '+label+'\n'),
+                     ('class:footer', f'  {len(state.evidence)} observations · {len(state.files)} fichiers · {state.received_chars} caractères reçus\n')]
+        fragments.extend((f'class:{tone}', '  '+text+'\n') for tone,text in state.activity[-rows:])
         return fragments
+
     def footer(self):
         return [('class:footer','  F2 thème  F3 modèle  F4 vue  F5 diagnostic  Tab navigation  Ctrl+C arrêter  Ctrl+Q quitter\n'),
                 ('class:footer','  '+self.health)]
