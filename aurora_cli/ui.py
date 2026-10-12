@@ -133,6 +133,137 @@ def retry_payload_valid(pending):
     )
 
 
+
+from prompt_toolkit.layout.containers import Container, DynamicContainer, HSplit, VSplit, Window
+from prompt_toolkit.layout.controls import FormattedTextControl
+from prompt_toolkit.layout.dimension import AnyDimension
+from prompt_toolkit.widgets.base import Border
+from prompt_toolkit.widgets import Label
+from prompt_toolkit.filters import Condition
+from prompt_toolkit.formatted_text import Template, AnyFormattedText
+from functools import partial
+import math
+
+class ThemeFrame:
+    def __init__(self, body, title="", style="", width=None, height=None, key_bindings=None, modal=False):
+        self.title = title
+        self.body = body
+
+        def get_border_char(pos):
+            view = display.view
+            caps = view.caps
+            box_style = view.theme.box_for(caps)
+            if box_style == "rounded":
+                b = view.theme.glyphs.border_round
+            elif box_style == "ascii":
+                b = view.theme.glyphs.border_ascii
+            else:
+                b = view.theme.glyphs.border_heavy
+
+            chars = {
+                "TOP_LEFT": b[0],
+                "HORIZONTAL": b[1],
+                "TOP_RIGHT": b[2],
+                "VERTICAL_LEFT": b[3],
+                "VERTICAL_RIGHT": b[4],
+                "BOTTOM_LEFT": b[5],
+                "BOTTOM_RIGHT": b[6],
+                "T_LEFT": b[7],
+                "T_RIGHT": b[8],
+                "T_TOP": b[9],
+                "T_BOTTOM": b[10],
+                "CROSS": b[11],
+            }
+            return chars.get(pos, " ")
+
+        def horizontal_fill():
+            def get_horizontal_char():
+                view = display.view
+                if not view.caps.animate:
+                    return get_border_char("HORIZONTAL")
+
+                theme_id = view.theme.id
+                time_s = time.monotonic()
+
+                if theme_id == "otter":
+                    wave_frames = view.theme.glyphs.spin_wave
+                    if wave_frames:
+                        frame = wave_frames[int(time_s * 4) % len(wave_frames)]
+                        if int(time_s * 10) % 20 == 0:
+                            return view.theme.glyphs.bubble or get_border_char("HORIZONTAL")
+                        return frame
+
+                return get_border_char("HORIZONTAL")
+            return Window(width=None, height=1, char=get_horizontal_char, style="class:frame.border")
+
+        def vertical_fill(side):
+            return Window(width=1, height=None, char=lambda: get_border_char(side), style="class:frame.border")
+
+        top_row_with_title = VSplit(
+            [
+                Window(width=1, height=1, char=lambda: get_border_char("TOP_LEFT"), style="class:frame.border"),
+                horizontal_fill(),
+                Window(width=1, height=1, char=" ", style="class:frame.border"),
+                Label(
+                    lambda: Template(" {} ").format(self.title),
+                    style="class:frame.label",
+                    dont_extend_width=True,
+                ),
+                Window(width=1, height=1, char=" ", style="class:frame.border"),
+                horizontal_fill(),
+                Window(width=1, height=1, char=lambda: get_border_char("TOP_RIGHT"), style="class:frame.border"),
+            ],
+            height=1,
+        )
+
+        top_row_without_title = VSplit(
+            [
+                Window(width=1, height=1, char=lambda: get_border_char("TOP_LEFT"), style="class:frame.border"),
+                horizontal_fill(),
+                Window(width=1, height=1, char=lambda: get_border_char("TOP_RIGHT"), style="class:frame.border"),
+            ],
+            height=1,
+        )
+
+        @Condition
+        def has_title() -> bool:
+            return bool(self.title)
+
+        self.container = HSplit(
+            [
+                ConditionalContainer(
+                    content=top_row_with_title,
+                    filter=has_title,
+                    alternative_content=top_row_without_title,
+                ),
+                VSplit(
+                    [
+                        vertical_fill("VERTICAL_LEFT"),
+                        DynamicContainer(lambda: self.body),
+                        vertical_fill("VERTICAL_RIGHT"),
+                    ],
+                    padding=0,
+                ),
+                VSplit(
+                    [
+                        Window(width=1, height=1, char=lambda: get_border_char("BOTTOM_LEFT"), style="class:frame.border"),
+                        horizontal_fill(),
+                        Window(width=1, height=1, char=lambda: get_border_char("BOTTOM_RIGHT"), style="class:frame.border"),
+                    ],
+                    height=1,
+                ),
+            ],
+            width=width,
+            height=height,
+            style="class:frame " + style,
+            key_bindings=key_bindings,
+            modal=modal,
+        )
+
+    def __pt_container__(self):
+        return self.container
+
+
 class WorkspaceApp:
     def __init__(self, *, bridge_factory=None, history=None, input=None, output=None):
         from .bridge import Bridge
@@ -200,13 +331,13 @@ class WorkspaceApp:
             if not self.busy:
                 self.new_conversation()
         header = Window(FormattedTextControl(self.header),height=2,style='class:header')
-        sidebar = ConditionalContainer(Frame(self.sidebar,title='Mission · preuves'),Condition(lambda:self.app.output.get_size().columns>=96))
+        sidebar = ConditionalContainer(ThemeFrame(self.sidebar,title='Mission · preuves'),Condition(lambda:self.app.output.get_size().columns>=96))
         activity = ConditionalContainer(
-            Frame(Window(FormattedTextControl(self.activity_text), height=lambda: 3 if self.app.output.get_size().rows<28 else 7,
+            ThemeFrame(Window(FormattedTextControl(self.activity_text), height=lambda: 3 if self.app.output.get_size().rows<28 else 7,
                          wrap_lines=False), title='Activité observée'),
             Condition(lambda: self.state.status != 'idle'))
-        layout = HSplit([header,activity,VSplit([Frame(self.body,title=lambda:' '+self.page.capitalize()+' '),sidebar],padding=1),
-                         Frame(self.prompt,title='Demande · Entrée envoyer · Alt+Entrée nouvelle ligne'),
+        layout = HSplit([header,activity,VSplit([ThemeFrame(self.body,title=lambda:' '+self.page.capitalize()+' '),sidebar],padding=1),
+                         ThemeFrame(self.prompt,title='Demande · Entrée envoyer · Alt+Entrée nouvelle ligne'),
                          Window(FormattedTextControl(self.footer),height=2,style='class:footer')])
         self.app = Application(layout=Layout(layout,focused_element=self.prompt),key_bindings=bindings,
                                full_screen=True,mouse_support=True,style=self.style(),
