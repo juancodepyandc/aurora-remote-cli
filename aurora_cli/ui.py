@@ -25,6 +25,7 @@ from prompt_toolkit.styles import Style
 from prompt_toolkit.widgets import Frame, TextArea
 
 from . import config, display, themes
+from .core import color as core_color
 from .observations import observation_text, terminal_text
 
 
