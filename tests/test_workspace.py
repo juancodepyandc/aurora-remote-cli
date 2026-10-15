@@ -128,6 +128,8 @@ def test_remote_bridge_never_receives_the_local_archive_uuid(monkeypatch):
 
 @pytest.mark.parametrize('mode', ['local', 'auto'])
 def test_workspace_input_image_uses_direct_local_pipeline_and_explicit_ui(monkeypatch, tmp_path, mode):
+    from aurora_cli import routing
+    monkeypatch.setattr(routing, 'remote_readiness', lambda: (False, 'Offline'))
     from aurora_cli.core import pipeline
     from aurora_cli.core.agents import get
     source = tmp_path / 'input with spaces.png'

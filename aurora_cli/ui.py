@@ -85,16 +85,17 @@ class MissionView:
             if detail:
                 self.record(detail, 'warning' if kind in {'stagnation_notice','recovery_rejected','review_result'} else 'activity')
         elif kind == 'mission_snapshot':
+            self.id = event.get('id', self.id)
             self.goal = event.get('request','')
             self.plan,self.criteria = event.get('plan',[]),event.get('criteria',[])
             self.verified,self.evidence = event.get('verified',[]),event.get('evidence',[])
             if event.get('status'):
                 self.status = event['status']
-                self.phase = 'État distant · '+str(event['status'])
+                self.phase = ('État local · ' if event.get('id','').startswith('loc_') else 'État distant · ')+str(event['status'])
             self.record(f'État reçu · {self.status} · {len(self.plan)} étapes · {len(self.evidence)} preuves')
         elif kind == 'model_metrics':
             self.metrics = event
-        elif kind == 'file_received':
+        elif kind in {'file_received', 'file_available'}:
             self.files.append(event['path'])
             self.record('Fichier vérifié · '+str(event['path']), 'success')
         elif kind == 'reconnecting':
@@ -121,13 +122,19 @@ def retry_payload_valid(pending):
     if not isinstance(pending, dict):
         return False
     required = {'request', 'workspace', 'permissions', 'model', 'idempotency_key'}
-    if not required <= pending.keys() or pending.keys() - (required | {'history', 'session_id'}):
+    if not required <= pending.keys() or pending.keys() - (required | {'history', 'session_id', 'references', 'context_tokens'}):
         return False
     if any(not isinstance(pending[key], str) for key in required):
         return False
     if not pending['request'].strip() or not pending['idempotency_key'].strip():
         return False
     if 'session_id' in pending and not isinstance(pending['session_id'], str):
+        return False
+    if 'references' in pending and (not isinstance(pending['references'],list) or len(pending['references'])>8 or any(
+            not isinstance(ref,dict) or set(ref)!={'id','label'} or
+            not all(isinstance(ref[k],str) for k in ('id','label')) for ref in pending['references'])):
+        return False
+    if 'context_tokens' in pending and (type(pending['context_tokens']) is not int or not 1024<=pending['context_tokens']<=131072):
         return False
     history = pending.get('history', [])
     return isinstance(history, list) and all(
@@ -539,7 +546,7 @@ class WorkspaceApp:
 
     def sidebar_text(self):
         state = self.state
-        lines = [state.id or 'Aucune mission distante',f'État : {state.status.upper()}',
+        lines = [state.id or 'Aucune mission',f'État : {state.status}',
                  'Permissions : '+config.get('default_permissions','SAFE'),'','OBJECTIF',plain(state.goal),'','PLAN']
         lines.extend(f'{i+1}. {plain(step)}' for i,step in enumerate(state.plan))
         if not state.plan:
@@ -561,7 +568,7 @@ class WorkspaceApp:
                      '\n  '+observation_text(e, 250) for e in state.evidence[-8:])
         if state.metrics.get('tokens_per_second') is not None:
             lines.extend(['',f"Débit observé : {state.metrics['tokens_per_second']:.1f} tokens/s"])
-        lines.append(f'Fichiers reçus : {len(state.files)}')
+        lines.append(f'Fichiers disponibles : {len(state.files)}')
         return plain('\n'.join(lines))
 
     def refresh_body(self):
@@ -717,6 +724,7 @@ class WorkspaceApp:
         self.refresh_body()
 
     def _remote(self,raw,*,resume=None,attach=None,pending=None):
+        from .bridge import Bridge
         from .transfers import receive_file
         with self.bridge_factory() as client:
             if attach:
@@ -731,6 +739,11 @@ class WorkspaceApp:
                 payload = pending or {'request':raw,'workspace':str(Path.cwd()) if local_server else '',
                     'permissions':config.get('default_permissions','SAFE'),'model':config.get('default_model',''),
                     'idempotency_key':uuid4().hex}
+                if 'references' not in payload and isinstance(client, Bridge):
+                    payload['references'] = client.prepare_references(raw)
+                    if hasattr(self.history,'state'):
+                        self.history.state['pending_request'] = payload
+                        self.history.save()
                 response = client.mission_start(**payload)
             mid = response.get('mission_id')
             if mid:
@@ -903,10 +916,17 @@ class WorkspaceApp:
             self.event({'type':'error','message':f'Exécution locale interrompue (code {code}). Journal conservé.'})
             return
         result = json.loads(receipt.read_text(encoding='utf-8'))
+        mission = result.get('mission', {})
+        if mission:
+            self.event({'type':'mission_snapshot', **mission})
+            for path, digest in mission.get('files', {}).items():
+                if digest:
+                    self.event({'type':'file_available', 'path':path})
         if not result.get('ok'):
             self.event({'type':'error','message':result.get('error','Le résultat local demandé n’est pas vérifié.')})
             return
-        self.event({'type':'mission_complete','result':result.get('result',''), 'status':'completed'})
+        self.event({'type':'mission_complete','result':result.get('result',''), 'status':'completed',
+                    'verification':{'verified':list(mission.get('verified',{}))}})
 
     async def stop(self):
         if self.local_process and self.local_process.returncode is None:

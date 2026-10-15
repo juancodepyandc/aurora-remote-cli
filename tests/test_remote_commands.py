@@ -9,6 +9,11 @@ from aurora_cli import cli, config
 from aurora_cli.core import capabilities
 
 
+@pytest.fixture(autouse=True)
+def explicit_remote_command_contract():
+    config.set('mode', 'remote')
+
+
 def test_remote_mission_and_local_run_are_both_reachable():
     runner = CliRunner()
     mission = runner.invoke(cli.main, ["mission", "--help"])
@@ -38,7 +43,7 @@ def test_mission_permissions_are_explicit_without_changing_saved_default(monkeyp
     monkeypatch.setattr(config, "get", lambda key, default=None: "SAFE" if key == "default_permissions" else default)
     save = Mock()
     monkeypatch.setattr(config, "save", save)
-    args = ["mission", "deliver a file"]
+    args = ["mission", "deliver a file", '--host', 'remote']
     if permissions:
         args += ["--permissions", permissions]
     result = CliRunner().invoke(cli.main, args)
@@ -172,3 +177,42 @@ def test_remote_stream_delivers_a_verified_file_with_the_bound_renderer(tmp_path
     monkeypatch.setattr(display, "view", renderer)
     assert mission.run_mission(client, "deliver result", workspace=str(tmp_path))
     assert (tmp_path / "delivery/result.txt").read_bytes() == payload
+
+
+def test_extended_agent_mcp_skills_and_mission_commands(monkeypatch):
+    from aurora_cli.bridge import Bridge
+    client = Mock(spec=Bridge)
+    client.agent_enable.return_value = {"ok": True}
+    client.agents_official.return_value = {"ok": True, "agents": [{"name": "code-lead", "domain": "code", "role": "Lead engineer", "preferred_tools": ["search_code"]}]}
+    client.agents_dynamic.return_value = {"ok": True, "agents": []}
+    client.agent_dynamic_create.return_value = {"ok": True, "agent": {"id": "dyn_123", "name": "custom-auditor"}}
+    client.agent_dynamic_save.return_value = {"ok": True, "agent": {"id": "dyn_123", "name": "custom-auditor", "type": "saved"}}
+    client.agent_dynamic_delete.return_value = {"ok": True, "deleted": 1}
+    client.mcp_tools.return_value = {"ok": True, "tools": [{"server": "git", "name": "status", "description": "Git status"}], "errors": []}
+    client.mcp_call.return_value = {"ok": True, "result": {"branch": "main"}}
+    client.skills_read.return_value = {"ok": True, "content": "# Skill instructions"}
+    client.skills_create.return_value = {"ok": True, "file": "/tmp/SKILL.md"}
+    client.skills_discover.return_value = {"ok": True, "skills": []}
+    client.mission_status.return_value = {"ok": True, "mission": {"id": "mis_1", "status": "completed", "request": "Test"}}
+    client.mission_stop.return_value = {"ok": True}
+    monkeypatch.setattr(cli, "_client", lambda: client)
+
+    runner = CliRunner()
+    assert runner.invoke(cli.main, ["agents", "enable", "code-lead"]).exit_code == 0
+    inspected = runner.invoke(cli.main, ["agents", "inspect", "code-lead", "--json"])
+    assert inspected.exit_code == 0 and json.loads(inspected.output)["domain"] == "code"
+    created = runner.invoke(cli.main, ["agents", "create", "custom-auditor", "--role", "Audit code", "--save"])
+    assert created.exit_code == 0
+    client.agent_dynamic_save.assert_called_once_with("dyn_123")
+    assert runner.invoke(cli.main, ["agents", "delete", "dyn_123"]).exit_code == 0
+    assert runner.invoke(cli.main, ["mcp", "tools", "--json"]).exit_code == 0
+    called = runner.invoke(cli.main, ["mcp", "call", "git", "status", "--arg", "short=true"])
+    assert called.exit_code == 0 and json.loads(called.output)["branch"] == "main"
+    read_res = runner.invoke(cli.main, ["skills", "read", "my-skill"])
+    assert read_res.exit_code == 0 and "# Skill instructions" in read_res.output
+    assert runner.invoke(cli.main, ["skills", "create", "my-skill", "--description", "Desc", "--instructions", "Body"]).exit_code == 0
+    assert runner.invoke(cli.main, ["skills", "discover", "--json"]).exit_code == 0
+    assert runner.invoke(cli.main, ["missions", "status", "mis_1", "--json"]).exit_code == 0
+    assert runner.invoke(cli.main, ["missions", "stop", "mis_1"]).exit_code == 0
+    assert runner.invoke(cli.main, ["missions", "local", "--json"]).exit_code == 0
+

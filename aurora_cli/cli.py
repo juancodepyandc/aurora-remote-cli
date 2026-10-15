@@ -278,22 +278,55 @@ def permissions(level):
 
 
 @main.command(name="mission")
-@click.argument("request", required=True)
+@click.argument("request", required=False, default='')
 @click.option("--model", default="", help="Server model to use.")
+@click.option('--host', type=click.Choice(['auto', 'local', 'remote']), default=None,
+              help='Exécution : PC fixe prêt en auto, sinon moteurs de cet ordinateur.')
+@click.option('--workspace', type=click.Path(file_okay=False, path_type=Path), default=None,
+              help='Dossier client : exécution locale ou réception des résultats distants.')
+@click.option('--resume-local', default='', help='Reprendre la même mission locale depuis son checkpoint.')
+@click.option('--input', 'input_files', type=click.Path(exists=True, dir_okay=False, path_type=Path), multiple=True,
+              help='Transférer réellement une référence client avant une mission distante (maximum 20 Mo par fichier).')
 @click.option("--server-workspace", default=None, help="Working directory on the bridge host.")
 @click.option("--permissions", type=click.Choice(config.PERMISSION_LEVELS, case_sensitive=False),
               default=None, help="Permissions for this mission; otherwise use the saved setting.")
 @click.option("--context-tokens", type=click.IntRange(1024, 131072), default=None,
               help="Ollama context for this mission (more context needs more memory); otherwise use server defaults.")
-def mission(request, model, server_workspace, permissions, context_tokens):
-    """Send one request to the remote bridge."""
+def mission(request, model, server_workspace, permissions, context_tokens, host, workspace, resume_local, input_files):
+    """Execute a mission on the selected host and retain real evidence."""
+    from aurora_cli.core.conversation import Conversation
+    history = Conversation.open(project=workspace or Path.cwd())
+    retained = history.state.get('pending_request') or history.state.get('active_mission_id')
+    mode = 'local' if resume_local else host or ('remote' if server_workspace is not None else config.get('mode','auto'))
+    if retained and mode != 'remote' and not resume_local:
+        raise click.ClickException('Mission distante déjà acceptée ou incertaine ; utilise /retry ou missions watch/resume. Aucun repli local.')
+    if not request and not resume_local:
+        raise click.UsageError('Une demande est requise pour une nouvelle mission.')
+    remote = mode == 'remote'
+    if mode == 'auto' and config.is_configured():
+        from .routing import remote_readiness
+        remote, reason = remote_readiness()
+        if not remote:
+            display.hint('PC fixe indisponible : '+reason+' · exécution locale avant acceptation.')
+    if not remote:
+        from .local_mission import execute_local
+        try:
+            state = execute_local(request, workspace=workspace, model=model,
+                                  permissions=permissions or config.get('default_permissions','SAFE'),
+                                  resume_id=resume_local, context_tokens=context_tokens or 8192)
+            display.success(state['result'])
+        except Exception as exc:
+            raise click.ClickException(str(exc)) from exc
+        return
     from aurora_cli.mission import run_mission
     from aurora_cli.bridge import Bridge
     client = Bridge()
     try:
-        if not run_mission(client, request, workspace=str(Path.cwd()), model=model,
+        if not run_mission(client, request, workspace=str(workspace or Path.cwd()), model=model,
                            server_workspace=server_workspace,
                            context_tokens=context_tokens,
+                           dispatch_state=history,
+                           input_files=input_files,
                            permissions=permissions or config.get('default_permissions', 'AUTONOMOUS')):
             raise click.ClickException("La mission distante ne s'est pas terminée avec succès.")
     finally:
@@ -365,6 +398,61 @@ def missions_watch_command(mission_id):
     with _client() as client:
         if not run_mission(client,"Suivi "+mission_id,workspace=str(Path.cwd()),watch_id=mission_id):
             raise click.ClickException("La mission suivie n’a pas confirmé le résultat demandé.")
+
+
+@missions_command.command(name="status")
+@click.argument("mission_id")
+@click.option("--json", "as_json", is_flag=True)
+def missions_status_command(mission_id, as_json):
+    """Inspect the live or retained status of a remote mission."""
+    client = _client()
+    try:
+        result = _require_remote_ok(client.mission_status(mission_id))
+    finally:
+        client.close()
+    if as_json:
+        click.echo(json.dumps(result, ensure_ascii=False, indent=2))
+        return
+    mission_data = result.get("mission") or result
+    display.kv("ID", mission_data.get("id", mission_id))
+    display.kv("Statut", mission_data.get("status", "inconnu"))
+    if mission_data.get("request"):
+        display.kv("Demande", str(mission_data.get("request"))[:160])
+    if mission_data.get("model"):
+        display.kv("Modèle", mission_data.get("model"))
+    if mission_data.get("error"):
+        display.warning(f"Erreur : {mission_data['error']}")
+    elif mission_data.get("result"):
+        display.print(str(mission_data["result"])[:500])
+
+
+@missions_command.command(name="stop")
+@click.argument("mission_id")
+def missions_stop_command(mission_id):
+    """Request clean cancellation of a running remote mission."""
+    client = _client()
+    try:
+        _require_remote_ok(client.mission_stop(mission_id))
+        display.success(f"Arrêt demandé pour la mission : {mission_id}")
+    finally:
+        client.close()
+
+
+@missions_command.command(name="local")
+@click.option("--json", "as_json", is_flag=True)
+def missions_local_command(as_json):
+    """List local mission checkpoints stored on this machine."""
+    from .local_mission import list_local_missions
+    items = list_local_missions()
+    if as_json:
+        click.echo(json.dumps({"ok": True, "missions": items}, ensure_ascii=False, indent=2))
+        return
+    if not items:
+        display.hint("Aucune mission locale enregistrée.")
+        return
+    for item in items:
+        display.kv(item["id"], f"{item['status']} · {item['request'][:100]}")
+        display.hint(f"  dossier : {item['workspace']} · reprendre : jobia mission --resume-local {item['id']}")
 
 
 # --- Local commands -------------------------------------------------------
@@ -1424,6 +1512,89 @@ def agents_disable(name):
         client.close()
 
 
+@agents.command(name="enable")
+@click.argument("name")
+def agents_enable(name):
+    """Enable one official agent on the bridge."""
+    client = _client()
+    try:
+        _require_remote_ok(client.agent_enable(name))
+        display.success(f"Agent activé : {name}")
+    finally:
+        client.close()
+
+
+@agents.command(name="inspect")
+@click.argument("name")
+@click.option("--json", "as_json", is_flag=True)
+def agents_inspect(name, as_json):
+    """Show the role, permissions, tools, and verification contract of an agent."""
+    client = _client()
+    try:
+        official = _require_remote_ok(client.agents_official()).get("agents", [])
+        dynamic = _require_remote_ok(client.agents_dynamic()).get("agents", [])
+    finally:
+        client.close()
+    target = next((a for a in official + dynamic if a.get("name") == name or a.get("id") == name), None)
+    if not target:
+        raise click.ClickException(f"Agent introuvable : {name}")
+    if as_json:
+        click.echo(json.dumps(target, ensure_ascii=False, indent=2))
+        return
+    display.header(f"Agent : {target.get('name', name)}")
+    for field in ("id", "domain", "permissions", "model", "enabled", "type", "verification_focus"):
+        if field in target and target[field] not in (None, ""):
+            display.kv(field, target[field])
+    tools = target.get("preferred_tools") or target.get("tools") or []
+    if tools:
+        display.kv("outils", ", ".join(str(t) for t in tools))
+    if target.get("role"):
+        display.print(f"  Rôle : {target['role']}")
+
+
+@agents.command(name="create")
+@click.argument("name")
+@click.option("--role", required=True, help="Engineering role and system instructions for the agent.")
+@click.option("--model", default="", help="Server model (defaults to bridge model).")
+@click.option("--permissions", default="STANDARD", type=click.Choice(config.PERMISSION_LEVELS, case_sensitive=False))
+@click.option("--tool", "tools", multiple=True, help="Allowed tool name (repeatable).")
+@click.option("--save", "save_agent", is_flag=True, help="Persist agent as saved so missions can spawn it by name.")
+def agents_create(name, role, model, permissions, tools, save_agent):
+    """Create a dynamic agent on the bridge (and optionally save it for missions)."""
+    client = _client()
+    try:
+        payload = {
+            "name": name,
+            "role": role,
+            "system_prompt": role,
+            "permissions": permissions.upper(),
+            "tools": list(tools),
+        }
+        if model:
+            payload["model"] = model
+        created = _require_remote_ok(client.agent_dynamic_create(**payload))
+        agent = created.get("agent", {})
+        agent_id = agent.get("id", "")
+        if save_agent and agent_id:
+            saved = _require_remote_ok(client.agent_dynamic_save(agent_id))
+            agent = saved.get("agent", agent)
+        display.success(f"Agent créé : {agent.get('name', name)} ({agent.get('id', 'id inconnu')})")
+    finally:
+        client.close()
+
+
+@agents.command(name="delete")
+@click.argument("agent_id")
+def agents_delete(agent_id):
+    """Delete a dynamic agent from the bridge."""
+    client = _client()
+    try:
+        _require_remote_ok(client.agent_dynamic_delete(agent_id))
+        display.success(f"Agent dynamique supprimé : {agent_id}")
+    finally:
+        client.close()
+
+
 @main.group()
 def mcp():
     """Manage the bridge's MCP servers."""
@@ -1441,6 +1612,58 @@ def mcp_list():
         client.close()
 
 
+@mcp.command(name="tools")
+@click.option("--workspace", default="", help="Server workspace to inspect for MCP configurations.")
+@click.option("--json", "as_json", is_flag=True)
+def mcp_tools_cmd(workspace, as_json):
+    """Probe MCP servers and list their live tools and schemas."""
+    client = _client()
+    try:
+        result = _require_remote_ok(client.mcp_tools(workspace=workspace))
+    finally:
+        client.close()
+    if as_json:
+        click.echo(json.dumps(result, ensure_ascii=False, indent=2))
+        return
+    for tool in result.get("tools", []):
+        display.kv(f"{tool.get('server', '?')}:{tool.get('name', '?')}", tool.get("description", ""))
+    for err in result.get("errors", []):
+        display.warning(f"{err.get('server', '?')} : {err.get('error', 'erreur')}")
+
+
+@mcp.command(name="call")
+@click.argument("server")
+@click.argument("tool")
+@click.option("--arg", "kv_args", multiple=True, help="Tool argument in key=value format (repeatable).")
+@click.option("--json-args", default="", help="JSON object of arguments.")
+@click.option("--workspace", default="", help="Server workspace context.")
+def mcp_call_cmd(server, tool, kv_args, json_args, workspace):
+    """Invoke a tool on a bridge MCP server and print the result."""
+    arguments = {}
+    if json_args:
+        try:
+            parsed = json.loads(json_args)
+            if not isinstance(parsed, dict):
+                raise ValueError("JSON arguments must be an object")
+            arguments.update(parsed)
+        except ValueError as exc:
+            raise click.ClickException(f"Arguments JSON invalides : {exc}") from exc
+    for item in kv_args:
+        if "=" not in item:
+            raise click.ClickException(f"Argument invalide '{item}' (attendu clé=valeur).")
+        k, v = item.split("=", 1)
+        try:
+            arguments[k] = json.loads(v)
+        except ValueError:
+            arguments[k] = v
+    client = _client()
+    try:
+        result = _require_remote_ok(client.mcp_call(server, tool, arguments=arguments, workspace=workspace))
+    finally:
+        client.close()
+    click.echo(json.dumps(result.get("result", result), ensure_ascii=False, indent=2))
+
+
 @main.group()
 def skills():
     """Manage the bridge's skills."""
@@ -1455,6 +1678,59 @@ def skills_list():
         display.skills_table(result.get("skills", []))
     finally:
         client.close()
+
+
+@skills.command(name="read")
+@click.argument("name")
+@click.option("--workspace", default="", help="Server workspace to search.")
+def skills_read_cmd(name, workspace):
+    """Read the full SKILL.md instructions for a bridge skill."""
+    client = _client()
+    try:
+        result = _require_remote_ok(client.skills_read(name, workspace=workspace))
+    finally:
+        client.close()
+    click.echo(result.get("content", ""))
+
+
+@skills.command(name="create")
+@click.argument("name")
+@click.option("--description", required=True, help="Short description of when to use this skill.")
+@click.option("--instructions", default="", help="Markdown body of the skill.")
+@click.option("--level", default="user", type=click.Choice(["user", "project"]))
+@click.option("--trigger", "triggers", multiple=True, help="Trigger keyword (repeatable).")
+@click.option("--workspace", default="", help="Target project workspace on the bridge.")
+def skills_create_cmd(name, description, instructions, level, triggers, workspace):
+    """Create a reusable skill on the bridge."""
+    client = _client()
+    try:
+        result = _require_remote_ok(client.skills_create(
+            name,
+            description=description,
+            level=level,
+            triggers=list(triggers),
+            instructions=instructions,
+            workspace=workspace,
+        ))
+        display.success(f"Skill créé : {result.get('file', name)}")
+    finally:
+        client.close()
+
+
+@skills.command(name="discover")
+@click.option("--workspace", default="", help="Server workspace to scan.")
+@click.option("--json", "as_json", is_flag=True)
+def skills_discover_cmd(workspace, as_json):
+    """Discover skills across project, user, and global bridge paths."""
+    client = _client()
+    try:
+        result = _require_remote_ok(client.skills_discover(workspace=workspace))
+    finally:
+        client.close()
+    if as_json:
+        click.echo(json.dumps(result, ensure_ascii=False, indent=2))
+        return
+    display.skills_table(result.get("skills", []))
 
 
 def _require_remote_ok(result: dict) -> dict:

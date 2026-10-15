@@ -15,14 +15,19 @@ def main():
     from .workspace import execute
     request = json.load(sys.stdin)
     history = request.get('history', [])
+    mission = {}
+    def observe(state):
+        mission.update(state)
     try:
         ok = bool(execute(request['request'],history,local_only=True,
-                          allow_model_selection=bool(request.get('allow_model_selection',False))))
+                          allow_model_selection=bool(request.get('allow_model_selection',False)), mission_observer=observe))
         result = next((m['content'] for m in reversed(history) if m.get('role')=='assistant'), '') if ok else ''
         payload = {'ok':ok,'result':result,'history':history,
                    'error':'' if ok else 'Le pipeline local n’a pas confirmé le résultat demandé. Consulte le journal.'}
     except Exception as exc:
         payload = {'ok':False,'error':str(exc),'history':history}
+    if mission:
+        payload['mission'] = mission
     target = Path(args.receipt)
     temporary = target.with_name(target.name+'.'+uuid4().hex+'.tmp')
     temporary.touch(mode=0o600,exist_ok=False)

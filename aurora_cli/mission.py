@@ -38,22 +38,50 @@ def _safe_target(root: Path, raw: str, for_write: bool = False) -> Path | None:
     return resolved
 
 
-def run_mission(client: Bridge, request: str, workspace: str = "", permissions: str = "AUTONOMOUS", model: str = "", session_id: str = "", *, server_workspace: str | None = None, resume_id: str = "", watch_id: str = "", context_tokens: int | None = None) -> bool:
+def run_mission(client: Bridge, request: str, workspace: str = "", permissions: str = "AUTONOMOUS", model: str = "", session_id: str = "", *, server_workspace: str | None = None, resume_id: str = "", watch_id: str = "", context_tokens: int | None = None, dispatch_state=None, input_files=()) -> bool:
     """Start and monitor an autonomous mission."""
     if server_workspace is None:
         local_server = urlsplit(client.server_url).hostname in ("localhost", "127.0.0.1", "::1")
         server_workspace = workspace if local_server else ""
     try:
         options = {'context_tokens':context_tokens} if context_tokens is not None else {}
+        retained = getattr(dispatch_state, 'state', None)
+        payload = dict(request=request, workspace=server_workspace, permissions=permissions,
+                       model=model, session_id=session_id, idempotency_key=uuid4().hex, **options)
+        if isinstance(retained, dict) and not resume_id and not watch_id:
+            pending = retained.get('pending_request')
+            active = retained.get('active_mission_id')
+            if pending or active:
+                if retained.get('mission_server_url') != client.server_url:
+                    raise ValueError('Serveur différent pour une acceptation retenue ; aucune nouvelle mission créée')
+                original = pending or retained.get('accepted_request', {})
+                if original.get('request') != request:
+                    raise ValueError('Mission précédente retenue ; suivre/reprendre son identifiant avant une nouvelle demande')
+                if active:
+                    watch_id = active
+                else:
+                    payload = dict(pending)
+            else:
+                if isinstance(client, Bridge):
+                    payload['references'] = client.prepare_references(request, input_files)
+                retained['pending_request'] = payload
+                retained['mission_server_url'] = client.server_url
+                dispatch_state.save()
+        elif not resume_id and not watch_id and isinstance(client, Bridge):
+            payload['references'] = client.prepare_references(request, input_files)
         data = (client.mission_status(watch_id) if watch_id else client.mission_resume(resume_id,model=model) if resume_id else
-                client.mission_start(request, workspace=server_workspace, permissions=permissions,
-                                     model=model, session_id=session_id, idempotency_key=uuid4().hex, **options))
+                client.mission_start(**payload))
         if watch_id and data.get("ok"):
             data.update(mission_id=watch_id,cursor=data.get("stream_start_cursor",0))
         mission_id = data.get("mission_id")
+        if mission_id and isinstance(retained, dict):
+            retained.update(active_mission_id=mission_id, accepted_request=payload)
+            retained.pop('pending_request', None)
+            dispatch_state.save()
         if not mission_id:
             display.error(data.get("error", "Impossible de démarrer la mission."))
             return False
+        display.hint('Mission distante retenue : '+mission_id)
     except Exception as e:
         display.error(f"Erreur de démarrage: {e}")
         return False
@@ -264,6 +292,11 @@ def run_mission(client: Bridge, request: str, workspace: str = "", permissions: 
                     live_spinner = None
                 _separate_from_tokens()
                 display.mission_summary(event)
+                if isinstance(retained, dict) and event.get('status','completed') == 'completed' and not event.get('stopped'):
+                    retained['last_completed_mission_id'] = mission_id
+                    retained.pop('active_mission_id', None)
+                    retained.pop('accepted_request', None)
+                    dispatch_state.save()
                 return not event.get("stopped", False) and event.get("status", "completed") == "completed"
 
         display.error("Flux fermé sans confirmation de fin de mission.")

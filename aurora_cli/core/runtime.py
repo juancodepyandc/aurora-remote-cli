@@ -66,7 +66,7 @@ class LocalRuntime:
                temperature: float = 0.7, top_p: float = 0.95,
                max_tokens: int = 2048, stop: list[str] | None = None,
                system: str = "", timeout: float = 600.0,
-               context_length: int = 0) -> Iterator[StreamChunk]:
+               context_length: int = 0, response_format: dict | str | None = None) -> Iterator[StreamChunk]:
         """Yield answer increments. Raises :class:`RuntimeError_` on failure."""
         if not model:
             raise RuntimeError_("Aucun modèle sélectionné.")
@@ -74,10 +74,10 @@ class LocalRuntime:
             raise RuntimeError_(f"{self.info.label} est injoignable ({self.info.detail})")
         if self.info.flavour is LocalFlavour.OLLAMA:
             yield from self._stream_ollama(model, messages, temperature,
-                                           top_p, max_tokens, system, timeout, context_length)
+                                           top_p, max_tokens, system, timeout, context_length, response_format)
         else:
             yield from self._stream_openai(model, messages, temperature,
-                                           top_p, max_tokens, stop, system, timeout)
+                                           top_p, max_tokens, stop, system, timeout, response_format)
 
     def complete(self, model: str, messages: list[dict], **options) -> str:
         """Non-streaming convenience wrapper."""
@@ -99,7 +99,7 @@ class LocalRuntime:
 
     def _stream_ollama(self, model: str, messages: list[dict], temperature: float,
                        top_p: float, max_tokens: int, system: str,
-                       timeout: float, context_length: int = 0) -> Iterator[StreamChunk]:
+                       timeout: float, context_length: int = 0, response_format=None) -> Iterator[StreamChunk]:
         import httpx
 
         payload_messages = list(messages)
@@ -117,6 +117,8 @@ class LocalRuntime:
         }
         if context_length:
             body['options']['num_ctx'] = context_length
+        if response_format is not None:
+            body['format'] = response_format
         try:
             with httpx.stream("POST", f"{self.info.base_url}/api/chat",
                               json=body, headers=self._headers(),
@@ -152,7 +154,7 @@ class LocalRuntime:
 
     def _stream_openai(self, model: str, messages: list[dict], temperature: float,
                        top_p: float, max_tokens: int, stop: list[str] | None,
-                       system: str, timeout: float) -> Iterator[StreamChunk]:
+                       system: str, timeout: float, response_format=None) -> Iterator[StreamChunk]:
         import httpx
 
         payload_messages = list(messages)
@@ -168,6 +170,10 @@ class LocalRuntime:
         }
         if stop:
             body["stop"] = stop
+        if response_format is not None:
+            body['response_format'] = ({'type':'json_schema', 'json_schema':
+                                       {'name':'jobia_action', 'schema':response_format}}
+                                      if isinstance(response_format,dict) else {'type':'json_object'})
         try:
             with httpx.stream("POST", f"{self.info.base_url}/v1/chat/completions",
                               json=body, headers=self._headers(),

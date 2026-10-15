@@ -32,6 +32,7 @@ def _remote_mission(request, history):
     with Bridge() as client:
         return run_mission(client, request, workspace=str(Path.cwd()),
                            permissions=config.get('default_permissions', 'SAFE'),
+                           dispatch_state=history if hasattr(history, 'state') else None,
                            session_id=getattr(history, 'state', {}).get('remote_session_id', ''))
 
 
@@ -107,7 +108,7 @@ def prepare(request: str, *, yes=False):
     return True
 
 
-def execute(request: str, history: list, *, local_only=False, allow_model_selection=False):
+def execute(request: str, history: list, *, local_only=False, allow_model_selection=False, mission_observer=None):
     result = scan(deep=True)
     plan = recommend(request, profile(),
                      [m for p in result.providers for m in p.models] + result.loose_models)
@@ -119,7 +120,7 @@ def execute(request: str, history: list, *, local_only=False, allow_model_select
         from .core.request_spec import parse_creation_request
         spec = parse_creation_request(request)
     remote_available = False
-    if mode=='auto' and config.is_configured() and not (spec and spec.input_image is not None):
+    if mode=='auto' and config.is_configured():
         from .routing import remote_readiness
         remote_available, reason = remote_readiness()
         if not remote_available:
@@ -134,11 +135,7 @@ def execute(request: str, history: list, *, local_only=False, allow_model_select
         # A configured bridge is the fixed workstation requested by the user.
         # Try it first for complex 3D work; local execution remains an
         # automatic fallback if the bridge is temporarily unreachable.
-        if spec.input_image is not None and mode != 'local' and config.is_configured():
-            # The bridge currently transports text, not local attachments. A
-            # path on this computer is not evidence the remote host can read it.
-            display.hint("Image locale fournie : exécution locale ; le pont ne transfère pas encore les références.")
-        if spec.input_image is None and (mode=='remote' or remote_available):
+        if mode=='remote' or remote_available:
             display.info("Demande 3D complexe : utilisation automatique du PC fixe via AuroraIA.")
             # An accepted mission can fail after side effects. Do not regenerate
             # locally merely because the remote stream did not finish.
@@ -216,6 +213,13 @@ def execute(request: str, history: list, *, local_only=False, allow_model_select
         display.hint('/apps montre les ressources occupées. La conversation reste conservée.')
         return
     display.info(f"Local · {route.target} · {chosen}")
+    from .local_mission import needs_actions, execute_local
+    if needs_actions(request):
+        state = execute_local(request, model=chosen, runtime=route.runtime,
+                              permissions=config.get('default_permissions', 'SAFE'), observer=mission_observer)
+        _remember_result(history, request, state['result'])
+        display.success(state['result'])
+        return state['status'] == 'completed'
     from .core.conversation import respond_with_fallback
     try:
         for text in respond_with_fallback(route.runtime, chosen, history, request, models=route.models, role=role):

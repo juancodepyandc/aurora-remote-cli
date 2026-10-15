@@ -3,6 +3,10 @@ from __future__ import annotations
 
 import json
 import time
+import base64
+import hashlib
+from pathlib import Path
+import re
 import os
 from urllib.parse import urlsplit
 from typing import Any, Generator
@@ -214,7 +218,7 @@ class Bridge:
                 payload = _decode_json(exc.response)
                 error = payload.get("error") or f"HTTP error {exc.response.status_code}"
                 error_kind = payload.get("error_kind") or "http"
-                if exc.response.status_code not in (500, 502, 503, 504):
+                if exc.response.status_code not in (500, 502, 503, 504, 530):
                     yield {"type": "error", "error": error, "error_kind": error_kind,
                            "last_event_id": last_event_id}
                     return
@@ -329,8 +333,14 @@ class Bridge:
     def agents_dynamic(self) -> dict:
         return self.get("/api/cli/agents/dynamic/list")
 
+    def agent_dynamic_get(self, agent_id: str) -> dict:
+        return self.get(f"/api/cli/agents/dynamic/{agent_id}")
+
     def agent_dynamic_create(self, **kwargs: Any) -> dict:
         return self.post("/api/cli/agents/dynamic/create", kwargs)
+
+    def agent_dynamic_modify(self, agent_id: str, **kwargs: Any) -> dict:
+        return self.post(f"/api/cli/agents/dynamic/{agent_id}/modify", kwargs)
 
     def agent_dynamic_delete(self, agent_id: str) -> dict:
         return self.delete(f"/api/cli/agents/dynamic/{agent_id}")
@@ -346,19 +356,31 @@ class Bridge:
     def mcp_tools(self, workspace: str = "") -> dict:
         return self.get("/api/cli/mcp/tools", params={"workspace": workspace} if workspace else {})
 
-    def mcp_call(self, server: str, tool: str, arguments: dict | None = None) -> dict:
-        return self.post("/api/cli/mcp/call", {"server": server, "tool": tool, "arguments": arguments or {}})
+    def mcp_call(self, server: str, tool: str, arguments: dict | None = None, workspace: str = "") -> dict:
+        payload: dict[str, Any] = {"server": server, "tool": tool, "arguments": arguments or {}}
+        if workspace:
+            payload["workspace"] = workspace
+        return self.post("/api/cli/mcp/call", payload)
 
     # --- Skills ---
 
     def skills_list(self, workspace: str = "") -> dict:
         return self.get("/api/cli/skills/list", params={"workspace": workspace} if workspace else {})
 
-    def skills_read(self, name: str) -> dict:
-        return self.post("/api/cli/skills/read", {"name": name})
+    def skills_read(self, name: str, workspace: str = "") -> dict:
+        payload: dict[str, Any] = {"name": name}
+        if workspace:
+            payload["workspace"] = workspace
+        return self.post("/api/cli/skills/read", payload)
 
-    def skills_create(self, name: str, description: str = "", level: str = "user", triggers: list[str] | None = None) -> dict:
-        return self.post("/api/cli/skills/create", {"name": name, "description": description, "level": level, "triggers": triggers or []})
+    def skills_create(self, name: str, description: str = "", level: str = "user",
+                      triggers: list[str] | None = None, instructions: str = "", workspace: str = "") -> dict:
+        payload: dict[str, Any] = {"name": name, "description": description, "level": level, "triggers": triggers or []}
+        if instructions:
+            payload["instructions"] = instructions
+        if workspace:
+            payload["workspace"] = workspace
+        return self.post("/api/cli/skills/create", payload)
 
     def skills_discover(self, workspace: str = "") -> dict:
         return self.post("/api/cli/skills/discover", {"workspace": workspace})
@@ -379,9 +401,36 @@ class Bridge:
 
     # --- Missions ---
 
+    def prepare_references(self, request: str, input_files=()) -> list[dict]:
+        files = [Path(p).expanduser().resolve() for p in input_files]
+        if re.search(r'\b3d\b',request,re.I):
+            from .core.request_spec import parse_creation_request
+            image = parse_creation_request(request).input_image
+            if image is not None and image not in files:
+                files.append(image)
+        if len(files)>8:
+            raise ValueError('Au maximum huit références par mission')
+        references=[]
+        for path in files:
+            if path.name == '.env' or path.name.startswith('.env.') or any(
+                    part in {'.ssh','.secrets','.git'} for part in path.parts):
+                raise ValueError('Fichier privé/protégé refusé comme référence')
+            if not path.is_file() or not 0 < path.stat().st_size <= 20*1024*1024:
+                raise ValueError('Référence locale absente/vide ou supérieure à 20 Mo : '+str(path))
+            data = path.read_bytes()
+            digest = hashlib.sha256(data).hexdigest()
+            result = self.post('/api/cli/inputs', {'filename':path.name, 'size':len(data), 'sha256':digest,
+                                                   'data':base64.b64encode(data).decode('ascii')})
+            receipt = result.get('id','')
+            if (not result.get('ok') or result.get('sha256') != digest or result.get('size') != len(data)
+                    or not re.fullmatch(r'inp_'+digest+r'\.[a-z0-9]{1,8}',receipt)):
+                raise RuntimeError('Transfert de référence non confirmé : '+str(result.get('error','empreinte invalide')))
+            references.append({'id':receipt, 'label':str(path)})
+        return references
+
     def mission_start(self, request: str, workspace: str = "", permissions: str = "AUTONOMOUS",
                       session_id: str = "", model: str = "", idempotency_key: str = "", history: list | None = None,
-                      context_tokens: int | None = None) -> dict:
+                      context_tokens: int | None = None, references: list | None = None) -> dict:
         payload = {
             "request": request, "workspace": workspace, "permissions": permissions,
             "session_id": session_id, "model": model,
@@ -393,6 +442,9 @@ class Bridge:
             if type(context_tokens) is not int or not 1024 <= context_tokens <= 131072:
                 raise ValueError('context_tokens must be an integer from 1024 to 131072')
             payload['context_tokens'] = context_tokens
+        references = self.prepare_references(request) if references is None else references
+        if references:
+            payload['references'] = references
         return self.post("/api/cli/mission/start", payload)
 
     def mission_stream(self, mission_id: str, last_event_id: int = 0) -> Generator[dict, None, None]:
@@ -414,7 +466,7 @@ class Bridge:
                               params={'wait':20}, timeout=30)
             if not result.get('ok'):
                 status = result.get('http_status')
-                retryable = status in (500,502,503,504) or result.get('error_kind') in ('timeout','connection')
+                retryable = status in (500,502,503,504,530) or result.get('error_kind') in ('timeout','connection')
                 if not retryable or retries >= 3:
                     yield {'type':'error','error':result.get('error','Mission polling failed; update the bridge'),
                            'error_kind':result.get('error_kind','http'),'last_event_id':last_event_id}
