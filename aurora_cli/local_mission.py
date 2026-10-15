@@ -19,13 +19,26 @@ from .core import locations
 from .core.security import is_forbidden
 
 
+import shlex
+
+
 def needs_actions(request):
+    if not isinstance(request, str) or not request.strip():
+        return False
     return bool(re.search(
-        r'\b(?:fichiers?|files?|dossiers?|répertoires?|folders?|directories|scripts?'
+        r'\b(?:fichiers?|files?|dossiers?|r[ée]pertoires?|folders?|directories|scripts?'
         r'|corrige\w*|fix\w*|bugs?|impl[ée]ment\w*|test(?:e|er|s)?|pytest|v[ée]rifi\w*'
-        r'|analys\w*|refactor\w*|modifi\w*|cr[ée](?:e|er)|ajout\w*|fonctions?|classes?'
-        r'|modules?|d[ée]p[ôo]ts?|repos?|workspaces?|git)\b'
-        r'|\.(?:py|json|csv|txt|js|ts|tsx|jsx|html|css|md|toml|ya?ml|sh|sql)\b',
+        r'|analys\w*|refactor\w*|modifi\w*|cr[ée](?:e|er|ation)\w*|ajout\w*|fonctions?|classes?'
+        r'|modules?|d[ée]p[ôo]ts?|repos?|workspaces?|git|code\w*|programm\w*|d[ée]velopp\w*'
+        r'|optimi[sz]\w*|am[ée]lior\w*|inspect\w*|lis|lire|read|[ée]cri(?:s|re|t)|write|[ée]dit\w*'
+        r'|ex[ée]cut\w*|run|lance\w*|build\w*|compil\w*|debug\w*|d[ée]bogu\w*|diagnosti\w*'
+        r'|architect\w*|syst[èe]m\w*|pipelin\w*|rout(?:e|es|ing)|api|serveurs?|servers?|cli'
+        r'|tunnels?|bridges?|agents?|t[âa]ches?|tasks?|skills?|mcp|outils?|tools?'
+        r'|projets?|projects?|packages?|configs?|configurations?|sch[ée]mas?|schemas?'
+        r'|bases?|databases?|sql|migrations?|audits?|auditer|nettoy\w*|clean\w*|cherch\w*'
+        r'|search\w*|find|trouv\w*|remplac\w*|replace\w*|patch\w*|mets|mettre)\b'
+        r'|\.(?:py|json|csv|txt|js|ts|tsx|jsx|html|css|md|toml|ya?ml|sh|sql|rs|go|c|cpp|h|glb|obj|stl)\b'
+        r'|(?:^|\s)[.~]?/[a-zA-Z0-9_.-]+|`[^`]+`',
         request, re.I,
     ))
 
@@ -78,8 +91,9 @@ class LocalMission:
     READ_ONLY_TOOLS = {
         'inspect_runtime', 'list_files', 'find_files', 'search_code',
         'read_file', 'verify_file', 'git_status', 'list_skills', 'read_skill',
+        'list_mcp_tools',
     }
-    EFFECT_TOOLS = {'write_file', 'run_python'}
+    EFFECT_TOOLS = {'write_file', 'edit_file', 'run_python', 'run_command', 'call_mcp_tool'}
     ALL_TOOLS = READ_ONLY_TOOLS | EFFECT_TOOLS
 
     def __init__(self, request, workspace, permissions='SAFE', *, resume_id=''):
@@ -178,12 +192,95 @@ class LocalMission:
                 })
         return found
 
+    def _discover_local_mcp_servers(self) -> dict[str, dict]:
+        configs = [
+            self.root / '.mcp.json',
+            self.root / '.aurora' / 'mcp_config.json',
+            Path.home() / '.aurora' / 'mcp_config.json',
+        ]
+        servers: dict[str, dict] = {}
+        for cfg_path in configs:
+            if not cfg_path.is_file():
+                continue
+            try:
+                raw = json.loads(cfg_path.read_text(encoding='utf-8'))
+            except (OSError, ValueError):
+                continue
+            if not isinstance(raw, dict):
+                continue
+            entries = raw.get('mcpServers') if isinstance(raw.get('mcpServers'), dict) else raw
+            for srv_name, srv_cfg in entries.items():
+                if srv_name in servers or not isinstance(srv_cfg, dict):
+                    continue
+                cmd = srv_cfg.get('command')
+                if isinstance(cmd, str) and cmd.strip():
+                    servers[srv_name] = {
+                        'command': cmd.strip(),
+                        'args': [str(a) for a in srv_cfg.get('args', [])] if isinstance(srv_cfg.get('args'), list) else [],
+                        'env': {str(k): str(v) for k, v in srv_cfg.get('env', {}).items()} if isinstance(srv_cfg.get('env'), dict) else {},
+                        'source': str(cfg_path),
+                    }
+        return servers
+
+    def _query_mcp_server(self, server_name: str, cfg: dict, method: str, params: dict | None = None) -> dict:
+        argv = [cfg['command'], *cfg.get('args', [])]
+        env = dict(os.environ)
+        env.update(cfg.get('env') or {})
+        messages = [
+            {
+                'jsonrpc': '2.0',
+                'id': 1,
+                'method': 'initialize',
+                'params': {
+                    'protocolVersion': '2024-11-05',
+                    'capabilities': {},
+                    'clientInfo': {'name': 'aurora-local-cli', 'version': '1.0.0'},
+                },
+            },
+            {'jsonrpc': '2.0', 'method': 'notifications/initialized'},
+            {'jsonrpc': '2.0', 'id': 2, 'method': method, 'params': params or {}},
+        ]
+        payload = '\n'.join(json.dumps(m, ensure_ascii=False) for m in messages) + '\n'
+        proc = subprocess.run(
+            argv,
+            input=payload,
+            cwd=self.root,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        parsed = []
+        for line in proc.stdout.splitlines():
+            line = line.strip()
+            if not line.startswith('{'):
+                continue
+            try:
+                obj = json.loads(line)
+                if isinstance(obj, dict):
+                    parsed.append(obj)
+            except ValueError:
+                continue
+        target_msg = next((m for m in parsed if m.get('id') == 2), parsed[-1] if parsed else None)
+        if not target_msg:
+            err = proc.stderr[:1000].strip() or f'Aucune réponse JSON-RPC du serveur MCP {server_name}'
+            raise ValueError(err)
+        if 'error' in target_msg and target_msg['error']:
+            raise ValueError(f"Erreur MCP ({server_name}) : {target_msg['error']}")
+        res = target_msg.get('result')
+        return res if isinstance(res, dict) else {'value': res}
+
+    def _refresh_tracked_files(self):
+        for raw in list(self.state['files']):
+            path = self.target(raw)
+            self.state['files'][raw] = _digest(path.read_bytes()) if path.is_file() else None
+
     def _observe(self, tool, args, result):
         evidence = dict(id='ev_'+uuid.uuid4().hex[:12], tool=tool, args=args, **result)
         self.state['evidence'].append(evidence)
         # A criterion can only be verified by a current successful observation.
         criterion = args.get('criterion')
-        if result.get('ok') and tool in {'verify_file', 'run_python'} and criterion:
+        if result.get('ok') and tool in {'verify_file', 'run_python', 'run_command', 'call_mcp_tool'} and criterion:
             if criterion not in self.state['criteria']:
                 raise ValueError('Critère absent du plan accepté')
             self.state['verified'][criterion] = evidence['id']
@@ -243,9 +340,11 @@ class LocalMission:
         try:
             if name == 'inspect_runtime':
                 skills = self._discover_local_skills()
+                mcp_servers = self._discover_local_mcp_servers()
                 result.update(python=sys.executable, platform=sys.platform, workspace=str(self.root),
                               tools=sorted(self.ALL_TOOLS),
                               skills=[{'name': s['name'], 'description': s['description'], 'level': s['level']} for s in skills],
+                              mcp_servers=sorted(mcp_servers.keys()),
                               scope='Python hôte, sans sandbox OS ; moteurs média non exécutés par cette boucle')
             elif name == 'list_files':
                 path = self.target(args.get('path', '.'))
@@ -343,6 +442,108 @@ class LocalMission:
                 if not matched:
                     raise ValueError(f'Skill introuvable : {skill_name}')
                 result.update(name=matched['name'], level=matched['level'], content=matched['content'][:16000])
+            elif name == 'list_mcp_tools':
+                servers = self._discover_local_mcp_servers()
+                requested_server = args.get('server', '')
+                if requested_server:
+                    if requested_server not in servers:
+                        raise ValueError(f'Serveur MCP introuvable : {requested_server}')
+                    servers = {requested_server: servers[requested_server]}
+                tools_list = []
+                errors = {}
+                for srv_name, srv_cfg in servers.items():
+                    try:
+                        resp = self._query_mcp_server(srv_name, srv_cfg, 'tools/list')
+                        for item in resp.get('tools', []):
+                            if isinstance(item, dict) and item.get('name'):
+                                tools_list.append({
+                                    'server': srv_name,
+                                    'name': item['name'],
+                                    'description': item.get('description', ''),
+                                    'inputSchema': item.get('inputSchema', {}),
+                                })
+                    except Exception as exc:
+                        errors[srv_name] = str(exc)
+                result.update(servers=sorted(servers.keys()), tools=tools_list, errors=errors)
+            elif name == 'call_mcp_tool':
+                servers = self._discover_local_mcp_servers()
+                if not servers:
+                    raise ValueError('Aucun serveur MCP configuré dans .mcp.json ou .aurora/mcp_config.json')
+                tool_name = args.get('name', '')
+                if not isinstance(tool_name, str) or not tool_name.strip():
+                    raise ValueError('Nom de l’outil MCP requis')
+                server_name = args.get('server', '')
+                if server_name:
+                    if server_name not in servers:
+                        raise ValueError(f'Serveur MCP inconnu : {server_name}')
+                    target_servers = [(server_name, servers[server_name])]
+                else:
+                    target_servers = list(servers.items())
+                tool_args = args.get('arguments') or {}
+                if not isinstance(tool_args, dict):
+                    raise ValueError('arguments MCP doit être un objet JSON')
+                self.state['verified'] = {}
+                last_err = None
+                mcp_res = None
+                chosen_server = ''
+                for srv_name, srv_cfg in target_servers:
+                    try:
+                        mcp_res = self._query_mcp_server(srv_name, srv_cfg, 'tools/call', {
+                            'name': tool_name,
+                            'arguments': tool_args,
+                        })
+                        chosen_server = srv_name
+                        break
+                    except Exception as exc:
+                        last_err = exc
+                if mcp_res is None:
+                    raise ValueError(str(last_err or f'Échec d’appel MCP pour {tool_name}'))
+                is_err = bool(mcp_res.get('isError', False)) if isinstance(mcp_res, dict) else False
+                self._refresh_tracked_files()
+                result.update(ok=not is_err, server=chosen_server, name=tool_name, output=mcp_res)
+            elif name == 'edit_file':
+                path = self.target(args.get('path'))
+                if not path.is_file():
+                    raise ValueError('Fichier existant requis pour edit_file')
+                old_string = args.get('old_string')
+                new_string = args.get('new_string')
+                if not isinstance(old_string, str) or not old_string:
+                    raise ValueError('old_string non vide requis')
+                if not isinstance(new_string, str):
+                    raise ValueError('new_string chaîne requise')
+                previous = path.read_bytes()
+                expected = args.get('expected_sha256')
+                if expected and expected != _digest(previous):
+                    raise ValueError('expected_sha256 ne correspond pas au fichier observé')
+                text = previous.decode('utf-8')
+                count = text.count(old_string)
+                if count == 0:
+                    raise ValueError('old_string introuvable dans le fichier')
+                replace_all = bool(args.get('replace_all', False))
+                if count > 1 and not replace_all:
+                    raise ValueError('old_string apparaît plusieurs fois ; préciser davantage de contexte ou replace_all=true')
+                updated_text = text.replace(old_string, new_string) if replace_all else text.replace(old_string, new_string, 1)
+                updated_bytes = updated_text.encode('utf-8')
+                if len(updated_bytes) > 1_000_000:
+                    raise ValueError('Contenu UTF-8 maximum 1 Mo dépassé')
+                if updated_bytes == previous:
+                    return self._observe(name, args, {
+                        'ok': True, 'reused': True, 'path': str(path),
+                        'bytes': len(previous), 'sha256': _digest(previous), 'replacements': 0,
+                    })
+                backup = self.path.parent / self.id / ('before-' + _digest(previous))
+                if not backup.exists():
+                    _atomic(backup, previous)
+                _atomic(path, updated_bytes)
+                digest = _digest(path.read_bytes())
+                self.state['files'][str(path)] = digest
+                self.state['verified'] = {}
+                result.update(
+                    path=str(path),
+                    bytes=len(updated_bytes),
+                    sha256=digest,
+                    replacements=count if replace_all else 1,
+                )
             elif name in {'read_file', 'verify_file', 'write_file'}:
                 path = self.target(args.get('path'))
                 if name == 'write_file':
@@ -394,15 +595,31 @@ class LocalMission:
                 result.update(ok=proc.returncode == 0, returncode=proc.returncode, path=str(script),
                               script_sha256=fingerprint, stdout=proc.stdout[-16000:].decode('utf-8',errors='replace'),
                               stderr=proc.stderr[-16000:].decode('utf-8',errors='replace'))
-                # Track changes to every file written by this mission.
-                for raw in self.state['files']:
-                    path = self.target(raw)
-                    self.state['files'][raw] = _digest(path.read_bytes()) if path.is_file() else None
+                self._refresh_tracked_files()
+            elif name == 'run_command':
+                raw_argv = args.get('argv')
+                if raw_argv is None and isinstance(args.get('command'), str) and args['command'].strip():
+                    raw_argv = shlex.split(args['command'])
+                if not isinstance(raw_argv, list) or not raw_argv or not all(isinstance(v, str) and v and '\x00' not in v for v in raw_argv):
+                    raise ValueError('argv non vide (liste de chaînes sans NUL) requis pour run_command')
+                exe_name = Path(raw_argv[0]).name.lower()
+                if exe_name in {'sudo', 'su', 'shutdown', 'reboot', 'poweroff', 'halt', 'mkfs', 'dd'}:
+                    raise PermissionError(f'Exécutable système interdit dans run_command : {exe_name}')
+                self.state['verified'] = {}
+                proc = subprocess.run(raw_argv, cwd=self.root, capture_output=True, timeout=60)
+                result.update(
+                    ok=proc.returncode == 0,
+                    returncode=proc.returncode,
+                    argv=raw_argv,
+                    stdout=proc.stdout[-16000:].decode('utf-8', errors='replace'),
+                    stderr=proc.stderr[-16000:].decode('utf-8', errors='replace'),
+                )
+                self._refresh_tracked_files()
         except subprocess.TimeoutExpired:
             # Timeout kills the direct subprocess, but its effects are unknown.
             self.state['status'] = 'interrupted'
             self.save()
-            raise RuntimeError('Python a dépassé 60 s ; effets inconnus, état conservé sans rejeu')
+            raise RuntimeError('Exécution a dépassé 60 s ; effets inconnus, état conservé sans rejeu')
         except Exception as exc:
             result = {'ok': False, 'error': str(exc)}
         return self._observe(name, args, result)
@@ -432,22 +649,24 @@ class LocalMission:
         protocol = '''Execute the original request using only actual tools. Return ONE tool/args JSON object per turn, matching the schema.
 set_plan: choose real steps and criteria derived from the original request.
 revise_plan: adapt remaining steps citing fresh evidence_ids and reason; criteria and verified proofs are preserved.
-inspect_runtime: discover the actual interpreter, workspace, and available skills.
+inspect_runtime: discover the actual interpreter, workspace, available skills, and configured MCP servers.
 list_files: list a workspace directory.
 find_files: recursively find files matching a glob pattern inside the workspace.
 search_code: search UTF-8 files in the workspace for a literal or regex pattern with line numbers.
 git_status: inspect git branch, status, and diff summary in the workspace.
 list_skills / read_skill: inspect project or user skills (.aurora/skills).
+list_mcp_tools / call_mcp_tool: discover and invoke local MCP servers (.mcp.json or .aurora/mcp_config.json).
 read_file: inspect a real workspace file; returns its content and SHA-256.
 write_file: exact UTF-8 content; existing files require the SHA-256 actually observed in read_file.
+edit_file: surgical search-and-replace on an existing workspace file with automatic backup.
 verify_file: compare real bytes with expected content or SHA-256; use an EXACT accepted criterion label.
 run_python: run an existing inspected Python script; attach an EXACT accepted criterion label when checking it.
+run_command: run a bounded non-shell command (argv list) in the workspace; attach an EXACT accepted criterion label when verifying.
 Accept ONE plan with criteria before writing or running. Never replace an accepted plan.
-Each criterion needs successful verify_file or run_python evidence. Run Python checks with real assertions.
+Each criterion needs successful verify_file, run_python, run_command, or call_mcp_tool evidence.
 Writes/runs invalidate old verification; verify again after the last change.
 Paths are on THIS client, confined to the actual workspace. Discover files before guessing names.
-SAFE permits reads only. No shell, deletion, installation, media engines, or web tools in this loop.
-Do not announce unexecuted work as done. Repeated identical observations do not advance the task.'''
+SAFE permits reads only. Do not announce unexecuted work as done. Repeated identical observations do not advance the task.'''
         last_call = None
         repeats = 0
         try:
@@ -457,7 +676,9 @@ Do not announce unexecuted work as done. Repeated identical observations do not 
                 tools = [
                     'inspect_runtime', 'list_files', 'find_files', 'search_code',
                     'git_status', 'list_skills', 'read_skill',
-                    'read_file', 'write_file', 'verify_file', 'run_python',
+                    'list_mcp_tools', 'call_mcp_tool',
+                    'read_file', 'write_file', 'edit_file', 'verify_file',
+                    'run_python', 'run_command',
                 ]
                 instructions = protocol
                 missing = [c for c in self.state['criteria'] if c not in self.state['verified']]
@@ -484,13 +705,22 @@ Do not announce unexecuted work as done. Repeated identical observations do not 
                     'git_status':({}, []),
                     'list_skills':({}, []),
                     'read_skill':({'name':{'type':'string'}}, ['name']),
+                    'list_mcp_tools':({'server':{'type':'string'}}, []),
+                    'call_mcp_tool':({'name':{'type':'string'},'server':{'type':'string'},
+                                      'arguments':{'type':'object'},
+                                      'criterion':{'type':'string','enum':self.state['criteria']}}, ['name']),
                     'read_file':({'path':{'type':'string'},'offset':{'type':'integer'},'limit':{'type':'integer'}}, ['path']),
                     'write_file':({'path':{'type':'string'},'content':{'type':'string'},
                                    'expected_sha256':{'type':'string'}}, ['path','content']),
+                    'edit_file':({'path':{'type':'string'},'old_string':{'type':'string'},
+                                  'new_string':{'type':'string'},'expected_sha256':{'type':'string'},
+                                  'replace_all':{'type':'boolean'}}, ['path','old_string','new_string']),
                     'verify_file':({'path':{'type':'string'},'content':{'type':'string'},'sha256':{'type':'string'},
                                     'criterion':{'type':'string','enum':self.state['criteria']}}, ['path','criterion']),
                     'run_python':({'path':{'type':'string'},'args':{'type':'array','items':{'type':'string'}},
                                    'criterion':{'type':'string','enum':self.state['criteria']}}, ['path']),
+                    'run_command':({'argv':{'type':'array','minItems':1,'items':{'type':'string'}},
+                                    'criterion':{'type':'string','enum':self.state['criteria']}}, ['argv']),
                 }
                 choices = []
                 for tool in tools:

@@ -187,6 +187,8 @@ def test_local_mission_engineering_tools_and_skill_discovery(tmp_path):
     from aurora_cli.local_mission import list_local_missions, needs_actions
     assert needs_actions("corrige le bug dans le module d'authentification")
     assert needs_actions("lance pytest et vérifie la fonction")
+    assert needs_actions("optimise l'architecture du système et les outils mcp")
+    assert needs_actions("inspecte ./src/app.rs et améliore le serveur")
     assert not needs_actions("bonjour comment ça va ?")
 
     (tmp_path / "src").mkdir()
@@ -218,4 +220,98 @@ def test_local_mission_engineering_tools_and_skill_discovery(tmp_path):
 
     items = list_local_missions()
     assert any(item["id"] == mission.id for item in items)
+
+
+def test_local_mission_edit_file_run_command_and_mcp(tmp_path):
+    import sys
+    target = tmp_path / "calc.py"
+    target.write_text("def compute(v):\n    return v + 1\n\nif __name__ == '__main__':\n    assert compute(4) == 8\n", encoding="utf-8")
+
+    mcp_server = tmp_path / "mock_mcp.py"
+    mcp_server.write_text(
+        "import json, sys\n"
+        "for line in sys.stdin:\n"
+        "    line = line.strip()\n"
+        "    if not line:\n"
+        "        continue\n"
+        "    msg = json.loads(line)\n"
+        "    mid = msg.get('id')\n"
+        "    method = msg.get('method')\n"
+        "    if method == 'initialize':\n"
+        "        print(json.dumps({'jsonrpc': '2.0', 'id': mid, 'result': {'protocolVersion': '2024-11-05'}}), flush=True)\n"
+        "    elif method == 'tools/list':\n"
+        "        print(json.dumps({'jsonrpc': '2.0', 'id': mid, 'result': {'tools': [{'name': 'ping_calc', 'description': 'Ping validator'}]}}), flush=True)\n"
+        "    elif method == 'tools/call':\n"
+        "        params = msg.get('params', {})\n"
+        "        print(json.dumps({'jsonrpc': '2.0', 'id': mid, 'result': {'content': [{'type': 'text', 'text': 'PONG:' + str(params.get('arguments', {}).get('tag', ''))}], 'isError': False}}), flush=True)\n",
+        encoding="utf-8",
+    )
+    (tmp_path / ".mcp.json").write_text(
+        json.dumps({
+            "mcpServers": {
+                "validator": {
+                    "command": sys.executable,
+                    "args": [str(mcp_server)],
+                }
+            }
+        }),
+        encoding="utf-8",
+    )
+
+    mission = LocalMission("Edit and verify via command and MCP", tmp_path, "STANDARD")
+    try:
+        mission.tool("set_plan", {
+            "steps": ["Edit calc.py", "Verify with run_command", "Verify MCP tool"],
+            "criteria": ["Command passes", "MCP responds"],
+        })
+        obs = mission.tool("read_file", {"path": "calc.py"})
+        edited = mission.tool("edit_file", {
+            "path": "calc.py",
+            "old_string": "return v + 1",
+            "new_string": "return v * 2",
+            "expected_sha256": obs["sha256"],
+        })
+        assert edited["ok"] and edited["replacements"] == 1
+        assert "return v * 2" in target.read_text(encoding="utf-8")
+
+        # Forbidden system binaries are rejected even in STANDARD mode
+        blocked = mission.tool("run_command", {"argv": ["sudo", "ls"]})
+        assert not blocked["ok"]
+
+        # Valid bounded command verifies criterion "Command passes"
+        cmd_res = mission.tool("run_command", {
+            "argv": [sys.executable, "calc.py"],
+            "criterion": "Command passes",
+        })
+        assert cmd_res["ok"] and cmd_res["returncode"] == 0
+        assert "Command passes" in mission.state["verified"]
+
+        # Discover and invoke local MCP server
+        mcp_list = mission.tool("list_mcp_tools", {})
+        assert mcp_list["ok"]
+        assert any(t["name"] == "ping_calc" and t["server"] == "validator" for t in mcp_list["tools"])
+
+        mcp_call = mission.tool("call_mcp_tool", {
+            "name": "ping_calc",
+            "arguments": {"tag": "42"},
+            "criterion": "MCP responds",
+        })
+        assert mcp_call["ok"] and mcp_call["server"] == "validator"
+        assert "MCP responds" in mission.state["verified"]
+
+        # Re-run command so both criteria are verified after the last effect
+        cmd_res_2 = mission.tool("run_command", {
+            "argv": [sys.executable, "calc.py"],
+            "criterion": "Command passes",
+        })
+        assert cmd_res_2["ok"]
+        mcp_call_2 = mission.tool("call_mcp_tool", {
+            "name": "ping_calc",
+            "arguments": {"tag": "42"},
+            "criterion": "MCP responds",
+        })
+        assert mcp_call_2["ok"]
+    finally:
+        mission.close()
+
 
