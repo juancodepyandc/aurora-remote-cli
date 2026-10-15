@@ -87,13 +87,36 @@ def list_local_missions() -> list[dict]:
     return items
 
 
+BUILTIN_MODULE_AGENTS = {
+    'aurora-orchestrator': {'module': 'orchestration', 'role': 'Architecte et coordinateur principal multi-modules', 'can_create_subagents': True},
+    'chat-lead': {'module': 'chat', 'role': 'Agent principal du module conversationnel et synthèse', 'can_create_subagents': True},
+    'code-lead': {'module': 'code', 'role': 'Ingénieur logiciel principal (recherche, édition, tests)', 'can_create_subagents': True},
+    'image-lead': {'module': 'image', 'role': 'Spécialiste génération et validation d’images', 'can_create_subagents': True},
+    '3d-lead': {'module': '3d', 'role': 'Ingénieur 3D principal (maillage, scène, validation)', 'can_create_subagents': True},
+    '3d-texture-lead': {'module': '3d-texture', 'role': 'Spécialiste textures PBR, UV et matériaux multi-zones', 'can_create_subagents': True},
+    '3d-viewer-lead': {'module': '3d-viewer', 'role': 'Spécialiste rendu viewer 3D, Draco/Meshopt et transport GLB', 'can_create_subagents': True},
+    '3d-motion-lead': {'module': '3d-motion', 'role': 'Spécialiste rigging squelettique et animation sémantique 3D', 'can_create_subagents': True},
+    '3d-quality-rescuer': {'module': '3d', 'role': 'Spécialiste auto-correction géométrique et réparation 3D', 'can_create_subagents': True},
+    'voice-lead': {'module': 'voice', 'role': 'Ingénieur audio STT/TTS', 'can_create_subagents': True},
+    'video-lead': {'module': 'video', 'role': 'Spécialiste pipeline vidéo', 'can_create_subagents': True},
+    'learning-lead': {'module': 'learning', 'role': 'Responsable documentation et pédagogie', 'can_create_subagents': True},
+    'cyber-lead': {'module': 'cyber', 'role': 'Ingénieur sécurité défensive et audit', 'can_create_subagents': True},
+    'bridge-doctor': {'module': 'bridge', 'role': 'Ingénieur diagnostic système, pont et runtime', 'can_create_subagents': True},
+    'cowork-lead': {'module': 'cowork', 'role': 'Spécialiste automatisation et intégration MCP', 'can_create_subagents': True},
+    'memory-lead': {'module': 'memory', 'role': 'Spécialiste mémoire persistante et contexte', 'can_create_subagents': True},
+    'mcp-lead': {'module': 'mcp', 'role': 'Ingénieur serveurs et outils MCP', 'can_create_subagents': True},
+    'skills-lead': {'module': 'skills', 'role': 'Architecte de compétences (Skills) réutilisables', 'can_create_subagents': True},
+    'cli-tunnel-lead': {'module': 'cli-tunnel', 'role': 'Spécialiste continuité CLI distant et tunnel Cloudflare', 'can_create_subagents': True},
+}
+
+
 class LocalMission:
     READ_ONLY_TOOLS = {
         'inspect_runtime', 'list_files', 'find_files', 'search_code',
         'read_file', 'verify_file', 'git_status', 'list_skills', 'read_skill',
-        'list_mcp_tools',
+        'list_mcp_tools', 'list_agents',
     }
-    EFFECT_TOOLS = {'write_file', 'edit_file', 'run_python', 'run_command', 'call_mcp_tool'}
+    EFFECT_TOOLS = {'write_file', 'edit_file', 'run_python', 'run_command', 'call_mcp_tool', 'create_agent'}
     ALL_TOOLS = READ_ONLY_TOOLS | EFFECT_TOOLS
 
     def __init__(self, request, workspace, permissions='SAFE', *, resume_id=''):
@@ -442,6 +465,54 @@ class LocalMission:
                 if not matched:
                     raise ValueError(f'Skill introuvable : {skill_name}')
                 result.update(name=matched['name'], level=matched['level'], content=matched['content'][:16000])
+            elif name == 'list_agents':
+                module_filter = str(args.get('module', '') or '').strip().lower()
+                agents_file = self.root / '.aurora' / 'agents.json'
+                custom_agents = {}
+                if agents_file.is_file():
+                    try:
+                        raw_agents = json.loads(agents_file.read_text(encoding='utf-8'))
+                        if isinstance(raw_agents, dict) and isinstance(raw_agents.get('agents'), dict):
+                            custom_agents = raw_agents['agents']
+                    except (OSError, ValueError):
+                        pass
+                combined = []
+                for aname, info in sorted(BUILTIN_MODULE_AGENTS.items()):
+                    if not module_filter or info.get('module') == module_filter:
+                        combined.append({'name': aname, **info, 'origin': 'builtin'})
+                for aname, info in sorted(custom_agents.items()):
+                    if isinstance(info, dict) and (not module_filter or str(info.get('module', '')).lower() == module_filter):
+                        combined.append({'name': aname, **info, 'origin': 'custom'})
+                result.update(agents=combined, total=len(combined))
+            elif name == 'create_agent':
+                agent_name = str(args.get('name', '') or '').strip()
+                agent_role = str(args.get('role', '') or '').strip()
+                agent_module = str(args.get('module', '') or 'general').strip().lower()
+                parent_agent = str(args.get('parent_agent', '') or '').strip()
+                if not re.fullmatch(r'[A-Za-z0-9_-]{1,80}', agent_name):
+                    raise ValueError('Nom d’agent invalide (1-80 caractères alphanumériques, _ ou -)')
+                if not agent_role or len(agent_role) > 4000:
+                    raise ValueError('Rôle d’agent non vide requis (max 4000 caractères)')
+                agents_file = self.root / '.aurora' / 'agents.json'
+                store_data = {'agents': {}}
+                if agents_file.is_file():
+                    try:
+                        parsed = json.loads(agents_file.read_text(encoding='utf-8'))
+                        if isinstance(parsed, dict) and isinstance(parsed.get('agents'), dict):
+                            store_data = parsed
+                    except (OSError, ValueError):
+                        pass
+                entry = {
+                    'name': agent_name,
+                    'role': agent_role,
+                    'module': agent_module,
+                    'parent_agent': parent_agent or BUILTIN_MODULE_AGENTS.get(f'{agent_module}-lead', {}).get('name', ''),
+                    'can_create_subagents': True,
+                    'created_by': self.id,
+                }
+                store_data['agents'][agent_name] = entry
+                _atomic(agents_file, (json.dumps(store_data, ensure_ascii=False, indent=2) + '\n').encode('utf-8'))
+                result.update(agent=entry, path=str(agents_file))
             elif name == 'list_mcp_tools':
                 servers = self._discover_local_mcp_servers()
                 requested_server = args.get('server', '')
@@ -669,6 +740,7 @@ Paths are on THIS client, confined to the actual workspace. Discover files befor
 SAFE permits reads only. Do not announce unexecuted work as done. Repeated identical observations do not advance the task.'''
         last_call = None
         repeats = 0
+        parse_errors = 0
         try:
             for _ in range(max_steps):
                 snapshot = {k:v for k,v in self.state.items() if k != 'evidence'}
@@ -676,6 +748,7 @@ SAFE permits reads only. Do not announce unexecuted work as done. Repeated ident
                 tools = [
                     'inspect_runtime', 'list_files', 'find_files', 'search_code',
                     'git_status', 'list_skills', 'read_skill',
+                    'list_agents', 'create_agent',
                     'list_mcp_tools', 'call_mcp_tool',
                     'read_file', 'write_file', 'edit_file', 'verify_file',
                     'run_python', 'run_command',
@@ -705,6 +778,9 @@ SAFE permits reads only. Do not announce unexecuted work as done. Repeated ident
                     'git_status':({}, []),
                     'list_skills':({}, []),
                     'read_skill':({'name':{'type':'string'}}, ['name']),
+                    'list_agents':({'module':{'type':'string'}}, []),
+                    'create_agent':({'name':{'type':'string'},'role':{'type':'string'},
+                                     'module':{'type':'string'},'parent_agent':{'type':'string'}}, ['name','role']),
                     'list_mcp_tools':({'server':{'type':'string'}}, []),
                     'call_mcp_tool':({'name':{'type':'string'},'server':{'type':'string'},
                                       'arguments':{'type':'object'},
@@ -741,17 +817,40 @@ SAFE permits reads only. Do not announce unexecuted work as done. Repeated ident
                     dict(role='user', content=json.dumps(snapshot, ensure_ascii=False))],
                     temperature=0, max_tokens=2048, context_length=context_tokens,
                     response_format=schema)
-                # Reject prose, multiple objects and truncated answers before any effect.
-                raw = answer.strip()
-                if raw.startswith('```json') and raw.endswith('```'):
-                    raw = raw[7:-3].strip()
-                call = json.loads(raw)
+                raw = (answer or '').strip()
+                candidates = re.findall(r'```(?:json)?\s*(.*?)```', raw, re.DOTALL) + [raw]
+                call = None
+                for cand in candidates:
+                    cand = cand.strip()
+                    if not cand:
+                        continue
+                    try:
+                        parsed = json.loads(cand)
+                        if isinstance(parsed, dict):
+                            call = parsed
+                            break
+                    except (TypeError, ValueError):
+                        continue
                 if not isinstance(call, dict):
-                    raise ValueError('Réponse outil JSON objet requise')
+                    parse_errors += 1
+                    self._observe('self_correction', {}, {
+                        'ok': False,
+                        'error': 'Réponse outil JSON objet requise ({tool, args} ou {result}) ; correction automatique engagée',
+                    })
+                    if parse_errors >= 3:
+                        raise ValueError('Réponse outil JSON objet requise')
+                    continue
+                parse_errors = 0
                 signature = json.dumps(call, sort_keys=True, ensure_ascii=False)
                 repeats = repeats+1 if signature == last_call else 0
                 last_call = signature
                 if repeats >= 2:
+                    if repeats < 4:
+                        self._observe('self_correction', {'stalled_call': call}, {
+                            'ok': False,
+                            'error': 'Action répétée sans observation nouvelle ; changer d’outil ou vérifier les critères manquants : ' + json.dumps(missing, ensure_ascii=False),
+                        })
+                        continue
                     raise RuntimeError('Action répétée sans observation nouvelle ; travail conservé')
                 try:
                     if set(call) == {'result'}:

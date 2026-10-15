@@ -315,3 +315,34 @@ def test_local_mission_edit_file_run_command_and_mcp(tmp_path):
         mission.close()
 
 
+def test_local_mission_module_agents_and_self_correction(tmp_path):
+    replies = iter([
+        "not valid json at all",
+        json.dumps({"tool": "set_plan", "args": {"steps": ["Create agent and write"], "criteria": ["Exact bytes"]}}),
+        json.dumps({"tool": "create_agent", "args": {"name": "3d-uv-helper", "role": "Check UV islands", "module": "3d-texture"}}),
+        json.dumps({"tool": "list_agents", "args": {"module": "3d-texture"}}),
+        json.dumps({"tool": "list_agents", "args": {"module": "3d-texture"}}),
+        json.dumps({"tool": "list_agents", "args": {"module": "3d-texture"}}),
+        json.dumps({"tool": "write_file", "args": {"path": "result.txt", "content": "SELF_HEALED\n"}}),
+        json.dumps({"tool": "verify_file", "args": {"path": "result.txt", "content": "SELF_HEALED\n", "criterion": "Exact bytes"}}),
+        json.dumps({"result": "Completed after self-correction"}),
+    ])
+    state = execute_local(
+        "Create module sub-agent and deliver exact bytes",
+        workspace=tmp_path,
+        permissions="STANDARD",
+        model="fixture",
+        runtime=SimpleNamespace(complete=lambda *a, **k: next(replies)),
+    )
+    assert state["status"] == "completed"
+    assert (tmp_path / "result.txt").read_bytes() == b"SELF_HEALED\n"
+    assert any(e["tool"] == "self_correction" for e in state["evidence"])
+    agents_file = tmp_path / ".aurora" / "agents.json"
+    assert agents_file.is_file()
+    saved_agents = json.loads(agents_file.read_text(encoding="utf-8"))["agents"]
+    assert "3d-uv-helper" in saved_agents
+    assert saved_agents["3d-uv-helper"]["module"] == "3d-texture"
+    assert saved_agents["3d-uv-helper"]["can_create_subagents"] is True
+
+
+
