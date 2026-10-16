@@ -345,4 +345,82 @@ def test_local_mission_module_agents_and_self_correction(tmp_path):
     assert saved_agents["3d-uv-helper"]["can_create_subagents"] is True
 
 
+def test_local_mission_scientific_hypothesis_and_skill_capitalization(tmp_path):
+    mission = LocalMission("Prove algebraic identity, falsify false conjecture, audit 0-day overflow, and save skill", tmp_path, "STANDARD")
+    try:
+        mission.tool("set_plan", {
+            "steps": [
+                "Prove (x + y)**2 == x**2 + 2*x*y + y**2",
+                "Falsify x**2 > 2*x over pos_int",
+                "Audit 32-bit addition overflow with Z3",
+                "Capitalize learned skill",
+            ],
+            "criteria": ["Math theorem proven", "Cyber overflow audited", "Skill persisted"],
+        })
+
+        # 1. Valid mathematical theorem proven via SymPy + Z3
+        proven = mission.tool("test_hypothesis", {
+            "mode": "math",
+            "hypothesis": "Binomial square expansion holds for all integers",
+            "conjecture": "(x + y)**2 == x**2 + 2*x*y + y**2",
+            "criterion": "Math theorem proven",
+        })
+        assert proven["ok"] and proven["status"] == "PROVEN_VALID"
+        assert "Math theorem proven" in mission.state["verified"]
+
+        # 2. False conjecture falsified with concrete Z3 counterexample
+        falsified = mission.tool("test_hypothesis", {
+            "mode": "math",
+            "hypothesis": "x^2 is strictly greater than 2x for all positive integers",
+            "conjecture": "x**2 > 2*x",
+            "domain": "pos_int",
+        })
+        assert falsified["ok"] and falsified["status"] == "FALSIFIED"
+        assert falsified["counterexample"] is not None
+
+        # 3. Dynamic 0-day integer overflow found via Z3 BitVec(32)
+        cyber_res = mission.tool("test_hypothesis", {
+            "mode": "cyber",
+            "code": "bool check(uint32_t offset, uint32_t len) { return offset + len <= 1024; }",
+            "criterion": "Cyber overflow audited",
+        })
+        assert cyber_res["ok"] and cyber_res["status"] == "PROVEN_VULNERABLE"
+        assert len(cyber_res["findings"]) == 1
+        assert "Cyber overflow audited" in mission.state["verified"]
+
+        # 4. SSRF protection blocks loopback/private fetch_url
+        ssrf_res = mission.tool("fetch_url", {"url": "http://127.0.0.1:8080/admin"})
+        assert not ssrf_res["ok"]
+
+        # 5. Persist reusable skill via create_skill
+        sk_res = mission.tool("create_skill", {
+            "name": "z3-bitvec-audit",
+            "description": "Formal Z3 BitVec32 overflow verification",
+            "instructions": "Use test_hypothesis(mode='cyber') to solve modular wrap-around constraints.",
+        })
+        assert sk_res["ok"]
+        skill_path = tmp_path / ".aurora" / "skills" / "z3-bitvec-audit" / "SKILL.md"
+        assert skill_path.is_file()
+
+        # Re-verify criteria after create_skill effect
+        assert mission.tool("test_hypothesis", {
+            "mode": "math",
+            "conjecture": "(x + y)**2 == x**2 + 2*x*y + y**2",
+            "criterion": "Math theorem proven",
+        })["ok"]
+        assert mission.tool("test_hypothesis", {
+            "mode": "cyber",
+            "code": "bool check(uint32_t offset, uint32_t len) { return offset + len <= 1024; }",
+            "criterion": "Cyber overflow audited",
+        })["ok"]
+        assert mission.tool("verify_file", {
+            "path": ".aurora/skills/z3-bitvec-audit/SKILL.md",
+            "sha256": sk_res["sha256"],
+            "criterion": "Skill persisted",
+        })["ok"]
+        assert mission.finish("All scientific and cyber hypotheses verified and skill capitalized.")
+    finally:
+        mission.close()
+
+
 

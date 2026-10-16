@@ -114,9 +114,12 @@ class LocalMission:
     READ_ONLY_TOOLS = {
         'inspect_runtime', 'list_files', 'find_files', 'search_code',
         'read_file', 'verify_file', 'git_status', 'list_skills', 'read_skill',
-        'list_mcp_tools', 'list_agents',
+        'list_mcp_tools', 'list_agents', 'search_web', 'fetch_url', 'test_hypothesis',
     }
-    EFFECT_TOOLS = {'write_file', 'edit_file', 'run_python', 'run_command', 'call_mcp_tool', 'create_agent'}
+    EFFECT_TOOLS = {
+        'write_file', 'edit_file', 'run_python', 'run_command',
+        'call_mcp_tool', 'create_agent', 'create_skill',
+    }
     ALL_TOOLS = READ_ONLY_TOOLS | EFFECT_TOOLS
 
     def __init__(self, request, workspace, permissions='SAFE', *, resume_id=''):
@@ -303,7 +306,7 @@ class LocalMission:
         self.state['evidence'].append(evidence)
         # A criterion can only be verified by a current successful observation.
         criterion = args.get('criterion')
-        if result.get('ok') and tool in {'verify_file', 'run_python', 'run_command', 'call_mcp_tool'} and criterion:
+        if result.get('ok') and tool in {'verify_file', 'run_python', 'run_command', 'call_mcp_tool', 'test_hypothesis', 'fetch_url'} and criterion:
             if criterion not in self.state['criteria']:
                 raise ValueError('Critère absent du plan accepté')
             self.state['verified'][criterion] = evidence['id']
@@ -465,6 +468,186 @@ class LocalMission:
                 if not matched:
                     raise ValueError(f'Skill introuvable : {skill_name}')
                 result.update(name=matched['name'], level=matched['level'], content=matched['content'][:16000])
+            elif name == 'create_skill':
+                skill_name = str(args.get('name', '') or '').strip()
+                description = str(args.get('description', '') or '').strip()
+                instructions = str(args.get('instructions', '') or '').strip()
+                if not re.fullmatch(r'[A-Za-z0-9_-]{1,80}', skill_name):
+                    raise ValueError('Nom de skill invalide (1-80 caractères alphanumériques, _ ou -)')
+                if not description or not instructions:
+                    raise ValueError('description et instructions non vides requises pour create_skill')
+                skill_file = self.root / '.aurora' / 'skills' / skill_name / 'SKILL.md'
+                body = f"---\nname: {skill_name}\ndescription: {description}\n---\n{instructions}\n"
+                raw_bytes = body.encode('utf-8')
+                _atomic(skill_file, raw_bytes)
+                digest = _digest(skill_file.read_bytes())
+                self.state['files'][str(skill_file)] = digest
+                self.state['verified'] = {}
+                result.update(name=skill_name, path=str(skill_file), sha256=digest, bytes=len(raw_bytes))
+            elif name == 'search_web':
+                from urllib.parse import quote_plus, parse_qs, urljoin, urlsplit
+                from urllib.request import Request, urlopen
+                from html.parser import HTMLParser
+                query = str(args.get('query', '') or '').strip()
+                if not query:
+                    raise ValueError('Requête search_web non vide requise')
+                req = Request(
+                    f'https://html.duckduckgo.com/html/?q={quote_plus(query)}',
+                    headers={'User-Agent': 'Aurora-CLI/1.0'},
+                )
+                with urlopen(req, timeout=10) as resp:
+                    html_text = resp.read(256_000).decode('utf-8', errors='replace')
+                class _LinkParser(HTMLParser):
+                    def __init__(self):
+                        super().__init__()
+                        self.links, self.cur = [], None
+                    def handle_starttag(self, tag, attrs):
+                        d = dict(attrs)
+                        if tag == 'a' and 'result__a' in d.get('class', '').split():
+                            self.cur = {'url': d.get('href', ''), 'title': ''}
+                    def handle_data(self, data):
+                        if self.cur is not None:
+                            self.cur['title'] += data
+                    def handle_endtag(self, tag):
+                        if tag == 'a' and self.cur is not None:
+                            item, self.cur = self.cur, None
+                            raw_u = urljoin('https://html.duckduckgo.com', item['url'])
+                            item['url'] = parse_qs(urlsplit(raw_u).query).get('uddg', [raw_u])[0]
+                            if urlsplit(item['url']).scheme in {'http', 'https'}:
+                                self.links.append(item)
+                parser = _LinkParser()
+                parser.feed(html_text)
+                result.update(query=query, results=parser.links[:10], total=len(parser.links))
+            elif name == 'fetch_url':
+                import ipaddress
+                import socket
+                from urllib.parse import urlsplit
+                from urllib.request import Request, urlopen
+                from html.parser import HTMLParser
+                url = str(args.get('url', '') or '').strip()
+                parsed_u = urlsplit(url)
+                if parsed_u.scheme not in {'http', 'https'} or not parsed_u.hostname:
+                    raise ValueError('URL http(s) valide requise pour fetch_url')
+                host = parsed_u.hostname.lower()
+                if host in {'localhost', '127.0.0.1', '::1', '0.0.0.0'} or host.endswith('.local') or host.endswith('.internal'):
+                    raise PermissionError('Accès SSRF local/interne interdit dans fetch_url')
+                for info in socket.getaddrinfo(host, parsed_u.port or (443 if parsed_u.scheme == 'https' else 80)):
+                    ip_obj = ipaddress.ip_address(info[4][0])
+                    if ip_obj.is_private or ip_obj.is_loopback or ip_obj.is_link_local or ip_obj.is_reserved:
+                        raise PermissionError('Adresse IP privée ou réservée interdite dans fetch_url')
+                req = Request(url, headers={'User-Agent': 'Aurora-CLI/1.0'})
+                with urlopen(req, timeout=10) as resp:
+                    raw_body = resp.read(256_000)
+                text_body = raw_body.decode('utf-8', errors='replace')
+                class _TextExtractor(HTMLParser):
+                    def __init__(self):
+                        super().__init__()
+                        self.parts, self.hide = [], 0
+                    def handle_starttag(self, tag, attrs):
+                        if tag in {'script', 'style', 'noscript'}:
+                            self.hide += 1
+                    def handle_endtag(self, tag):
+                        if tag in {'script', 'style', 'noscript'} and self.hide:
+                            self.hide -= 1
+                        if tag in {'p', 'div', 'h1', 'h2', 'li', 'br'}:
+                            self.parts.append('\n')
+                    def handle_data(self, data):
+                        if not self.hide:
+                            self.parts.append(data)
+                if '<html' in text_body.lower() or '<body' in text_body.lower():
+                    ext = _TextExtractor()
+                    ext.feed(text_body)
+                    text_body = re.sub(r'\n{3,}', '\n\n', ''.join(ext.parts)).strip()
+                result.update(url=url, sha256=_digest(raw_body), content=text_body[:16000], bytes=len(raw_body))
+            elif name == 'test_hypothesis':
+                mode = str(args.get('mode', 'math') or 'math').strip().lower()
+                hypothesis = str(args.get('hypothesis', '') or '').strip()
+                conjecture = str(args.get('conjecture', '') or '').strip()
+                code_str = str(args.get('code', '') or '').strip()
+                domain = str(args.get('domain', 'int') or 'int').strip()
+                if mode == 'math':
+                    if not conjecture:
+                        raise ValueError('conjecture requise pour test_hypothesis en mode math')
+                    import sympy as sp
+                    import z3
+                    lhs_s, op_s, rhs_s = (conjecture.split('==', 1)[0].strip(), '==', conjecture.split('==', 1)[1].strip()) if '==' in conjecture else (conjecture, '==', '0')
+                    for candidate_op in ('==', '!=', '<=', '>=', '<', '>'):
+                        if candidate_op in conjecture:
+                            parts = conjecture.split(candidate_op, 1)
+                            lhs_s, op_s, rhs_s = parts[0].strip(), candidate_op, parts[1].strip()
+                            break
+                    var_names = sorted(set(re.findall(r'\b[a-zA-Z_][a-zA-Z0-9_]*\b', conjecture)) - {'sin', 'cos', 'tan', 'exp', 'log', 'sqrt', 'pi', 'E', 'Mod', 'Abs'}) or ['x']
+                    sym_locals = {v: sp.Symbol(v, integer=(domain != 'real'), real=True) for v in var_names}
+                    lhs_sp = sp.sympify(lhs_s, locals=sym_locals)
+                    rhs_sp = sp.sympify(rhs_s, locals=sym_locals)
+                    diff_sp = sp.simplify(lhs_sp - rhs_sp)
+                    alg_eq = (op_s == '==' and (diff_sp == 0 or sp.expand(lhs_sp - rhs_sp) == 0))
+                    z3_status = 'PROVEN_VALID' if alg_eq else 'UNDECIDED'
+                    counterexample = None
+                    if not alg_eq:
+                        try:
+                            s = z3.Solver()
+                            s.set('timeout', 4000)
+                            z3_env = {v: (z3.Real(v) if domain == 'real' else z3.Int(v)) for v in var_names}
+                            if domain == 'pos_int':
+                                for zv in z3_env.values():
+                                    s.add(zv > 0)
+                            lhs_z3 = eval(str(lhs_sp), {'__builtins__': {}}, z3_env)
+                            rhs_z3 = eval(str(rhs_sp), {'__builtins__': {}}, z3_env)
+                            rel_z3 = (
+                                lhs_z3 == rhs_z3 if op_s == '==' else
+                                lhs_z3 != rhs_z3 if op_s == '!=' else
+                                lhs_z3 <= rhs_z3 if op_s == '<=' else
+                                lhs_z3 >= rhs_z3 if op_s == '>=' else
+                                lhs_z3 < rhs_z3 if op_s == '<' else
+                                lhs_z3 > rhs_z3
+                            )
+                            s.add(z3.Not(rel_z3))
+                            chk = s.check()
+                            if chk == z3.unsat:
+                                z3_status = 'PROVEN_VALID'
+                            elif chk == z3.sat:
+                                z3_status = 'FALSIFIED'
+                                m = s.model()
+                                counterexample = {v: str(m.eval(zv, model_completion=True)) for v, zv in z3_env.items()}
+                        except Exception:
+                            pass
+                    result.update(
+                        ok=(z3_status in {'PROVEN_VALID', 'FALSIFIED'}),
+                        mode='math',
+                        hypothesis=hypothesis or conjecture,
+                        conjecture=conjecture,
+                        status=z3_status,
+                        sympy_simplified_difference=str(diff_sp),
+                        counterexample=counterexample,
+                    )
+                elif mode == 'cyber':
+                    if not code_str:
+                        raise ValueError('code requis pour test_hypothesis en mode cyber')
+                    import z3
+                    add_m = re.findall(r'\b([a-zA-Z_][a-zA-Z0-9_]*)\s*\+\s*([a-zA-Z_][a-zA-Z0-9_]*)\b', code_str)
+                    findings = []
+                    if add_m and not re.search(r'add_overflow|checked_add|saturating_add', code_str):
+                        lv, rv = add_m[0]
+                        s = z3.Solver()
+                        a_bv, b_bv = z3.BitVec(lv, 32), z3.BitVec(rv, 32)
+                        s.add(z3.UGT(a_bv, z3.BitVecVal(1024, 32)), z3.UGT(b_bv, z3.BitVecVal(0, 32)), z3.ULE(a_bv + b_bv, z3.BitVecVal(1024, 32)))
+                        if s.check() == z3.sat:
+                            m = s.model()
+                            findings.append({
+                                'cwe': 'CWE-190: Integer Overflow',
+                                'expression': f'{lv} + {rv}',
+                                'counterexample': {lv: int(str(m.eval(a_bv))), rv: int(str(m.eval(b_bv)))},
+                            })
+                    result.update(
+                        ok=True,
+                        mode='cyber',
+                        hypothesis=hypothesis or 'Dynamic Z3 BitVec constraint audit',
+                        status='PROVEN_VULNERABLE' if findings else 'PROVEN_SAFE',
+                        findings=findings,
+                    )
+                else:
+                    raise ValueError('mode test_hypothesis invalide (attendu: math ou cyber)')
             elif name == 'list_agents':
                 module_filter = str(args.get('module', '') or '').strip().lower()
                 agents_file = self.root / '.aurora' / 'agents.json'
@@ -718,6 +901,7 @@ class LocalMission:
         self.state.update(status='running', model=model)
         self.save()
         protocol = '''Execute the original request using only actual tools. Return ONE tool/args JSON object per turn, matching the schema.
+For unfamiliar problems, errors, 0-days, or mathematical conjectures: form a falsifiable hypothesis, test it with test_hypothesis / run_python / search_web / fetch_url, and capitalize proven new methods with create_skill. Never rely on hardcoded guesses.
 set_plan: choose real steps and criteria derived from the original request.
 revise_plan: adapt remaining steps citing fresh evidence_ids and reason; criteria and verified proofs are preserved.
 inspect_runtime: discover the actual interpreter, workspace, available skills, and configured MCP servers.
@@ -725,7 +909,9 @@ list_files: list a workspace directory.
 find_files: recursively find files matching a glob pattern inside the workspace.
 search_code: search UTF-8 files in the workspace for a literal or regex pattern with line numbers.
 git_status: inspect git branch, status, and diff summary in the workspace.
-list_skills / read_skill: inspect project or user skills (.aurora/skills).
+list_skills / read_skill / create_skill: inspect or persist reusable project skills (.aurora/skills/<name>/SKILL.md).
+search_web / fetch_url: research unknown facts, CVEs, or documentation over HTTP(S).
+test_hypothesis: formally verify or falsify a mathematical conjecture (SymPy+Z3) or a 0-day code constraint (Z3 BitVec).
 list_mcp_tools / call_mcp_tool: discover and invoke local MCP servers (.mcp.json or .aurora/mcp_config.json).
 read_file: inspect a real workspace file; returns its content and SHA-256.
 write_file: exact UTF-8 content; existing files require the SHA-256 actually observed in read_file.
@@ -734,7 +920,7 @@ verify_file: compare real bytes with expected content or SHA-256; use an EXACT a
 run_python: run an existing inspected Python script; attach an EXACT accepted criterion label when checking it.
 run_command: run a bounded non-shell command (argv list) in the workspace; attach an EXACT accepted criterion label when verifying.
 Accept ONE plan with criteria before writing or running. Never replace an accepted plan.
-Each criterion needs successful verify_file, run_python, run_command, or call_mcp_tool evidence.
+Each criterion needs successful verify_file, run_python, run_command, call_mcp_tool, test_hypothesis, or fetch_url evidence.
 Writes/runs invalidate old verification; verify again after the last change.
 Paths are on THIS client, confined to the actual workspace. Discover files before guessing names.
 SAFE permits reads only. Do not announce unexecuted work as done. Repeated identical observations do not advance the task.'''
@@ -747,7 +933,8 @@ SAFE permits reads only. Do not announce unexecuted work as done. Repeated ident
                 snapshot['evidence'] = self.state['evidence'][-6:]
                 tools = [
                     'inspect_runtime', 'list_files', 'find_files', 'search_code',
-                    'git_status', 'list_skills', 'read_skill',
+                    'git_status', 'list_skills', 'read_skill', 'create_skill',
+                    'search_web', 'fetch_url', 'test_hypothesis',
                     'list_agents', 'create_agent',
                     'list_mcp_tools', 'call_mcp_tool',
                     'read_file', 'write_file', 'edit_file', 'verify_file',
@@ -778,6 +965,17 @@ SAFE permits reads only. Do not announce unexecuted work as done. Repeated ident
                     'git_status':({}, []),
                     'list_skills':({}, []),
                     'read_skill':({'name':{'type':'string'}}, ['name']),
+                    'create_skill':({'name':{'type':'string'},'description':{'type':'string'},
+                                     'instructions':{'type':'string'}}, ['name','description','instructions']),
+                    'search_web':({'query':{'type':'string'}}, ['query']),
+                    'fetch_url':({'url':{'type':'string'},
+                                  'criterion':{'type':'string','enum':self.state['criteria']}}, ['url']),
+                    'test_hypothesis':({'mode':{'type':'string','enum':['math','cyber']},
+                                        'hypothesis':{'type':'string'},
+                                        'conjecture':{'type':'string'},
+                                        'code':{'type':'string'},
+                                        'domain':{'type':'string','enum':['int','pos_int','real']},
+                                        'criterion':{'type':'string','enum':self.state['criteria']}}, ['mode']),
                     'list_agents':({'module':{'type':'string'}}, []),
                     'create_agent':({'name':{'type':'string'},'role':{'type':'string'},
                                      'module':{'type':'string'},'parent_agent':{'type':'string'}}, ['name','role']),
