@@ -107,6 +107,16 @@ BUILTIN_MODULE_AGENTS = {
     'mcp-lead': {'module': 'mcp', 'role': 'Ingénieur serveurs et outils MCP', 'can_create_subagents': True},
     'skills-lead': {'module': 'skills', 'role': 'Architecte de compétences (Skills) réutilisables', 'can_create_subagents': True},
     'cli-tunnel-lead': {'module': 'cli-tunnel', 'role': 'Spécialiste continuité CLI distant et tunnel Cloudflare', 'can_create_subagents': True},
+    'business-ceo': {'module': 'business', 'role': 'CEO Agent : arbitrage stratégique, survie économique et allocation du capital', 'can_create_subagents': True},
+    'business-market-research': {'module': 'business', 'role': 'Market Research Agent : étude de marché, demande, prix et concurrence', 'can_create_subagents': True},
+    'business-financial-analyst': {'module': 'business', 'role': 'Financial Analyst Agent : coûts, marges, trésorerie, BFR (DSO) et valorisation', 'can_create_subagents': True},
+    'business-risk-manager': {'module': 'business', 'role': 'Risk Manager Agent : préservation du capital, probabilité de ruine et droit de veto', 'can_create_subagents': True},
+    'business-entrepreneur': {'module': 'business', 'role': 'Entrepreneur Agent : création d’entreprises virtuelles/réelles (SaaS, B2B, e-commerce)', 'can_create_subagents': True},
+    'business-quant': {'module': 'business', 'role': 'Quantitative Agent : backtest Walk-Forward, Monte-Carlo et optimisation bayésienne', 'can_create_subagents': True},
+    'business-economist': {'module': 'business', 'role': 'Economist Agent : inflation, taux directeurs, fiscalité et cycles macroéconomiques', 'can_create_subagents': True},
+    'business-technical': {'module': 'business', 'role': 'Technical Agent : faisabilité technique, coûts cloud/IA et automatisation', 'can_create_subagents': True},
+    'business-critic': {'module': 'business', 'role': 'Critic Agent : contradicteur systématique (Red-Team), biais de survie et coûts cachés', 'can_create_subagents': True},
+    'business-auditor': {'module': 'business', 'role': 'Auditor Agent : audit de provenance des données, calibration et porte de promotion des modèles', 'can_create_subagents': True},
 }
 
 
@@ -365,12 +375,15 @@ class LocalMission:
         result = {'ok': True}
         try:
             if name == 'inspect_runtime':
+                from .epistemic import classify_problem_regime
                 skills = self._discover_local_skills()
                 mcp_servers = self._discover_local_mcp_servers()
+                epistemic_routing = classify_problem_regime(self.state.get('request', ''), skills=skills)
                 result.update(python=sys.executable, platform=sys.platform, workspace=str(self.root),
                               tools=sorted(self.ALL_TOOLS),
                               skills=[{'name': s['name'], 'description': s['description'], 'level': s['level']} for s in skills],
                               mcp_servers=sorted(mcp_servers.keys()),
+                              epistemic_routing=epistemic_routing,
                               scope='Python hôte, sans sandbox OS ; moteurs média non exécutés par cette boucle')
             elif name == 'list_files':
                 path = self.target(args.get('path', '.'))
@@ -560,94 +573,46 @@ class LocalMission:
                     text_body = re.sub(r'\n{3,}', '\n\n', ''.join(ext.parts)).strip()
                 result.update(url=url, sha256=_digest(raw_body), content=text_body[:16000], bytes=len(raw_body))
             elif name == 'test_hypothesis':
+                from .epistemic import (
+                    classify_problem_regime,
+                    evaluate_competing_hypotheses,
+                    verify_cyber_hypothesis,
+                    verify_math_hypothesis,
+                    verify_optimization_hypothesis,
+                )
                 mode = str(args.get('mode', 'math') or 'math').strip().lower()
                 hypothesis = str(args.get('hypothesis', '') or '').strip()
                 conjecture = str(args.get('conjecture', '') or '').strip()
                 code_str = str(args.get('code', '') or '').strip()
                 domain = str(args.get('domain', 'int') or 'int').strip()
                 if mode == 'math':
-                    if not conjecture:
-                        raise ValueError('conjecture requise pour test_hypothesis en mode math')
-                    import sympy as sp
-                    import z3
-                    lhs_s, op_s, rhs_s = (conjecture.split('==', 1)[0].strip(), '==', conjecture.split('==', 1)[1].strip()) if '==' in conjecture else (conjecture, '==', '0')
-                    for candidate_op in ('==', '!=', '<=', '>=', '<', '>'):
-                        if candidate_op in conjecture:
-                            parts = conjecture.split(candidate_op, 1)
-                            lhs_s, op_s, rhs_s = parts[0].strip(), candidate_op, parts[1].strip()
-                            break
-                    var_names = sorted(set(re.findall(r'\b[a-zA-Z_][a-zA-Z0-9_]*\b', conjecture)) - {'sin', 'cos', 'tan', 'exp', 'log', 'sqrt', 'pi', 'E', 'Mod', 'Abs'}) or ['x']
-                    sym_locals = {v: sp.Symbol(v, integer=(domain != 'real'), real=True) for v in var_names}
-                    lhs_sp = sp.sympify(lhs_s, locals=sym_locals)
-                    rhs_sp = sp.sympify(rhs_s, locals=sym_locals)
-                    diff_sp = sp.simplify(lhs_sp - rhs_sp)
-                    alg_eq = (op_s == '==' and (diff_sp == 0 or sp.expand(lhs_sp - rhs_sp) == 0))
-                    z3_status = 'PROVEN_VALID' if alg_eq else 'UNDECIDED'
-                    counterexample = None
-                    if not alg_eq:
-                        try:
-                            s = z3.Solver()
-                            s.set('timeout', 4000)
-                            z3_env = {v: (z3.Real(v) if domain == 'real' else z3.Int(v)) for v in var_names}
-                            if domain == 'pos_int':
-                                for zv in z3_env.values():
-                                    s.add(zv > 0)
-                            lhs_z3 = eval(str(lhs_sp), {'__builtins__': {}}, z3_env)
-                            rhs_z3 = eval(str(rhs_sp), {'__builtins__': {}}, z3_env)
-                            rel_z3 = (
-                                lhs_z3 == rhs_z3 if op_s == '==' else
-                                lhs_z3 != rhs_z3 if op_s == '!=' else
-                                lhs_z3 <= rhs_z3 if op_s == '<=' else
-                                lhs_z3 >= rhs_z3 if op_s == '>=' else
-                                lhs_z3 < rhs_z3 if op_s == '<' else
-                                lhs_z3 > rhs_z3
-                            )
-                            s.add(z3.Not(rel_z3))
-                            chk = s.check()
-                            if chk == z3.unsat:
-                                z3_status = 'PROVEN_VALID'
-                            elif chk == z3.sat:
-                                z3_status = 'FALSIFIED'
-                                m = s.model()
-                                counterexample = {v: str(m.eval(zv, model_completion=True)) for v, zv in z3_env.items()}
-                        except Exception:
-                            pass
-                    result.update(
-                        ok=(z3_status in {'PROVEN_VALID', 'FALSIFIED'}),
-                        mode='math',
-                        hypothesis=hypothesis or conjecture,
-                        conjecture=conjecture,
-                        status=z3_status,
-                        sympy_simplified_difference=str(diff_sp),
-                        counterexample=counterexample,
-                    )
+                    result.update(verify_math_hypothesis(conjecture, domain=domain, hypothesis=hypothesis))
                 elif mode == 'cyber':
-                    if not code_str:
-                        raise ValueError('code requis pour test_hypothesis en mode cyber')
-                    import z3
-                    add_m = re.findall(r'\b([a-zA-Z_][a-zA-Z0-9_]*)\s*\+\s*([a-zA-Z_][a-zA-Z0-9_]*)\b', code_str)
-                    findings = []
-                    if add_m and not re.search(r'add_overflow|checked_add|saturating_add', code_str):
-                        lv, rv = add_m[0]
-                        s = z3.Solver()
-                        a_bv, b_bv = z3.BitVec(lv, 32), z3.BitVec(rv, 32)
-                        s.add(z3.UGT(a_bv, z3.BitVecVal(1024, 32)), z3.UGT(b_bv, z3.BitVecVal(0, 32)), z3.ULE(a_bv + b_bv, z3.BitVecVal(1024, 32)))
-                        if s.check() == z3.sat:
-                            m = s.model()
-                            findings.append({
-                                'cwe': 'CWE-190: Integer Overflow',
-                                'expression': f'{lv} + {rv}',
-                                'counterexample': {lv: int(str(m.eval(a_bv))), rv: int(str(m.eval(b_bv)))},
-                            })
-                    result.update(
-                        ok=True,
-                        mode='cyber',
-                        hypothesis=hypothesis or 'Dynamic Z3 BitVec constraint audit',
-                        status='PROVEN_VULNERABLE' if findings else 'PROVEN_SAFE',
-                        findings=findings,
-                    )
+                    result.update(verify_cyber_hypothesis(code_str, hypothesis=hypothesis))
+                elif mode == 'optimize':
+                    baseline_code = str(args.get('baseline_code', '') or '').strip()
+                    candidate_code = str(args.get('candidate_code', '') or code_str).strip()
+                    entry_fn = str(args.get('entry_function', '') or '').strip()
+                    test_inputs = args.get('test_inputs') if isinstance(args.get('test_inputs'), list) else None
+                    result.update(verify_optimization_hypothesis(
+                        baseline_code, candidate_code,
+                        entry_function=entry_fn, test_inputs=test_inputs, hypothesis=hypothesis,
+                    ))
+                elif mode == 'route':
+                    skills = self._discover_local_skills()
+                    result.update(classify_problem_regime(
+                        hypothesis or conjecture or self.state.get('request', ''),
+                        code=code_str,
+                        skills=skills,
+                    ))
+                elif mode == 'explore':
+                    hypotheses_list = args.get('hypotheses')
+                    result.update(evaluate_competing_hypotheses(
+                        hypothesis or self.state.get('request', ''),
+                        hypotheses_list if isinstance(hypotheses_list, list) else [],
+                    ))
                 else:
-                    raise ValueError('mode test_hypothesis invalide (attendu: math ou cyber)')
+                    raise ValueError('mode test_hypothesis invalide (attendu: math, cyber, optimize, route ou explore)')
             elif name == 'list_agents':
                 module_filter = str(args.get('module', '') or '').strip().lower()
                 agents_file = self.root / '.aurora' / 'agents.json'
@@ -901,17 +866,20 @@ class LocalMission:
         self.state.update(status='running', model=model)
         self.save()
         protocol = '''Execute the original request using only actual tools. Return ONE tool/args JSON object per turn, matching the schema.
-For unfamiliar problems, errors, 0-days, or mathematical conjectures: form a falsifiable hypothesis, test it with test_hypothesis / run_python / search_web / fetch_url, and capitalize proven new methods with create_skill. Never rely on hardcoded guesses.
+Apply 3-Regime Adaptive Epistemic Intelligence:
+1. KNOWN_CANONICAL (Reuse without reinventing): When a verified skill (list_skills/read_skill) or canonical stdlib algorithm already solves the task, reuse it directly without redundant exploration.
+2. KNOWN_OPTIMIZABLE (Pareto Optimization): When optimizing an existing algorithm or baseline, verify strict output equivalence + measurable speedup via test_hypothesis(mode="optimize", baseline_code=..., candidate_code=...).
+3. UNKNOWN_EXPLORATORY (Abductive Discovery): For unfamiliar problems, fuzzy requirements, 0-days, or mathematical conjectures, initiate competing falsifiable hypotheses and test them with test_hypothesis(mode="explore"|"math"|"cyber") / run_python / search_web / fetch_url, then capitalize proven discoveries with create_skill.
 set_plan: choose real steps and criteria derived from the original request.
 revise_plan: adapt remaining steps citing fresh evidence_ids and reason; criteria and verified proofs are preserved.
-inspect_runtime: discover the actual interpreter, workspace, available skills, and configured MCP servers.
+inspect_runtime: discover the actual interpreter, workspace, available skills, configured MCP servers, and epistemic_routing.
 list_files: list a workspace directory.
 find_files: recursively find files matching a glob pattern inside the workspace.
 search_code: search UTF-8 files in the workspace for a literal or regex pattern with line numbers.
 git_status: inspect git branch, status, and diff summary in the workspace.
 list_skills / read_skill / create_skill: inspect or persist reusable project skills (.aurora/skills/<name>/SKILL.md).
 search_web / fetch_url: research unknown facts, CVEs, or documentation over HTTP(S).
-test_hypothesis: formally verify or falsify a mathematical conjecture (SymPy+Z3) or a 0-day code constraint (Z3 BitVec).
+test_hypothesis: verify math conjectures (mode="math"), 0-day code constraints (mode="cyber"), Pareto optimizations (mode="optimize"), epistemic regime routing (mode="route"), or competing hypotheses (mode="explore").
 list_mcp_tools / call_mcp_tool: discover and invoke local MCP servers (.mcp.json or .aurora/mcp_config.json).
 read_file: inspect a real workspace file; returns its content and SHA-256.
 write_file: exact UTF-8 content; existing files require the SHA-256 actually observed in read_file.
@@ -970,10 +938,15 @@ SAFE permits reads only. Do not announce unexecuted work as done. Repeated ident
                     'search_web':({'query':{'type':'string'}}, ['query']),
                     'fetch_url':({'url':{'type':'string'},
                                   'criterion':{'type':'string','enum':self.state['criteria']}}, ['url']),
-                    'test_hypothesis':({'mode':{'type':'string','enum':['math','cyber']},
+                    'test_hypothesis':({'mode':{'type':'string','enum':['math','cyber','optimize','route','explore']},
                                         'hypothesis':{'type':'string'},
                                         'conjecture':{'type':'string'},
                                         'code':{'type':'string'},
+                                        'baseline_code':{'type':'string'},
+                                        'candidate_code':{'type':'string'},
+                                        'entry_function':{'type':'string'},
+                                        'test_inputs':{'type':'array'},
+                                        'hypotheses':{'type':'array','items':{'type':'object'}},
                                         'domain':{'type':'string','enum':['int','pos_int','real']},
                                         'criterion':{'type':'string','enum':self.state['criteria']}}, ['mode']),
                     'list_agents':({'module':{'type':'string'}}, []),

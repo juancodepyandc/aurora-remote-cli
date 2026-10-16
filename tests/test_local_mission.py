@@ -418,9 +418,46 @@ def test_local_mission_scientific_hypothesis_and_skill_capitalization(tmp_path):
             "sha256": sk_res["sha256"],
             "criterion": "Skill persisted",
         })["ok"]
+
+        # 6. Epistemic regime routing (KNOWN_CANONICAL vs KNOWN_OPTIMIZABLE vs UNKNOWN_EXPLORATORY)
+        route_known = mission.tool("test_hypothesis", {
+            "mode": "route",
+            "hypothesis": "Utiliser le skill z3-bitvec-audit existant",
+        })
+        assert route_known["ok"] and route_known["regime"] == "KNOWN_CANONICAL"
+        assert route_known["should_reinvent"] is False
+
+        route_opt = mission.tool("test_hypothesis", {
+            "mode": "route",
+            "hypothesis": "Optimiser la complexité O(n^2) de cette boucle",
+        })
+        assert route_opt["ok"] and route_opt["regime"] == "KNOWN_OPTIMIZABLE"
+
+        # 7. Pareto Optimization Verification (KNOWN_OPTIMIZABLE)
+        opt_res = mission.tool("test_hypothesis", {
+            "mode": "optimize",
+            "baseline_code": "def f(items):\n    s = 0\n    for x in items:\n        for _ in range(1):\n            s += x * x\n    return s\n",
+            "candidate_code": "def f(items):\n    return sum(x * x for x in items)\n",
+        })
+        assert opt_res["ok"] and opt_res["semantic_equivalence"] is True
+        assert opt_res["status"] == "PROVEN_OPTIMIZED"
+
+        # 8. Multi-hypothesis exploration (UNKNOWN_EXPLORATORY)
+        exp_res = mission.tool("test_hypothesis", {
+            "mode": "explore",
+            "hypothesis": "Find valid polynomial identity",
+            "hypotheses": [
+                {"id": "H1", "statement": "False linear square", "conjecture": "(x + 1)**2 == x**2 + 1"},
+                {"id": "H2", "statement": "True difference of squares", "conjecture": "(x - 1)*(x + 1) == x**2 - 1"},
+            ],
+        })
+        assert exp_res["ok"] and exp_res["status"] == "PROVEN_HYPOTHESIS_SELECTED"
+        assert exp_res["winning_hypothesis"]["id"] == "H2"
+
         assert mission.finish("All scientific and cyber hypotheses verified and skill capitalized.")
     finally:
         mission.close()
+
 
 
 

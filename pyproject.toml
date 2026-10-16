@@ -39,6 +39,7 @@ test = [
     "Pillow",
     "trimesh",
     "scipy",
+    "sympy",
 ]
 
 [project.urls]

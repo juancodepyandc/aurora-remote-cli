@@ -385,6 +385,58 @@ class Bridge:
     def skills_discover(self, workspace: str = "") -> dict:
         return self.post("/api/cli/skills/discover", {"workspace": workspace})
 
+    # --- Epistemic Intelligence (Tunnel + Automatic Local Fallback) ---
+
+    def epistemic_evaluate(self, mode: str = "route", *, fallback_local: bool = True, **kwargs: Any) -> dict:
+        """Evaluate an epistemic query over the tunnel, falling back to local epistemic engine if unreachable."""
+        payload = {"mode": mode, **kwargs}
+        res = self.post("/api/cli/epistemic/evaluate", payload)
+        if res.get("ok"):
+            res.setdefault("transport", "bridge")
+            return res
+        unavailable = (
+            res.get("error_kind") in {"connection", "timeout"}
+            or res.get("http_status") in {404, 500, 502, 503, 504, 530}
+        )
+        if not fallback_local or not unavailable:
+            return res
+        from . import epistemic
+        m = (mode or "route").strip().lower()
+        if m == "route":
+            out = epistemic.classify_problem_regime(
+                str(kwargs.get("prompt") or kwargs.get("hypothesis") or ""),
+                code=str(kwargs.get("code") or ""),
+                skills=kwargs.get("skills") if isinstance(kwargs.get("skills"), list) else None,
+            )
+        elif m == "math":
+            out = epistemic.verify_math_hypothesis(
+                str(kwargs.get("conjecture") or ""),
+                domain=str(kwargs.get("domain") or "int"),
+                hypothesis=str(kwargs.get("hypothesis") or ""),
+            )
+        elif m == "cyber":
+            out = epistemic.verify_cyber_hypothesis(
+                str(kwargs.get("code") or ""),
+                hypothesis=str(kwargs.get("hypothesis") or ""),
+            )
+        elif m == "optimize":
+            out = epistemic.verify_optimization_hypothesis(
+                str(kwargs.get("baseline_code") or ""),
+                str(kwargs.get("candidate_code") or ""),
+                entry_function=str(kwargs.get("entry_function") or ""),
+                test_inputs=kwargs.get("test_inputs") if isinstance(kwargs.get("test_inputs"), list) else None,
+                hypothesis=str(kwargs.get("hypothesis") or ""),
+            )
+        elif m == "explore":
+            out = epistemic.evaluate_competing_hypotheses(
+                str(kwargs.get("problem") or kwargs.get("hypothesis") or ""),
+                kwargs.get("hypotheses") if isinstance(kwargs.get("hypotheses"), list) else [],
+            )
+        else:
+            return res
+        out["transport"] = "local_fallback"
+        return out
+
     # --- Connections ---
 
     def connections_list(self) -> dict:
