@@ -391,5 +391,14 @@ def test_slash_command_completer_and_module_views_and_agi_cockpit():
             await app.submit('/agi Créer une architecture 3D jamais vue')
             assert 'SYNTHÈSE COGNITIVE DU CERVEAU AGI' in app.transcript
             assert 'UNKNOWN_EXPLORATORY' in app.transcript
+
+            await app.submit('/avant-apres')
+            assert app.page == 'avant_apres'
+            assert '70.66 / 100' in app.body.text and '71.13 / 100' in app.body.text
+            assert 'AVANT_APRES_3D_COMPARAISON.png' in app.body.text
+
+            await app.submit('/ontologie fais sangoku en 3D')
+            assert 'FIDÉLITÉ ANIMÉ / CEL-SHADED NATIVE' in app.transcript
+            assert 'ACTIF EN SOLO D\'OFFICE' in app.transcript
     asyncio.run(scenario())
 
