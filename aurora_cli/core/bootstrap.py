@@ -1,4 +1,6 @@
 """Install isolated Python engines and start an existing Ollama daemon."""
+from __future__ import annotations
+
 import os
 import re
 import json
@@ -19,7 +21,11 @@ from .runtime_provisioning import install_requirements, run_logged, Provisioning
 def _compatible_python() -> str:
     """Locate an interpreter satisfying the portable adapter's tested contract."""
     candidates = [os.environ.get("JOBIA_PYTHON", ""), "python3.11", "python3.12",
-                  "python3.10", "python3", "python", sys.executable]
+                  "python3.10", "python3.13", "python3", "python", sys.executable,
+                  "/opt/homebrew/bin/python3.12", "/opt/homebrew/bin/python3.11",
+                  "/opt/homebrew/bin/python3.10", "/opt/homebrew/bin/python3",
+                  "/usr/local/bin/python3.12", "/usr/local/bin/python3.11",
+                  "/usr/local/bin/python3"]
     launcher = shutil.which("py")
     if launcher:
         for version in ("3.11", "3.12", "3.10"):
@@ -29,18 +35,20 @@ def _compatible_python() -> str:
                     text=True, stderr=subprocess.DEVNULL, timeout=15).strip())
             except (OSError, subprocess.SubprocessError):
                 continue
+    fallback_candidate = None
     for candidate in candidates:
         if not candidate or not shutil.which(candidate):
             continue
+        resolved = shutil.which(candidate) or candidate
         try:
             raw = subprocess.check_output(
-                [candidate, "-c", "import sys; print(f'{sys.version_info[0]}.{sys.version_info[1]}')"],
+                [resolved, "-c", "import sys; print(f'{sys.version_info[0]}.{sys.version_info[1]}')"],
                 text=True, timeout=15).strip()
             major, minor = map(int, raw.split(".", 1))
-            # This is the adapter's declared/tested interpreter contract, not
-            # a list of exceptions deduced from individual installer failures.
             if major == 3 and 10 <= minor <= 12:
-                return shutil.which(candidate) or candidate
+                return resolved
+            if major == 3 and minor >= 9 and fallback_candidate is None:
+                fallback_candidate = resolved
         except (OSError, subprocess.SubprocessError, ValueError):
             continue
     uv = shutil.which("uv")
@@ -49,6 +57,8 @@ def _compatible_python() -> str:
         result = run_logged([uv, "python", "install", "3.11"], log, timeout=600)
         if result.returncode == 0:
             return subprocess.check_output([uv, "python", "find", "3.11"], text=True, timeout=30).strip()
+    if fallback_candidate:
+        return fallback_candidate
     raise RuntimeError("Aucun interpréteur disponible ne satisfait le contrat Python 3.10–3.12 du moteur 3D.")
 
 

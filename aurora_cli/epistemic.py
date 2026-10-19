@@ -364,6 +364,29 @@ def verify_cyber_hypothesis(code_str: str, hypothesis: str = "") -> dict[str, An
                         "expression": ast.unparse(node),
                         "counterexample": {idx_vars[0]: -999999},
                     })
+            if isinstance(node, ast.Call):
+                call_src = ast.unparse(node)
+                func_name = ast.unparse(node.func)
+                if func_name in {"eval", "exec", "pickle.loads", "marshal.loads"}:
+                    findings.append({
+                        "cwe": "CWE-94/CWE-502: Unsafe Code Execution or Deserialization",
+                        "expression": call_src[:120],
+                        "counterexample": {"payload": "__import__('os').system('id')"},
+                    })
+                elif func_name == "os.system" or (
+                    func_name.startswith("subprocess.") and any(kw.arg == "shell" and getattr(kw.value, "value", False) is True for kw in node.keywords)
+                ):
+                    findings.append({
+                        "cwe": "CWE-78: OS Command Injection",
+                        "expression": call_src[:120],
+                        "counterexample": {"cmd_arg": "; id #"},
+                    })
+                elif func_name.endswith(".execute") and node.args and isinstance(node.args[0], (ast.JoinedStr, ast.BinOp)):
+                    findings.append({
+                        "cwe": "CWE-89: SQL Injection via Unparameterized Query",
+                        "expression": call_src[:120],
+                        "counterexample": {"sql_input": "' OR '1'='1"},
+                    })
     except SyntaxError:
         pass
 
@@ -459,18 +482,18 @@ def verify_optimization_hypothesis(
                 },
             }
 
-    iters = 20
-    t0 = time.perf_counter()
+    iters = 25
+    t0 = time.perf_counter_ns()
     for _ in range(iters):
         for args_tuple in norm_inputs:
             base_fn(*copy.deepcopy(args_tuple))
-    base_us = ((time.perf_counter() - t0) * 1_000_000.0) / iters
+    base_us = ((time.perf_counter_ns() - t0) / 1000.0) / iters
 
-    t1 = time.perf_counter()
+    t1 = time.perf_counter_ns()
     for _ in range(iters):
         for args_tuple in norm_inputs:
             cand_fn(*copy.deepcopy(args_tuple))
-    cand_us = ((time.perf_counter() - t1) * 1_000_000.0) / iters
+    cand_us = ((time.perf_counter_ns() - t1) / 1000.0) / iters
 
     base_c = _ast_complexity(baseline_code)
     cand_c = _ast_complexity(candidate_code)
@@ -493,6 +516,30 @@ def verify_optimization_hypothesis(
         "candidate_complexity": cand_c,
         "loop_depth_reduced": loop_reduced,
     }
+
+
+_MODULE_QUALITY_PROFILES: tuple[tuple[str, str, tuple[str, ...], tuple[str, ...]], ...] = (
+    ("3d", "3d-lead", ("3d", "stl", "glb", "gltf", "mesh", "maillage", "cao", "cad", "trellis", "hunyuan", "rig", "texture", "pbr"),
+     ("watertight_manifold", "zero_bvh_self_intersection", "5axis_quality_score_ge_82", "16k_pbr_or_iso_step")),
+    ("cyber", "cyber-lead", ("cyber", "cve", "cwe", "0-day", "zeroday", "exploit", "owasp", "sqli", "xss", "toctou", "audit", "securit"),
+     ("z3_bitvec_witness", "closed_loop_patch_unsat", "zero_regression_diff")),
+    ("learning", "learning-lead", ("math", "équation", "equation", "théorème", "theorem", "preuve", "sympy", "z3", "intégrale", "dérivée", "bac", "physique", "chimie"),
+     ("sympy_z3_formal_proof", "counterexample_search", "step_by_step_derivation")),
+    ("simulator", "simulator-lead", ("simulateur", "simulation", "fluide", "sph", "rk4", "collision", "circuit", "cinétique"),
+     ("rk4_energy_conservation", "dimensional_homogeneity", "deterministic_seed")),
+    ("image", "image-lead", ("image", "photo", "illustration", "flux", "upscale", "16k", "inpaint", "portrait"),
+     ("adaptive_prompt_fidelity", "creations_vs_modifications_routing", "16k_pbr_normal_roughness_ao")),
+    ("video", "video-lead", ("vidéo", "video", "film", "storyboard", "wan2", "ltx", "hymotion", "caméra"),
+     ("multi_shot_temporal_coherence", "audio_mux_sync", "motion_trajectory_continuity")),
+    ("voice", "voice-lead", ("voix", "audio", "tts", "stt", "whisper", "kokoro", "viseme", "lipsync", "micro"),
+     ("prosody_phonetic_accuracy", "rhubarb_viseme_sync", "sub_300ms_vad_turnaround")),
+    ("business", "business-ceo", ("business", "marché", "finance", "marge", "bfr", "dso", "risque", "monte-carlo", "saas", " trésorerie"),
+     ("independent_risk_veto_25pct_reserve", "ruin_prob_le_2pct", "walk_forward_60_20_20")),
+    ("cowork", "cowork-lead", ("cowork", "pdf", "docx", "csv", "excel", "chrome", "extension", "workflow"),
+     ("permission_gate_safe_standard", "schema_verified_extraction", "idempotent_handoff")),
+    ("code", "code-lead", ("code", "python", "typescript", "rust", "react", "api", "bug", "test", "pytest", "refactor", "script"),
+     ("zero_todo_or_stub", "ast_and_runtime_verified", "optimal_time_space_complexity")),
+)
 
 
 def classify_problem_regime(
@@ -542,11 +589,24 @@ def classify_problem_regime(
         regime = "UNKNOWN_EXPLORATORY"
         should_reinvent = True
 
+    recommended_module = "code"
+    lead_agent = "code-lead"
+    quality_invariants: list[str] = ["zero_todo_or_stub", "ast_and_runtime_verified", "optimal_time_space_complexity"]
+    for mod_name, mod_lead, mod_kws, mod_invariants in _MODULE_QUALITY_PROFILES:
+        if any(kw in text for kw in mod_kws):
+            recommended_module = mod_name
+            lead_agent = mod_lead
+            quality_invariants = list(mod_invariants)
+            break
+
     return {
         "ok": True,
         "mode": "route",
         "regime": regime,
         "should_reinvent": should_reinvent,
+        "recommended_module": recommended_module,
+        "lead_agent": lead_agent,
+        "quality_invariants": quality_invariants,
         "matched_skills": matched_skills,
         "canonical_patterns": canonical_hits,
         "code_complexity": comp,

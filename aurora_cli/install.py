@@ -190,8 +190,45 @@ class Installer:
         })
 
     # -- individual steps --------------------------------------------------
+    def _discover_python(self, minimum: str) -> tuple[str, tuple[int, int]] | None:
+        candidates = [
+            os.environ.get("PYTHON_BIN", ""),
+            os.environ.get("JOBIA_PYTHON", ""),
+            str(self.target.python) if self.target.python.is_file() else "",
+            "python3.13", "python3.12", "python3.11", "python3.10",
+            "/opt/homebrew/bin/python3.13", "/opt/homebrew/bin/python3.12",
+            "/opt/homebrew/bin/python3.11", "/opt/homebrew/bin/python3.10",
+            "/opt/homebrew/bin/python3",
+            "/usr/local/bin/python3.13", "/usr/local/bin/python3.12",
+            "/usr/local/bin/python3.11", "/usr/local/bin/python3.10",
+            "/usr/local/bin/python3",
+            str(Path.home() / ".local" / "bin" / "python3"),
+            str(Path.home() / ".pyenv" / "shims" / "python3"),
+        ]
+        for cand in candidates:
+            if not cand:
+                continue
+            resolved = cand if Path(cand).is_file() else shutil.which(cand)
+            if not resolved:
+                continue
+            code, output = self.runner([resolved, "-c", "import sys; print('%s.%s' % sys.version_info[:2])"])
+            if code == 0:
+                try:
+                    ver = tuple(map(int, output.strip().split(".")[:2]))
+                    if python_version_ok(ver, minimum):
+                        return resolved, ver
+                except ValueError:
+                    continue
+        uv = shutil.which("uv") or str(Path.home() / ".local" / "bin" / "uv")
+        if Path(uv).is_file() or shutil.which(uv):
+            self.runner([uv, "python", "install", "3.12"])
+            code, found = self.runner([uv, "python", "find", "3.12"])
+            if code == 0 and found.strip():
+                return found.strip(), (3, 12)
+        return None
+
     def check_python(self) -> StepResult:
-        minimum = self.policy.get("environment", {}).get("min_python", "3.10")
+        minimum = self.policy.get("environment", {}).get("min_python", "3.9")
         current = sys.version_info[:2]
         if self.interpreter != sys.executable:
             code, output = self.runner([self.interpreter, "-c", "import sys; print('%s.%s' % sys.version_info[:2])"])
@@ -201,6 +238,11 @@ class Installer:
                 return StepResult("python", "failed", output.strip()[-300:])
         if python_version_ok(current, minimum):
             return StepResult("python", "ok", f"{'.'.join(map(str, current))} >= {minimum}")
+        if self.runner is run:
+            discovered = self._discover_python(minimum)
+            if discovered is not None:
+                self.interpreter, current = discovered
+                return StepResult("python", "ok", f"{'.'.join(map(str, current))} >= {minimum}")
         return StepResult("python", "failed", f"Python {minimum} requis, {platform.python_version()} trouvé")
 
     def create_venv(self) -> StepResult:
@@ -255,6 +297,27 @@ class Installer:
             if link.is_symlink() or link.exists():
                 link.unlink()
             link.symlink_to(source)
+            for alias in ("jbia", "aurora"):
+                alias_src = self.target.scripts / alias
+                if alias_src.is_file():
+                    alias_link = self.target.bindir / alias
+                    if alias_link.is_symlink() or alias_link.exists():
+                        alias_link.unlink()
+                    alias_link.symlink_to(alias_src)
+            if self.target.bindir == Path.home() / ".local" / "bin":
+                for sys_bin in (Path("/opt/homebrew/bin"), Path("/usr/local/bin")):
+                    if sys_bin.is_dir() and os.access(sys_bin, os.W_OK):
+                        for name in ("jobia", "jbia", "aurora"):
+                            src_bin = self.target.scripts / name
+                            if src_bin.is_file():
+                                dst_bin = sys_bin / name
+                                try:
+                                    if dst_bin.is_symlink() or dst_bin.exists():
+                                        dst_bin.unlink()
+                                    dst_bin.symlink_to(src_bin)
+                                except OSError:
+                                    pass
+                        break
         except OSError as exc:
             return StepResult("link", "failed", f"{link} : {exc}")
         return StepResult("link", "ok", f"{link} -> {source}")

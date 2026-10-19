@@ -1,4 +1,6 @@
 """Managed audio execution shares selection, provisioning and failure evidence."""
+from __future__ import annotations
+
 from pathlib import Path
 import os
 import subprocess
@@ -39,7 +41,7 @@ def generate(*, text=None, source=None, output=None, model=None):
     try:
         with log.open('w', encoding='utf-8') as stream:
             result = subprocess.run(command, stdout=stream, stderr=subprocess.STDOUT,
-                text=True, timeout=1800, env=os.environ | runner.environment())
+                text=True, timeout=1800, env={**os.environ, **runner.environment()})
         if result.returncode or not output.is_file():
             raise RuntimeError(f'Échec audio ; diagnostic conservé : {log}')
     except (OSError, subprocess.SubprocessError, RuntimeError) as exc:

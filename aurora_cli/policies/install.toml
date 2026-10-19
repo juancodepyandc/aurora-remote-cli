@@ -1,7 +1,9 @@
 [environment]
 # Version minimale de Python, lue par aurora_cli/install.py.
-min_python = "3.10"
+min_python = "3.9"
+optimal_python = "3.12"
 
 [entrypoints]
 # Noms exposés sur le PATH après installation.
-bins = ["jobia", "jbia"]
+bins = ["jobia", "jbia", "aurora"]
+
