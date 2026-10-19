@@ -25,28 +25,42 @@ agi_engine = None
 console = Console()
 
 INTERNAL_COMMANDS = {
-    "/help": "Lister les commandes",
-    "/status": "État du pont",
-    "/permissions": "Voir ou régler les permissions",
-    "/agents": "Lister les agents",
-    "/tools": "Lister les outils",
-    "/models": "Lister les modèles du pont",
-    "/local": "Lister les modèles disponibles sur cette machine",
-    "/mcp": "Serveurs MCP et leurs outils",
-    "/skills": "Compétences chargées",
-    "/connections": "Connexions aux services",
-    "/files": "Fichiers modifiés dans la session",
-    "/sources": "Sources web consultées",
-    "/session": "Informations de la session courante",
-    "/sessions": "Lister toutes les sessions",
-    "/theme": "Changer de thème pour cette session",
-    "/clear": "Effacer le terminal",
-    "/stop": "Arrêter la tâche en cours",
-    "/exit": "Quitter",
-    "/mode": "Niveau d'effort et modèle (pro, balanced, deep, fast)",
+    "/help": "⚡ Palette complète des commandes et modules AGI",
+    "/agi": "🧠 Analyse cognitive d'intention, régime épistémique & 8 boucles AGI",
+    "/modules": "🛰 Cockpit des 10 modules AuroraIA & état des moteurs",
+    "/chat": "💬 Cibler ou interroger le module Conversation & Multimodal",
+    "/code": "💻 Cibler ou interroger le module Code, Motion UI & Sandbox",
+    "/image": "🎨 Cibler ou interroger le module Image FLUX.2-dev & 16K PBR",
+    "/3d": "🧊 Cibler ou interroger le module 3D TRELLIS.2, Rigging & CAO",
+    "/cyber": "🛡 Cibler ou interroger le module Cyber Z3, 9 Labs & Patch",
+    "/business": "📈 Cibler ou interroger le module Business Lab & Quant",
+    "/academy": "🔬 Cibler ou interroger le module Académie & Oracle SymPy/Z3",
+    "/voice": "🎙 Cibler ou interroger le module Voix Kokoro TTS & Whisper STT",
+    "/status": "🩺 État du pont et de la télémétrie",
+    "/permissions": "🔐 Voir ou régler les permissions (SAFE, STANDARD, AUTONOMOUS, FULL)",
+    "/agents": "🤖 Lister les agents maîtres et appliquants",
+    "/tools": "🛠 Lister les outils vérifiés",
+    "/models": "🎛 Lister les modèles du pont",
+    "/local": "🖥 Lister les modèles disponibles sur cette machine",
+    "/mcp": "🔌 Serveurs MCP et leurs outils",
+    "/skills": "📚 Compétences chargées (.aurora/skills)",
+    "/connections": "🌐 Connexions aux services",
+    "/files": "📦 Fichiers modifiés dans la session",
+    "/sources": "🔎 Sources web consultées",
+    "/session": "🆔 Informations de la session courante",
+    "/sessions": "🗂 Lister et gérer toutes les sessions",
+    "/theme": "🌈 Changer de thème Cyber-Aurora pour cette session",
+    "/clear": "🧹 Effacer le terminal",
+    "/stop": "⏹ Arrêter la tâche en cours",
+    "/exit": "⏻ Quitter",
+    "/mode": "🚀 Niveau d'effort cognitif et modèle (pro, balanced, deep, fast)",
 }
 
-COMMAND_COMPLETER = WordCompleter(list(INTERNAL_COMMANDS.keys()), sentence=True)
+COMMAND_COMPLETER = WordCompleter(
+    list(INTERNAL_COMMANDS.keys()),
+    sentence=True,
+    meta_dict=INTERNAL_COMMANDS,
+)
 
 
 def run_interactive(client: Bridge) -> None:
@@ -118,6 +132,7 @@ def run_interactive(client: Bridge) -> None:
 
     # Handle Ctrl+C gracefully
     current_mission_id: str = ""
+    active_repl_module: str = ""
 
     def signal_handler(sig: int, frame: Any) -> None:
         nonlocal current_mission_id
@@ -136,13 +151,14 @@ def run_interactive(client: Bridge) -> None:
 
     signal.signal(signal.SIGINT, signal_handler)
 
-    console.print("[dim]Tapez votre message ou /help pour les commandes.[/dim]\n")
+    console.print("[dim]Tapez votre message ou / pour ouvrir la palette interactive des commandes et modules.[/dim]\n")
 
     while True:
         try:
             theme = display.view.theme
             prompt_session.style = Style.from_dict(theme.prompt_toolkit_style(caps))
-            user_input = prompt_session.prompt(theme.prompt_text(caps)).strip()
+            mod_tag = f"[{active_repl_module}] " if active_repl_module else ""
+            user_input = prompt_session.prompt(mod_tag + theme.prompt_text(caps)).strip()
         except (EOFError, KeyboardInterrupt):
             console.print("\n[dim]Au revoir.[/dim]")
             break
@@ -152,12 +168,49 @@ def run_interactive(client: Bridge) -> None:
 
         # Internal commands
         if user_input.startswith("/"):
-            cmd = user_input.split()[0].lower()
+            parts = user_input.split(maxsplit=1)
+            cmd = parts[0].lower()
+            arg = parts[1].strip() if len(parts) > 1 else ""
             if cmd == "/exit":
                 console.print("[dim]Au revoir.[/dim]")
                 break
             elif cmd == "/help":
                 _show_help()
+            elif cmd == "/modules":
+                from aurora_cli.ui import STUDIO_MODULES_META
+                from rich.table import Table
+                from rich import box
+                mod_table = Table(
+                    title="[bold cyan]🛰 Cockpit des Modules AuroraIA & Agents Maîtres[/bold cyan]",
+                    border_style="cyan",
+                    box=box.ROUNDED,
+                    expand=True,
+                )
+                mod_table.add_column("Module", style="bold yellow", width=12)
+                mod_table.add_column("Maître AGI", style="bold magenta", width=20)
+                mod_table.add_column("Moteur & Spécialités", style="white")
+                for k, meta in STUDIO_MODULES_META.items():
+                    mod_table.add_row(f"{meta['icon']} {k}", meta["master"], f"[cyan]{meta['engine']}[/cyan]\n[dim]{meta['capabilities']}[/dim]")
+                console.print(mod_table)
+            elif cmd == "/agi":
+                from aurora_cli.ui import WorkspaceApp
+                from rich.panel import Panel
+                from rich import box
+                dummy = WorkspaceApp.__new__(WorkspaceApp)
+                dummy.active_module = active_repl_module
+                dummy.state = type("S", (), {"goal": arg or "Diagnostic cognitif AGI"})()
+                console.print(Panel(dummy.agi_cognitive_report(arg), border_style="cyan", box=box.ROUNDED))
+            elif cmd in {"/chat", "/code", "/image", "/3d", "/cyber", "/business", "/academy", "/voice"}:
+                mod_map = {
+                    "/chat": "CHAT", "/code": "CODE", "/image": "IMAGE", "/3d": "3D",
+                    "/cyber": "CYBER", "/business": "BUSINESS", "/academy": "LEARNING", "/voice": "VOICE",
+                }
+                active_repl_module = mod_map[cmd]
+                if not arg:
+                    console.print(f"[bold cyan]✔ Module actif verrouillé sur : {active_repl_module}[/bold cyan]")
+                    continue
+                user_input = f"[{active_repl_module}] {arg}"
+                # Fall through to execute request!
             elif cmd == "/status":
                 _cmd_status(client)
             elif cmd == "/permissions":
@@ -236,7 +289,8 @@ def run_interactive(client: Bridge) -> None:
                     console.print("[dim]Aucune mission en cours.[/dim]")
             else:
                 console.print(f"[dim]Commande inconnue: {cmd}. Tapez /help.[/dim]")
-            continue
+            if user_input.startswith("/"):
+                continue
 
         # --- J.O.B.I.A. Core Execution ---
         try:

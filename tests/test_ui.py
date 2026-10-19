@@ -361,3 +361,35 @@ def test_remote_followup_keeps_prior_turns_separate_from_the_current_goal():
             assert payload['history']==[{'role':'user','content':'Initial exact task'},
                                         {'role':'assistant','content':'Verified response'}]
     asyncio.run(scenario())
+
+
+def test_slash_command_completer_and_module_views_and_agi_cockpit():
+    from prompt_toolkit.document import Document
+    completer = ui.SlashCommandCompleter()
+    root_items = list(completer.get_completions(Document('/'), None))
+    cmds = [c.text for c in root_items]
+    assert '/agi' in cmds and '/3d' in cmds and '/modules' in cmds and '/view' in cmds
+    view_items = list(completer.get_completions(Document('/view mod'), None))
+    assert [c.text for c in view_items] == ['modules']
+
+    async def scenario():
+        with create_pipe_input() as pipe:
+            app = ui.WorkspaceApp(history=[], input=pipe, output=DummyOutput())
+            app.prompt.text = '/3d'
+            dock = ''.join(frag[1] for frag in app.slash_dock_text())
+            assert '/3d' in dock and 'TRELLIS.2' in dock
+
+            await app.submit('/modules')
+            assert app.page == 'modules'
+            assert 'COCKPIT MULTI-MODULES AURORA' in app.body.text
+
+            await app.submit('/3d')
+            assert app.active_module == '3D'
+            assert app.page == 'conversation'
+            assert 'MODULE ACTIF VERROUILLÉ' in app.transcript
+
+            await app.submit('/agi Créer une architecture 3D jamais vue')
+            assert 'SYNTHÈSE COGNITIVE DU CERVEAU AGI' in app.transcript
+            assert 'UNKNOWN_EXPLORATORY' in app.transcript
+    asyncio.run(scenario())
+

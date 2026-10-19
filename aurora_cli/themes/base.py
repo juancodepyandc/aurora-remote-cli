@@ -244,24 +244,40 @@ class Theme:
         return self.palette.ramp(count, ("banner", "banner_alt", "secondary"))
 
     def prompt_toolkit_style(self, caps: Capabilities) -> dict[str, str]:
-        """Style dict for prompt_toolkit, derived from the same palette."""
+        """Style dict for prompt_toolkit, derived from the same palette (100% dark, zero white bars)."""
         primary = colour.to_prompt_toolkit(self.raw("primary"), caps.color_depth)
         secondary = colour.to_prompt_toolkit(self.raw("secondary"), caps.color_depth)
         accent = colour.to_prompt_toolkit(self.raw("accent"), caps.color_depth)
+        text = colour.to_prompt_toolkit(self.raw("text"), caps.color_depth)
         muted = colour.to_prompt_toolkit(self.raw("muted"), caps.color_depth)
-        background = "#12161d" if caps.color_depth != "none" else "#000000"
+        border = colour.to_prompt_toolkit(self.raw("border"), caps.color_depth)
+        background = "#090d16" if caps.color_depth != "none" else "#000000"
+        surface = "#111827" if caps.color_depth != "none" else "#000000"
         return {
             "prompt": f"{primary} bold",
-            "completion-menu": f"bg:{background} {primary}",
-            "completion-menu.completion.current": f"bg:{primary} #0b0e13 bold",
-            "completion-menu.completion": f"bg:{background} {secondary}",
-            "completion-menu.meta.completion.current": f"bg:{primary} #0b0e13",
-            "scrollbar.background": f"bg:{background}",
-            "scrollbar.button": f"bg:{primary}",
+            "completion-menu": f"bg:{surface} {text}",
+            "completion-menu.completion": f"bg:{surface} {primary}",
+            "completion-menu.completion.current": f"bg:{primary} #060911 bold",
+            "completion-menu.meta.completion": f"bg:{background} {muted}",
+            "completion-menu.meta.completion.current": f"bg:{secondary} #060911 bold",
+            "scrollbar.background": f"bg:{background} {border}",
+            "scrollbar.button": f"bg:{primary} {primary}",
+            "scrollbar.arrow": f"bg:{background} {primary} bold",
+            "dialog": f"bg:{background} {text}",
+            "dialog.body": f"bg:{surface} {text}",
+            "dialog frame.label": f"bg:{surface} {primary} bold",
+            "dialog.body text-area": f"bg:{surface} {text}",
+            "dialog.body scrollbar.background": f"bg:{background}",
+            "dialog.body scrollbar.button": f"bg:{primary}",
+            "button": f"bg:{surface} {primary}",
+            "button.focused": f"bg:{primary} #060911 bold",
+            "radiolist": f"bg:{surface} {text}",
+            "radio-selected": f"bg:{primary} #060911 bold",
+            "radio-checked": f"{accent} bold",
             "bottom-toolbar": f"bg:{background} {muted}",
-            "bottom-toolbar.on": f"bg:{primary} #0b0e13",
+            "bottom-toolbar.on": f"bg:{primary} #060911",
             "arg-toolbar": f"bg:{background} {muted}",
-            "search-toolbar": f"bg:{accent} #0b0e13",
+            "search-toolbar": f"bg:{accent} #060911",
             "keyword": f"{secondary} bold",
             "string": accent,
         }
