@@ -60,3 +60,9 @@ Trois répétitions séquentielles, PTY Linux 120×32, même bannière animée/s
 Limites : caches fichiers chauds, CPU résolution 10 ms, callbacks de mesure différents selon bibliothèque, PTY et émulateur pas terminaux physiques. Une cadence de sortie 60 Hz ne prouve pas le rafraîchissement réel du Mac. La série NO_COLOR est conservée séparément ; aucune mesure favorable n'est inventée.
 
 Dépendances : aucun ajout Python en production pour le redesign. Ratatui (MIT) et Crossterm (MIT), serde/serde_json (MIT/Apache-2.0) côté renderer ; Cargo.lock verrouille les versions. Textual, pyte et psutil du spike restent des outils de développement isolés, pas des dépendances du client. Le coût final du binaire et les performances du produit complet seront mesurés après intégration.
+
+## Tokens et composants livrés
+
+Les huit fichiers JSON sont la source des identités ; palette sémantique, fonds, espacements en cellules, cadres, glyphes Unicode/ASCII, bannières et motifs pixels y sont regroupés. Voir `THEMES.md`. Les textes sémantiques dépassent 4,5:1 sur les deux fonds par test sRGB. Le rendu commun expose panel/table/markdown/diff/notice/confirmation/stream et une frontière de texte sûre. Les diffs affichent les numéros des hunks réels ; les messages portent un libellé et un signe. La sortie JSON conserve son chemin sans décor.
+
+Le lint ajouté porte sur les erreurs de correction `E9,F63,F7,F82` dans tout le package et les tests. Il n'existait pas de contrat lint dans ce dépôt : les centaines de recommandations stylistiques héritées d'une configuration extérieure ne sont pas présentées comme corrigées. Deux imports de types différés ont été complétés sans changer les moteurs.

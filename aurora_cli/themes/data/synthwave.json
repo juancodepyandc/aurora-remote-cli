@@ -1,0 +1,107 @@
+{
+  "schema": 1,
+  "title": "Aurora",
+  "prompt": "vous > ",
+  "prompt_suffix": "› ",
+  "subtitle": "Votre espace de travail distant",
+  "box": "rounded",
+  "id": "synthwave",
+  "label": "Minuit FM",
+  "description": "Soleil tramé, perspective électrique et notes rose-corail.",
+  "palette": {
+    "primary": "#ff9dcd",
+    "secondary": "#aab6ff",
+    "accent": "#ffd49a",
+    "success": "#97edb2",
+    "warning": "#ffe19b",
+    "error": "#ffacb5",
+    "info": "#ff9dcd",
+    "text": "#f2f5f7",
+    "muted": "#d1bbda",
+    "border": "#d1bbda",
+    "banner": "#ff9dcd",
+    "banner_alt": "#ffd49a",
+    "surface": "#1a1029",
+    "raised": "#30203f"
+  },
+  "glyphs": {
+    "ok": [
+      "✓",
+      "+"
+    ],
+    "fail": [
+      "×",
+      "x"
+    ],
+    "warn": [
+      "!",
+      "!"
+    ],
+    "info": [
+      "›",
+      ">"
+    ],
+    "bullet": [
+      "·",
+      "-"
+    ],
+    "arrow": [
+      "›",
+      ">"
+    ]
+  },
+  "spacing": {
+    "gutter": 2,
+    "panel_x": 2,
+    "panel_y": 1,
+    "section": 1,
+    "prompt_rows": 2,
+    "sidebar_width": 34
+  },
+  "components": {
+    "header": "sunset",
+    "separator": "─",
+    "rail": "│",
+    "tab_open": "[",
+    "tab_close": "]",
+    "spinner": "dots",
+    "pixel_art": [
+      "0000011111100000",
+      "0001122222211000",
+      "0012223333222100",
+      "0112333333332110",
+      "1123333333333211",
+      "0000000000000000",
+      "0011111111111100",
+      "0002222222222000"
+    ],
+    "pixel_palette": [
+      "#1a1029",
+      "#ff9dcd",
+      "#aab6ff",
+      "#ffd49a"
+    ]
+  },
+  "banner": {
+    "art": "         ▄██████▄\n        ▀▀▀▀▀▀▀▀▀▀\n         ▀▀▀▀▀▀▀▀\n    ╲       ──       ╱\n     ╲  AURORA FM   ╱\n      ╲____________╱",
+    "art_ascii": "         .======.\n        ==========\n         ========\n    \\       --       /\n     \\  AURORA FM   /\n      \\____________/",
+    "effect": "wave",
+    "gradient": true,
+    "total_ms": 420,
+    "caption": "Minuit FM",
+    "decorations": [
+      {
+        "kind": "sparks",
+        "density": 0.12,
+        "color": "#ff9dcd"
+      }
+    ]
+  },
+  "motion": {
+    "banner_ms": 420,
+    "shimmer": false,
+    "panel_pulse": false,
+    "typewriter_help": false,
+    "scanline": false
+  }
+}

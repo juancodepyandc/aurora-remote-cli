@@ -1,0 +1,107 @@
+{
+  "schema": 1,
+  "title": "Aurora",
+  "prompt": "vous > ",
+  "prompt_suffix": "› ",
+  "subtitle": "Votre espace de travail distant",
+  "box": "minimal",
+  "id": "jobia",
+  "label": "Horizon",
+  "description": "Architecture boréale, rubans fins et respiration éditoriale.",
+  "palette": {
+    "primary": "#73efbd",
+    "secondary": "#b9a4ff",
+    "accent": "#76dcf5",
+    "success": "#97edb2",
+    "warning": "#ffe19b",
+    "error": "#ffacb5",
+    "info": "#73efbd",
+    "text": "#f2f5f7",
+    "muted": "#b5c4d7",
+    "border": "#b5c4d7",
+    "banner": "#73efbd",
+    "banner_alt": "#76dcf5",
+    "surface": "#0b111b",
+    "raised": "#131f2c"
+  },
+  "glyphs": {
+    "ok": [
+      "✓",
+      "+"
+    ],
+    "fail": [
+      "×",
+      "x"
+    ],
+    "warn": [
+      "!",
+      "!"
+    ],
+    "info": [
+      "›",
+      ">"
+    ],
+    "bullet": [
+      "·",
+      "-"
+    ],
+    "arrow": [
+      "›",
+      ">"
+    ]
+  },
+  "spacing": {
+    "gutter": 2,
+    "panel_x": 2,
+    "panel_y": 1,
+    "section": 1,
+    "prompt_rows": 2,
+    "sidebar_width": 34
+  },
+  "components": {
+    "header": "horizon",
+    "separator": "─",
+    "rail": "│",
+    "tab_open": "[",
+    "tab_close": "]",
+    "spinner": "dots",
+    "pixel_art": [
+      "0000011111100000",
+      "0001122222211000",
+      "0012223333222100",
+      "0112333333332110",
+      "1123333333333211",
+      "0000000000000000",
+      "0011111111111100",
+      "0002222222222000"
+    ],
+    "pixel_palette": [
+      "#0b111b",
+      "#73efbd",
+      "#b9a4ff",
+      "#76dcf5"
+    ]
+  },
+  "banner": {
+    "art": "   ╱╲         A U R O R A\n  ╱  ╲＿╱╲    penser · agir · vérifier\n ────────╱──────────────",
+    "art_ascii": "   /\\         A U R O R A\n  /  \\__/\\    penser . agir . verifier\n --------/--------------",
+    "effect": "reveal",
+    "gradient": true,
+    "total_ms": 420,
+    "caption": "Horizon",
+    "decorations": [
+      {
+        "kind": "stars",
+        "density": 0.12,
+        "color": "#73efbd"
+      }
+    ]
+  },
+  "motion": {
+    "banner_ms": 420,
+    "shimmer": false,
+    "panel_pulse": false,
+    "typewriter_help": false,
+    "scanline": false
+  }
+}

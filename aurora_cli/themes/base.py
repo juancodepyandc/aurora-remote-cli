@@ -38,6 +38,8 @@ class Palette:
     border: HexColor = "#3a4a63"
     banner: HexColor = "#4dd0e1"
     banner_alt: HexColor = "#c77dff"
+    surface: HexColor = "#0b111b"
+    raised: HexColor = "#131f2c"
 
     def slot(self, name: str) -> HexColor:
         """Look up a slot by name, falling back to the primary colour."""
@@ -157,16 +159,42 @@ class Motion:
     shimmer: bool = True
     panel_pulse: bool = True
     scanline: bool = False
-    typewriter_help: bool = True
+    typewriter_help: bool = False
     respect_reduced_motion: bool = True
 
     def effective(self, caps: Capabilities) -> int:
         """Scale the banner budget to the detected animation level."""
         if caps.animation == "reduced":
             return max(200, self.banner_ms // 4)
-        if caps.animation == "static":
+        if caps.animation in {"static", "none"}:
             return 0
         return self.banner_ms
+
+
+@dataclass(frozen=True)
+class Spacing:
+    """Terminal cells, never pixels. Shared by Rich and full-screen layouts."""
+
+    gutter: int = 2
+    panel_x: int = 2
+    panel_y: int = 1
+    section: int = 1
+    prompt_rows: int = 2
+    sidebar_width: int = 34
+
+
+@dataclass(frozen=True)
+class Components:
+    """Declarative component variants; changing identity needs no screen edit."""
+
+    header: str = "horizon"
+    separator: str = "─"
+    rail: str = "│"
+    tab_open: str = "["
+    tab_close: str = "]"
+    spinner: str = "dots"
+    pixel_art: tuple[str, ...] = ()
+    pixel_palette: tuple[str, ...] = ()
 
 
 # --- Theme ----------------------------------------------------------------
@@ -193,6 +221,8 @@ class Theme:
     diff_added: str = "+"
     diff_removed: str = "-"
     diff_context: str = " "
+    spacing: Spacing = field(default_factory=Spacing)
+    components: Components = field(default_factory=Components)
 
     def with_overrides(self, **overrides) -> "Theme":
         return replace(self, **overrides)
@@ -236,7 +266,10 @@ class Theme:
         for the prompt comes from ``prompt_toolkit_style`` on the prompt_toolkit
         side, and from the calling layer's own styling on the ``input()`` side.
         """
-        return self.prompt
+        if caps.unicode:
+            return self.prompt
+        from aurora_cli.terminal import ascii_text
+        return ascii_text(self.prompt)
 
     def banner_ramp(self, caps: Capabilities, count: int) -> list[HexColor]:
         if not self.banner.gradient or not caps.rich_palette:
@@ -245,14 +278,19 @@ class Theme:
 
     def prompt_toolkit_style(self, caps: Capabilities) -> dict[str, str]:
         """Style dict for prompt_toolkit, derived from the same palette (100% dark, zero white bars)."""
+        if not caps.color:
+            return {'prompt': 'bold', 'completion-menu.completion.current': 'reverse',
+                    'completion-menu.meta.completion.current': 'reverse',
+                    'button.focused': 'reverse', 'radio-selected': 'reverse',
+                    'radio-checked': 'bold', 'dialog frame.label': 'bold'}
         primary = colour.to_prompt_toolkit(self.raw("primary"), caps.color_depth)
         secondary = colour.to_prompt_toolkit(self.raw("secondary"), caps.color_depth)
         accent = colour.to_prompt_toolkit(self.raw("accent"), caps.color_depth)
         text = colour.to_prompt_toolkit(self.raw("text"), caps.color_depth)
         muted = colour.to_prompt_toolkit(self.raw("muted"), caps.color_depth)
         border = colour.to_prompt_toolkit(self.raw("border"), caps.color_depth)
-        background = "#090d16" if caps.color_depth != "none" else "#000000"
-        surface = "#111827" if caps.color_depth != "none" else "#000000"
+        background = colour.to_prompt_toolkit(self.raw('surface'), caps.color_depth)
+        surface = colour.to_prompt_toolkit(self.raw('raised'), caps.color_depth)
         return {
             "prompt": f"{primary} bold",
             "completion-menu": f"bg:{surface} {text}",

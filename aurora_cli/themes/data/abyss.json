@@ -1,0 +1,107 @@
+{
+  "schema": 1,
+  "title": "Aurora",
+  "prompt": "vous > ",
+  "prompt_suffix": "› ",
+  "subtitle": "Votre espace de travail distant",
+  "box": "double",
+  "id": "abyss",
+  "label": "Bathysphère",
+  "description": "Observatoire bleu nuit, coordonnées et orbites.",
+  "palette": {
+    "primary": "#a6baff",
+    "secondary": "#d4b4ff",
+    "accent": "#82e0f4",
+    "success": "#97edb2",
+    "warning": "#ffe19b",
+    "error": "#ffacb5",
+    "info": "#a6baff",
+    "text": "#f2f5f7",
+    "muted": "#b8c0dc",
+    "border": "#b8c0dc",
+    "banner": "#a6baff",
+    "banner_alt": "#82e0f4",
+    "surface": "#0c1027",
+    "raised": "#18213b"
+  },
+  "glyphs": {
+    "ok": [
+      "✓",
+      "+"
+    ],
+    "fail": [
+      "×",
+      "x"
+    ],
+    "warn": [
+      "!",
+      "!"
+    ],
+    "info": [
+      "›",
+      ">"
+    ],
+    "bullet": [
+      "·",
+      "-"
+    ],
+    "arrow": [
+      "›",
+      ">"
+    ]
+  },
+  "spacing": {
+    "gutter": 2,
+    "panel_x": 2,
+    "panel_y": 1,
+    "section": 1,
+    "prompt_rows": 2,
+    "sidebar_width": 34
+  },
+  "components": {
+    "header": "orbital",
+    "separator": "─",
+    "rail": "│",
+    "tab_open": "[",
+    "tab_close": "]",
+    "spinner": "arc",
+    "pixel_art": [
+      "0000011111100000",
+      "0001122222211000",
+      "0012223333222100",
+      "0112333333332110",
+      "1123333333333211",
+      "0000000000000000",
+      "0011111111111100",
+      "0002222222222000"
+    ],
+    "pixel_palette": [
+      "#0c1027",
+      "#a6baff",
+      "#d4b4ff",
+      "#82e0f4"
+    ]
+  },
+  "banner": {
+    "art": "      ·      ⣠⠤⠤⠤⣄\n   ──────────⣿  ◉  ⣿──────────\n       ·     ⠙⠤⠤⠤⠋    ·\n         A U R O R A / OBSERVATOIRE",
+    "art_ascii": "      .      .----.\n   ----------| () |----------\n       .     '----'    .\n         A U R O R A / OBSERVATOIRE",
+    "effect": "breathe",
+    "gradient": true,
+    "total_ms": 420,
+    "caption": "Bathysphère",
+    "decorations": [
+      {
+        "kind": "stars",
+        "density": 0.12,
+        "color": "#a6baff"
+      }
+    ]
+  },
+  "motion": {
+    "banner_ms": 420,
+    "shimmer": false,
+    "panel_pulse": false,
+    "typewriter_help": false,
+    "scanline": false
+  }
+}

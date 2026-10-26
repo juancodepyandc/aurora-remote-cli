@@ -9,7 +9,7 @@ Mise à jour : 26 octobre 2026. Branche de travail : `redesign/cli-ui`.
 - Baseline : **866 passed, 18 skipped, 5 subtests passed**, Python 3.12/Linux, 13,93 s. Build wheel + sdist réussi.
 - Pas de commande lint propre au dépôt. Ruff hérite d'une configuration extérieure : 568 diagnostics ; contrôle isolé des erreurs `E9,F63,F7,F82` : 9 noms de types non importés. Un contrat lint reproductible sera ajouté.
 - Deux essais en sandbox interrompus : accès loopback empêchant les serveurs HTTP temporaires. Suite relancée hors sandbox, avec fixtures de configuration isolées, verte.
-- Spike comparatif terminé en moins de dix minutes : Ratatui retenu pour le renderer, Python conservé pour le métier. Preuves versionnées dans `benchmarks/renderer/`. Huit thèmes déclaratifs et primitives de rendu en cours ; pas encore validés.
+- Spike comparatif terminé en moins de dix minutes : Ratatui retenu pour le renderer, Python conservé pour le métier. Preuves versionnées dans `benchmarks/renderer/`. Huit thèmes déclaratifs et primitives de rendu implémentés : 90 tests ciblés passent, contrôle lint de correction passe, build wheel/sdist passe. Écran principal, commandes et renderer Rust en cours.
 
 ## Lots et critères de sortie
 

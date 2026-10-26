@@ -1,0 +1,117 @@
+{
+  "schema": 1,
+  "title": "Aurora",
+  "prompt": "vous > ",
+  "prompt_suffix": "› ",
+  "subtitle": "Votre espace de travail distant",
+  "box": "rounded",
+  "id": "otter",
+  "label": "Marée · Loutre",
+  "description": "Loutre nacrée, bois flotté et marées turquoise.",
+  "palette": {
+    "primary": "#80efc0",
+    "secondary": "#65cdf0",
+    "accent": "#f6c992",
+    "success": "#97edb2",
+    "warning": "#ffe19b",
+    "error": "#ffacb5",
+    "info": "#80efc0",
+    "text": "#f2f5f7",
+    "muted": "#b5cac9",
+    "border": "#b5cac9",
+    "banner": "#80efc0",
+    "banner_alt": "#f6c992",
+    "surface": "#101b20",
+    "raised": "#1b2b31"
+  },
+  "glyphs": {
+    "ok": [
+      "✓",
+      "+"
+    ],
+    "fail": [
+      "×",
+      "x"
+    ],
+    "warn": [
+      "!",
+      "!"
+    ],
+    "info": [
+      "›",
+      ">"
+    ],
+    "bullet": [
+      "·",
+      "-"
+    ],
+    "arrow": [
+      "›",
+      ">"
+    ]
+  },
+  "spacing": {
+    "gutter": 2,
+    "panel_x": 2,
+    "panel_y": 1,
+    "section": 1,
+    "prompt_rows": 2,
+    "sidebar_width": 34
+  },
+  "components": {
+    "header": "tidal",
+    "separator": "─",
+    "rail": "│",
+    "tab_open": "[",
+    "tab_close": "]",
+    "spinner": "wave",
+    "pixel_art": [
+      "0001100000011000",
+      "0012210000122100",
+      "0122221111222210",
+      "0122222222222210",
+      "0122332222332210",
+      "0122302222032210",
+      "0012332222332100",
+      "0001233443321000",
+      "0000123443210000",
+      "0001223553221000",
+      "0012225335222100",
+      "0012235555322100",
+      "0012225335222100",
+      "0001222222221000",
+      "0000112222110000",
+      "0000001111000000"
+    ],
+    "pixel_palette": [
+      "#101b20",
+      "#4b342d",
+      "#926648",
+      "#e2bea2",
+      "#2c2423",
+      "#89dece"
+    ]
+  },
+  "banner": {
+    "art": "       ◜▔◝     ◜▔◝\n      ▐░░░▀▀▀▀▀░░░▌\n      ▐░  ●   ●  ░▌    ∘\n       ▀▄   ▾   ▄▀   ∘\n    ≈≈  ▐▙ ╰─╯ ▟▌  ≈≈\n   ≈≈≈  ▐░╲ ◇ ╱░▌  ≈≈≈\n    ≈≈≈  ▀▀▄▄▄▀▀  ≈≈≈",
+    "art_ascii": "      .--.   .--.\n     /    '-'    \\\n     |  o     o  |   o\n      \\   v   /   o\n   ~~  | (___) |  ~~\n  ~~~  | / * \\ | ~~~\n   ~~~  \\_____/ ~~~",
+    "effect": "wave",
+    "gradient": true,
+    "total_ms": 420,
+    "caption": "Marée · Loutre",
+    "decorations": [
+      {
+        "kind": "water",
+        "density": 0.12,
+        "color": "#80efc0"
+      }
+    ]
+  },
+  "motion": {
+    "banner_ms": 420,
+    "shimmer": false,
+    "panel_pulse": false,
+    "typewriter_help": false,
+    "scanline": false
+  }
+}

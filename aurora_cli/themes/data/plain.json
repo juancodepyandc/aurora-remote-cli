@@ -1,0 +1,101 @@
+{
+  "schema": 1,
+  "title": "Aurora",
+  "prompt": "vous > ",
+  "prompt_suffix": "› ",
+  "subtitle": "Votre espace de travail distant",
+  "box": "minimal",
+  "id": "plain",
+  "label": "Édition",
+  "description": "Typographie monochrome, silence et espace.",
+  "palette": {
+    "primary": "#eeeeee",
+    "secondary": "#eeeeee",
+    "accent": "#eeeeee",
+    "success": "#eeeeee",
+    "warning": "#eeeeee",
+    "error": "#eeeeee",
+    "info": "#eeeeee",
+    "text": "#eeeeee",
+    "muted": "#eeeeee",
+    "border": "#eeeeee",
+    "banner": "#eeeeee",
+    "banner_alt": "#eeeeee",
+    "surface": "#111111",
+    "raised": "#202020"
+  },
+  "glyphs": {
+    "ok": [
+      "✓",
+      "+"
+    ],
+    "fail": [
+      "×",
+      "x"
+    ],
+    "warn": [
+      "!",
+      "!"
+    ],
+    "info": [
+      "›",
+      ">"
+    ],
+    "bullet": [
+      "·",
+      "-"
+    ],
+    "arrow": [
+      "›",
+      ">"
+    ]
+  },
+  "spacing": {
+    "gutter": 3,
+    "panel_x": 3,
+    "panel_y": 1,
+    "section": 1,
+    "prompt_rows": 2,
+    "sidebar_width": 38
+  },
+  "components": {
+    "header": "editorial",
+    "separator": "─",
+    "rail": "│",
+    "tab_open": "[",
+    "tab_close": "]",
+    "spinner": "dots",
+    "pixel_art": [
+      "0000011111100000",
+      "0001122222211000",
+      "0012223333222100",
+      "0112333333332110",
+      "1123333333333211",
+      "0000000000000000",
+      "0011111111111100",
+      "0002222222222000"
+    ],
+    "pixel_palette": [
+      "#111111",
+      "#eeeeee",
+      "#cccccc",
+      "#ffffff"
+    ]
+  },
+  "banner": {
+    "art": " AURORA.\n ─────────────────────\n Un objectif. Des preuves.",
+    "art_ascii": " AURORA.\n ---------------------\n Un objectif. Des preuves.",
+    "effect": "static",
+    "gradient": false,
+    "total_ms": 0,
+    "caption": "Édition",
+    "decorations": []
+  },
+  "motion": {
+    "banner_ms": 0,
+    "shimmer": false,
+    "panel_pulse": false,
+    "typewriter_help": false,
+    "scanline": false
+  }
+}

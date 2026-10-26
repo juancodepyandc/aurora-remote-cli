@@ -1,0 +1,107 @@
+{
+  "schema": 1,
+  "title": "Aurora",
+  "prompt": "vous > ",
+  "prompt_suffix": "› ",
+  "subtitle": "Votre espace de travail distant",
+  "box": "square",
+  "id": "glacier",
+  "label": "Isobare",
+  "description": "Facettes nordiques, traits obliques et lumière froide.",
+  "palette": {
+    "primary": "#b4e8ff",
+    "secondary": "#b6c8ff",
+    "accent": "#ccfaef",
+    "success": "#97edb2",
+    "warning": "#ffe19b",
+    "error": "#ffacb5",
+    "info": "#b4e8ff",
+    "text": "#f2f5f7",
+    "muted": "#bfcfd9",
+    "border": "#bfcfd9",
+    "banner": "#b4e8ff",
+    "banner_alt": "#ccfaef",
+    "surface": "#101e2a",
+    "raised": "#1c3040"
+  },
+  "glyphs": {
+    "ok": [
+      "✓",
+      "+"
+    ],
+    "fail": [
+      "×",
+      "x"
+    ],
+    "warn": [
+      "!",
+      "!"
+    ],
+    "info": [
+      "›",
+      ">"
+    ],
+    "bullet": [
+      "·",
+      "-"
+    ],
+    "arrow": [
+      "›",
+      ">"
+    ]
+  },
+  "spacing": {
+    "gutter": 3,
+    "panel_x": 3,
+    "panel_y": 1,
+    "section": 1,
+    "prompt_rows": 2,
+    "sidebar_width": 34
+  },
+  "components": {
+    "header": "facet",
+    "separator": "─",
+    "rail": "│",
+    "tab_open": "<",
+    "tab_close": ">",
+    "spinner": "arc",
+    "pixel_art": [
+      "0000011111100000",
+      "0001122222211000",
+      "0012223333222100",
+      "0112333333332110",
+      "1123333333333211",
+      "0000000000000000",
+      "0011111111111100",
+      "0002222222222000"
+    ],
+    "pixel_palette": [
+      "#101e2a",
+      "#b4e8ff",
+      "#b6c8ff",
+      "#ccfaef"
+    ]
+  },
+  "banner": {
+    "art": "       ╱╲        ╱╲\n      ╱  ╲  ╱╲  ╱  ╲\n     ╱    ╲╱  ╲╱    ╲\n       A U R O R A / ISObare",
+    "art_ascii": "       /\\        /\\\n      /  \\  /\\  /  \\\n     /    \\/  \\/    \\\n       A U R O R A / ISObare",
+    "effect": "reveal",
+    "gradient": true,
+    "total_ms": 420,
+    "caption": "Isobare",
+    "decorations": [
+      {
+        "kind": "snow",
+        "density": 0.12,
+        "color": "#b4e8ff"
+      }
+    ]
+  },
+  "motion": {
+    "banner_ms": 420,
+    "shimmer": false,
+    "panel_pulse": false,
+    "typewriter_help": false,
+    "scanline": false
+  }
+}
