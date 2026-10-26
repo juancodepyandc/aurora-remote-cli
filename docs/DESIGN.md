@@ -40,3 +40,23 @@ La demande complémentaire impose au moins huit identités : loutre, horizon, ob
 ## Décision de moteur
 
 En attente du spike timeboxé Ratatui / Textual / prompt-toolkit. Mesures à consigner : premier rendu, p50/p95 frame, CPU repos, RSS et octets terminal. Un microbenchmark n'établit pas la fluidité de Terminal.app/iTerm2 physiques.
+
+### Spike exécuté et décision (26 octobre)
+
+Trois répétitions séquentielles, PTY Linux 120×32, même bannière animée/saisie/flux, 3 s repos + 3 s à 60 Hz + 3 s repos. Saisie clavier validée dans les neuf exécutions, toutes terminées avec code 0. Go absent, non installé pendant la timebox.
+
+| Médiane truecolor | Rust/Ratatui | Python/Textual | Python/prompt-toolkit |
+|---|---:|---:|---:|
+| Premier marqueur visible, ms | 4,122 | 110,474 | 71,607 |
+| Callback de dessin p50 / p95, ms | 0,132 / 0,191 | 1,955 / 2,620 | 4,711 / 6,232 |
+| Période visible p50 / p95, ms | 16,654 / 17,381 | 16,676 / 18,959 | 16,721 / 18,566 |
+| CPU actif, % d'un cœur | 0,909 | 16,851 | 31,355 |
+| CPU repos, % | 0,000 | 0,357 | 0,000 |
+| Pic RSS observé, Mio | 2,895 | 34,551 | 33,316 |
+| Octets PTY / 9 s | 44 101 | 1 409 122 | 82 089 |
+
+**Décision : renderer Ratatui léger, moteur et commandes Python conservés**, protocole JSONL local versionné sur stdio. La mémoire/durée du processus Python restent à ajouter ; ces chiffres ne décrivent pas le CLI complet. Le renderer Python reste disponible jusqu'à validation de la parité. Le protocole distant HTTP JSON/SSE existant reste inchangé.
+
+Limites : caches fichiers chauds, CPU résolution 10 ms, callbacks de mesure différents selon bibliothèque, PTY et émulateur pas terminaux physiques. Une cadence de sortie 60 Hz ne prouve pas le rafraîchissement réel du Mac. La série NO_COLOR est conservée séparément ; aucune mesure favorable n'est inventée.
+
+Dépendances : aucun ajout Python en production pour le redesign. Ratatui (MIT) et Crossterm (MIT), serde/serde_json (MIT/Apache-2.0) côté renderer ; Cargo.lock verrouille les versions. Textual, pyte et psutil du spike restent des outils de développement isolés, pas des dépendances du client. Le coût final du binaire et les performances du produit complet seront mesurés après intégration.
