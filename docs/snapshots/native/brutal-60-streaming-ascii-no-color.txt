@@ -1,0 +1,24 @@
+ ? Aurora                             Connexion : flux recu 
+ Cible pc-maitre.example                        Diag. 24 ms 
+ Session demo-42                           Mission mis_demo 
+ read_file                                           brutal 
+  [1 Conversation]   F4 : changer de vue                    
+ + conversation ------------------------------------------+ 
+ |Le plan est pret. Je commence par le fichier d'entree.  | 
+ |                                                        | 
+ |python                                                  | 
+ |  def ready():                                          | 
+ |      return True                                       | 
+ |                                                        | 
+ |                                                        | 
+ |                                                        | 
+ |SORTIE RECUE . resultat non encore confirme             | 
+ |                                                        | 
+ |Lecture de la configuration en cours...                 | 
+ +--------------------------------------------------------+ 
+ running * read_file                                        
+  00:00  Outil en cours . read_file                         
+ + Votre demande * Entree envoyer * Alt+Entree ligne -----+ 
+ |Explique le resultat                                    | 
+ +--------------------------------------------------------+ 
+ F2 theme * F3 modele * F4 vue * ^C arret * ^Q sortie       

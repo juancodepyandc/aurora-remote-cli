@@ -37,3 +37,7 @@ Toutes les aides Click utilisent le rendu commun ; erreurs, connexion, appairage
 ## Lot renderer natif — 27 octobre
 
 Ratatui raccordé au backend Python par JSONL v1 borné. Saisie Unicode, lignes longues, six vues, arrêt/reprise explicites, thème à chaud, repli Python et recherche du binaire intégrés. Documentation PROTOCOL/CLI et CI Linux/macOS/Windows ajoutées. Cargo test : 14 tests réussis ; fmt et clippy -D warnings réussis ; release 1,1 Mo. Build Python wheel/sdist réussi. PTY réel Linux : quatre profondeurs + Python NO_COLOR réussis, resize 80→60, aperçu annulé, thème persisté et coupure HTTP au curseur 1 sans double POST. Résultats dans docs/validation/terminal. Les images de terminaux physiques restent non validées.
+
+## Lot preuves visuelles — 27 octobre
+
+Validation locale Phase 1 terminée : 1212 tests Python réussis, 18 ignorés (modules optionnels), 5 sous-tests ; 14 tests Rust réussis ; Ruff, fmt, clippy -D warnings, wheel et sdist réussis. 80 captures par renderer, huit thèmes et quatre largeurs ; textes, états et PNG natifs dans docs/snapshots. Non-TTY/JSON, NO_COLOR/ASCII, resize, coupure HTTP et reprise testés. Auto-critique et limites dans DESIGN.md. PR GitHub #4 ouverte en brouillon, CI multiplateforme en cours ; aucune fusion tant que ses résultats ne sont pas vérifiés.
