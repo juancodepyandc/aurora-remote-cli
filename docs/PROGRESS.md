@@ -57,3 +57,9 @@ La CI native Linux/Windows et les suites Python macOS/Linux passent ; les builds
 ## Lot audit et plan — 27 octobre
 
 Inventaire : 2 222 sources canoniques, 675 déclarations statiques de routes, 111 rôles AST et 182 fichiers source/configuration/test du CLI refondu. Les deux registres ont les mêmes IDs ; cela ne prouve pas la parité des permissions, outils ou sorties. Tableau de maturité sur six axes par famille, audit de la boucle d'autonomie et 18 lots priorisés avec critères mesurables, risques et dépendances. Aucune génération IA, aucun entraînement ni serveur de production lancé. Les notes hors CLI qualifient la preuve disponible, pas une performance de modèle mesurée.
+
+## Vérification du parcours installé — 27 octobre
+
+La relecture des commandes Mac a révélé que `install.sh` installe une wheel, tandis que la découverte du binaire à côté des sources ne couvre que le checkout éditable. README/CLI et le message d'erreur indiquent désormais `JOBIA_NATIVE_BIN` explicitement ; le lancement documenté utilise `.venv/bin/jobia`, indépendant du PATH de la session. Aucun changement de configuration de connexion.
+
+Wheel reconstruite et extraite dans un répertoire temporaire hors checkout, dépendances de test déjà installées : le scénario PTY complet passe avec le binaire explicitement désigné, resize, aperçu/annulation, saisie, socket coupée, reprise 0→1 et un seul POST. Résultats et méthode dans [validation/installed-wheel](validation/installed-wheel/README.md). Les 4 tests du lanceur, Ruff et build wheel/sdist passent après correction. La dernière CI doit porter sur ce commit final avant fusion.

@@ -37,7 +37,8 @@ def launch_native(mode=None):
             return False
         raise click.ClickException(
             'Renderer natif absent. Depuis le dépôt : cargo build --release --locked '
-            '--manifest-path native/Cargo.toml ; ou jobia ui --renderer python.')
+            '--manifest-path native/Cargo.toml ; définissez JOBIA_NATIVE_BIN vers le binaire '
+            'compilé, ou utilisez jobia ui --renderer python.')
     caps = display.view.caps
     env = os.environ.copy()
     env.update(JOBIA_THEME=display.view.theme.id, JOBIA_COLOR=caps.color_depth,

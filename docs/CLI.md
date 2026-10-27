@@ -7,12 +7,15 @@ git switch main
 git pull --ff-only
 ./install.sh
 cargo build --release --locked --manifest-path native/Cargo.toml
-jobia ui --renderer native
+export JOBIA_NATIVE_BIN="$PWD/native/target/release/aurora-native"
+.venv/bin/jobia ui --renderer native
 ```
 
 `cargo` doit être installé. Le toolchain utilisé pour la validation est Rust 1.96.1 ; les dépendances sont verrouillées. L'installation Python reste indépendante : si Rust est absent, `jobia ui --renderer python` conserve l'interface Python, et `jobia ui --text` le mode linéaire. Le mode auto utilise le binaire local s'il existe, sans téléchargement ni compilation au démarrage.
 
-Le binaire est recherché dans `JOBIA_NATIVE_BIN`, puis `native/target/release/aurora-native` du checkout, puis PATH. Une distribution wheel Python ne contient pas de binaire spécifique à un OS ; reconstruire le renderer depuis le checkout ou l'archive source. `JOBIA_RENDERER=auto|native|python` est disponible ; l'option `ui --renderer` prime.
+Le binaire est recherché dans `JOBIA_NATIVE_BIN`, puis à côté des sources Python dans `native/target/release/aurora-native`, puis PATH. Cette deuxième recherche couvre l'installation éditable ; `install.sh` installe un paquet dans la venv, d'où le chemin explicite ci-dessus. Une distribution wheel Python ne contient pas de binaire spécifique à un OS ; reconstruire le renderer depuis le checkout ou l'archive source. `JOBIA_NATIVE_BIN` exporté reste actif dans ce terminal ; le redéfinir dans un nouveau terminal, ou installer le binaire dans un dossier de PATH. `JOBIA_RENDERER=auto|native|python` est disponible ; l'option `ui --renderer` prime.
+
+`.venv/bin/jobia` utilise directement l'installation du checkout. L'installateur expose aussi `jobia` dans `~/.local/bin` ; les commandes courtes ci-dessous supposent ce dossier dans PATH.
 
 ```sh
 jobia theme list
