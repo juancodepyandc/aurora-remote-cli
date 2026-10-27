@@ -685,6 +685,9 @@ class WorkspaceApp:
                     self.history.save()
         elif kind in {'error','mission_interrupted'}:
             self.note(event.get('message',event.get('error','Mission interrompue.'))+'\nÉtat conservé. /missions puis /resume ID pour reprendre.')
+        elif kind in {'permission_request','permission_required'}:
+            self.note('### Autorisation requise\n\n'+plain(event.get('message','Confirmation nécessaire sur le PC maître'))+
+                      '\n\nCe pont ne propose pas de confirmation dans le CLI. Inspectez la demande sur le PC maître ; Ctrl+C demande l’arrêt.')
         elif kind=='file_received':
             self.note('Fichier reçu et vérifié : '+event['path'])
         elif kind=='plan' and not event.get('worker'):
@@ -929,7 +932,16 @@ class WorkspaceApp:
                           + (f'\nSauvegarde : {backup}' if backup else ''))
                 return
             if cmd=='/theme':
-                await self.choose_theme()
+                if arg:
+                    if not themes.is_known(arg):
+                        self.note('Thème inconnu : '+plain(arg))
+                        return
+                    display.view.use_theme(arg)
+                    config.set('theme',display.view.theme.id)
+                    self.app.style = self.style()
+                    self.refresh_body()
+                else:
+                    await self.choose_theme()
                 return
             if cmd=='/models':
                 await self.choose_model()

@@ -39,7 +39,7 @@ La demande complémentaire impose au moins huit identités : loutre, horizon, ob
 
 ## Décision de moteur
 
-En attente du spike timeboxé Ratatui / Textual / prompt-toolkit. Mesures à consigner : premier rendu, p50/p95 frame, CPU repos, RSS et octets terminal. Un microbenchmark n'établit pas la fluidité de Terminal.app/iTerm2 physiques.
+Le spike ci-dessous compare Ratatui / Textual / prompt-toolkit. Il ne mesure pas la fluidité des terminaux macOS physiques.
 
 ### Spike exécuté et décision (26 octobre)
 
@@ -66,3 +66,11 @@ Dépendances : aucun ajout Python en production pour le redesign. Ratatui (MIT) 
 Les huit fichiers JSON sont la source des identités ; palette sémantique, fonds, espacements en cellules, cadres, glyphes Unicode/ASCII, bannières et motifs pixels y sont regroupés. Voir `THEMES.md`. Les textes sémantiques dépassent 4,5:1 sur les deux fonds par test sRGB. Le rendu commun expose panel/table/markdown/diff/notice/confirmation/stream et une frontière de texte sûre. Les diffs affichent les numéros des hunks réels ; les messages portent un libellé et un signe. La sortie JSON conserve son chemin sans décor.
 
 Le lint ajouté porte sur les erreurs de correction `E9,F63,F7,F82` dans tout le package et les tests. Il n'existait pas de contrat lint dans ce dépôt : les centaines de recommandations stylistiques héritées d'une configuration extérieure ne sont pas présentées comme corrigées. Deux imports de types différés ont été complétés sans changer les moteurs.
+
+## Auto-critique et intégration
+
+La première capture à 60 colonnes coupait deux cellules du texte : suppression du padding final de Rich, réserve du scrollbar et wrapping corrigés. Le premier renderer natif réutilisait un motif dans sept palettes : remplacé par sept dessins déclaratifs distincts (orbite, rubans, facettes, CRT, monogramme, page, soleil tramé). Le footer étroit a été raccourci sans masquer arrêt/sortie. Les libellés ASCII restants et le suivi de longues lignes ont été corrigés. Le mode 16 couleurs traduit réellement les SGR indexés 0..15 de Crossterm en SGR ANSI classiques.
+
+Le lanceur POSIX est remplacé par Rust pour éviter de garder un second interpréteur Python inactif. Le CLI complet mesure 264–315 ms au premier écran et environ 49 Mio pour Rust + Python sur les quatre profils Linux PTY ; ce sont des mesures ponctuelles, pas des p95 de production. Aucun octet ni CPU mesurable sur la fenêtre de repos de 1,5 s (résolution CPU 10 ms). Binaire release ~1,1 Mo, sans moteur IA embarqué. Les frames p50/p95 du spike restent séparées de ces mesures produit.
+
+Les images Kitty/iTerm2/Sixel sont proposées dans les aperçus, les cellules composables dans le plein écran. Les animations brèves expriment le changement de thème ; les tokens de conversation sont regroupés pour éviter de saturer le terminal. Le thème éditorial reste statique, l’accessibilité prime sur l’effet. Ratatui est verrouillé avec son option rendered-line-info afin de calculer exactement le suivi de lignes repliées ; cette API instable est couverte par le test de resize long.

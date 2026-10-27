@@ -33,3 +33,7 @@ Pas d'accès au Mac physique ; Terminal.app, iTerm2 et SSH réels ne sont pas en
 ## Lot commandes — 27 octobre
 
 Toutes les aides Click utilisent le rendu commun ; erreurs, connexion, appairage, missions, REPL et export suivent les tokens et la dégradation ASCII. Tests : 325 ciblés réussis, dont toutes les aides aux quatre largeurs, JSON, aperçu non persistant, coupure simulée et absence de double streaming. NO_COLOR est prioritaire en détection automatique ; --color always est une demande explicite supérieure. Les contrôles reçus et les balises Rich sont affichés comme texte sûr.
+
+## Lot renderer natif — 27 octobre
+
+Ratatui raccordé au backend Python par JSONL v1 borné. Saisie Unicode, lignes longues, six vues, arrêt/reprise explicites, thème à chaud, repli Python et recherche du binaire intégrés. Documentation PROTOCOL/CLI et CI Linux/macOS/Windows ajoutées. Cargo test : 14 tests réussis ; fmt et clippy -D warnings réussis ; release 1,1 Mo. Build Python wheel/sdist réussi. PTY réel Linux : quatre profondeurs + Python NO_COLOR réussis, resize 80→60, aperçu annulé, thème persisté et coupure HTTP au curseur 1 sans double POST. Résultats dans docs/validation/terminal. Les images de terminaux physiques restent non validées.

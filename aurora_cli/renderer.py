@@ -47,6 +47,11 @@ def launch_native(mode=None):
     if caps.color_depth != 'none':
         env.pop('NO_COLOR',None)
     try:
+        # POSIX can replace this launcher: retain only Rust + the Python engine.
+        # No second mission dispatch is attempted if the renderer later exits.
+        if sys.platform != 'win32':
+            os.execve(binary,[binary,'--backend',sys.executable],env)
+            return True
         result = subprocess.run([binary,'--backend',sys.executable],env=env,check=False)
     except OSError as exc:
         raise click.ClickException('Démarrage du renderer impossible : '+str(exc)) from exc

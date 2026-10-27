@@ -18,6 +18,7 @@ def test_missing_native_uses_python_only_before_any_launch(monkeypatch):
 
 
 def test_native_exit_never_replays_a_request(monkeypatch):
+    monkeypatch.setattr(renderer.sys,'platform','win32')
     monkeypatch.setattr(renderer,'native_binary',lambda:'/fixture/aurora-native')
     run = Mock(return_value=SimpleNamespace(returncode=7))
     monkeypatch.setattr(renderer.subprocess,'run',run)
@@ -28,6 +29,16 @@ def test_native_exit_never_replays_a_request(monkeypatch):
     assert args[0]==['/fixture/aurora-native','--backend',sys.executable]
     assert kwargs['env']['JOBIA_RENDER_TTY']=='1'
     assert kwargs['env']['JOBIA_THEME']
+
+
+def test_posix_replaces_launcher_without_retaining_an_extra_python(monkeypatch):
+    monkeypatch.setattr(renderer.sys,'platform','linux')
+    monkeypatch.setattr(renderer,'native_binary',lambda:'/fixture/aurora-native')
+    execute = Mock()
+    monkeypatch.setattr(renderer.os,'execve',execute)
+    monkeypatch.setattr(renderer.subprocess,'run',lambda *a,**k:pytest.fail('No second process launcher'))
+    assert renderer.launch_native('native') is True
+    assert execute.call_args.args[1]==['/fixture/aurora-native','--backend',sys.executable]
 
 
 def test_explicit_binary_is_never_silently_ignored(monkeypatch,tmp_path):

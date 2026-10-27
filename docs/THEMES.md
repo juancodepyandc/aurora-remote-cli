@@ -44,7 +44,7 @@ Valider avec `python -m pytest tests/test_design_system.py tests/test_themes.py 
 
 ## Dégradation et mouvement
 
-`NO_COLOR=1` a priorité sur la palette. `JOBIA_COLOR=ansi|color256|truecolor|never` force la profondeur pour diagnostic. `JOBIA_UNICODE=0` impose ASCII. `JOBIA_ANIM=none|reduced|full` règle le mouvement ; un pipe ne reçoit jamais d'animation. La cadence maximale locale est 60 Hz, réduite sur SSH. Aucun rafraîchissement périodique décoratif au repos.
+`NO_COLOR=1` a priorité en détection automatique ; `--color always` est une demande explicite supérieure. `JOBIA_COLOR=ansi|color256|truecolor|never` force la profondeur pour diagnostic. `JOBIA_UNICODE=0` impose ASCII. `JOBIA_ANIM=none|reduced|full` règle le mouvement ; un pipe ne reçoit jamais d'animation. La cadence maximale locale est 60 Hz, réduite sur SSH. Aucun rafraîchissement périodique décoratif au repos.
 
 Kitty et iTerm2 sont détectés par leurs variables terminal ; Sixel par le type de terminal ou `JOBIA_IMAGES=sixel`. `JOBIA_IMAGES=none` désactive les images. Sous tmux, dans un pipe ou en NO_COLOR, les protocoles d'images sont désactivés pour préserver le flux. L'aperçu de thème est la surface prévue pour les images ; le plein écran privilégie les cellules composables afin de conserver un diff de rendu fiable. Un terminal qui n'annonce pas ses capacités reçoit les blocs Unicode, puis ASCII si nécessaire. Aucun dialogue bloquant de détection n'est envoyé.
 
