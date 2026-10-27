@@ -143,9 +143,9 @@ def test_real_terminal_layout_keeps_activity_visible_at_both_sizes(columns, rows
             await asyncio.sleep(.15)
             screen = app.app.renderer._last_screen
             rendered = '\n'.join(''.join(screen.data_buffer[y][x].char for x in range(columns)) for y in range(rows))
-            # assert 'Activité observée' in rendered
-            # assert 'Outil en cours' in rendered and 'read_file' in rendered
-            # assert 'Inspecter le projet' in rendered
+            assert 'Activité observée' in rendered
+            assert 'Outil en cours' in rendered and 'read_file' in rendered
+            assert 'Inspecter le projet' in rendered
             assert 'Demande' in rendered
             app.app.exit()
             await running
@@ -339,7 +339,7 @@ def test_diagnostic_shows_actual_endpoint_readiness_and_local_mode(doctor, expec
             app = ui.WorkspaceApp(bridge_factory=DiagnosticBridge, input=pipe, output=DummyOutput())
             await app.discover()
             assert expected in app.health
-            assert 'https://configured.example' in app.health
+            assert 'configured.example' in app.health
             assert 'Mode local actif' in app.health
             if doctor.get('ready') is False:
                 assert 'Pont prêt' not in app.health
@@ -377,28 +377,28 @@ def test_slash_command_completer_and_module_views_and_agi_cockpit():
             app = ui.WorkspaceApp(history=[], input=pipe, output=DummyOutput())
             app.prompt.text = '/3d'
             dock = ''.join(frag[1] for frag in app.slash_dock_text())
-            assert '/3d' in dock and 'TRELLIS.2' in dock
+            assert '/3d' in dock and 'Modélisation' in dock
 
             await app.submit('/modules')
             assert app.page == 'modules'
-            assert 'COCKPIT MULTI-MODULES AURORA' in app.body.text
+            assert 'Modules' in app.body.text and 'disponibilité' in app.body.text
 
             await app.submit('/3d')
             assert app.active_module == '3D'
             assert app.page == 'conversation'
-            assert 'MODULE ACTIF VERROUILLÉ' in app.transcript
+            assert 'Module sélectionné' in app.transcript
 
             await app.submit('/agi Créer une architecture 3D jamais vue')
-            assert 'SYNTHÈSE COGNITIVE DU CERVEAU AGI' in app.transcript
-            assert 'UNKNOWN_EXPLORATORY' in app.transcript
+            assert 'Analyse · observations disponibles' in app.transcript
+            assert 'UNKNOWN_EXPLORATORY' not in app.transcript
 
             await app.submit('/avant-apres')
             assert app.page == 'avant_apres'
-            assert '70.66 / 100' in app.body.text and '71.13 / 100' in app.body.text
-            assert 'AVANT_APRES_3D_COMPARAISON.png' in app.body.text
+            assert 'Aucun rapport comparatif vérifié' in app.body.text
+            assert '71.13' not in app.body.text
 
             await app.submit('/ontologie fais sangoku en 3D')
-            assert 'FIDÉLITÉ ANIMÉ / CEL-SHADED NATIVE' in app.transcript
-            assert 'ACTIF EN SOLO D\'OFFICE' in app.transcript
+            assert 'Contraintes de la demande' in app.transcript
+            assert 'sans événements ou fichiers vérifiés' in app.transcript
     asyncio.run(scenario())
 

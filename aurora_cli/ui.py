@@ -3,9 +3,7 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass, field
 import json
-import math
 import os
-import re
 from pathlib import Path
 import signal
 import subprocess
@@ -14,7 +12,7 @@ import time
 from uuid import uuid4
 
 from prompt_toolkit import Application
-from prompt_toolkit.completion import WordCompleter, Completer, Completion
+from prompt_toolkit.completion import Completer, Completion
 from prompt_toolkit.document import Document
 from prompt_toolkit.filters import Condition, has_focus
 from prompt_toolkit.key_binding import KeyBindings
@@ -23,149 +21,84 @@ from prompt_toolkit.layout.controls import FormattedTextControl
 from prompt_toolkit.layout.menus import CompletionsMenu
 from prompt_toolkit.shortcuts import radiolist_dialog
 from prompt_toolkit.styles import Style
-from prompt_toolkit.widgets import Frame, TextArea
+from prompt_toolkit.widgets import TextArea
 
 from . import config, display, themes
-from .core import color as core_color
 from .observations import observation_text, terminal_text
 from .mission_domain import domain_label
+from .terminal import safe_text, target_label
+from .tui_design import RenderedLexer, TerminalInputProcessor, color_depth, fit, render_document
 
 
 SLASH_COMMANDS_CATALOG: list[tuple[str, str, str, str]] = [
-    ("/help", "⚡", "STUDIO", "Palette complète des commandes /, vues Studio et raccourcis"),
-    ("/avant-apres", "🏆", "BILAN 3D", "Note d'Amélioration 70.66→71.13, résumé simple, gains par axe & photo Avant/Après"),
-    ("/gains", "📊", "RENFORCÉ", "Comparatif détaillé Modèle de Base Intouchable vs Modèle Renforcé Pareto"),
-    ("/fin-cycle", "⏹", "KAGGLE 3D", "Arrêter proprement le cycle 3D Kaggle en cours une fois fini + mettre à jour le bilan"),
-    ("/ontologie", "🧬", "DIRECTEUR", "Tester le Directeur Cognitif : FR→EN, Animé vs Peau Réelle & Auto-Rigging Solo"),
-    ("/agi", "🧠", "CERVEAU", "Analyse cognitive profonde, régime épistémique & 8 boucles AGI"),
-    ("/view", "💠", "VUES", "Basculer de vue : /view conversation|modules|agents|avant_apres|journal|fichiers"),
-    ("/modules", "🛰", "COCKPIT", "Ouvrir le Cockpit Multi-Modules & État Base ↔ Renforcé"),
-    ("/chat", "💬", "MODULE", "Cibler le module Conversation & Raisonnement Multimodal"),
-    ("/code", "💻", "MODULE", "Cibler le module Code, Architecture, Motion UI & Sandbox"),
-    ("/image", "🎨", "MODULE", "Cibler le module Image FLUX.2-dev & Super-Résolution 16K PBR"),
-    ("/3d", "🧊", "MODULE", "Cibler le module 3D TRELLIS.2, Rigging Solo Auto & CAO STL"),
-    ("/cyber", "🛡", "MODULE", "Cibler le module Cyber Z3 0-Day, 9 Labs & Patch Boucle Fermée"),
-    ("/business", "📈", "MODULE", "Cibler le module Business Lab, Quant Walk-Forward & Risk Veto"),
-    ("/academy", "🔬", "MODULE", "Cibler le module Académie, Oracle Formel SymPy/Z3 & Simulateur"),
-    ("/voice", "🎙", "MODULE", "Cibler le module Voix Kokoro TTS, Whisper STT & Duplex Live"),
-    ("/missions", "📋", "PONT", "Lister toutes les missions actives, en pause ou terminées"),
-    ("/resume", "▶", "REPRISE", "Reprendre une mission interrompue (/resume ID)"),
-    ("/attach", "🔗", "FLUX", "Suivre en direct le flux d'événements d'une mission (/attach ID)"),
-    ("/retry", "↻", "SÛRETÉ", "Relancer sans doublon une demande à l'acceptation incertaine"),
-    ("/models", "🎛", "MOTEUR", "Choisir le modèle IA actif (F3)"),
-    ("/theme", "🌈", "DESIGN", "Changer de thème visuel Cyber-Aurora à la volée (F2)"),
-    ("/mode", "🚀", "ROUTAGE", "Régler le mode d'exécution : auto · local · remote"),
-    ("/permissions", "🔐", "GARDE", "Régler le niveau de sécurité : SAFE · STANDARD · AUTONOMOUS · FULL"),
-    ("/doctor", "🩺", "SONDE", "Exécuter le diagnostic complet Pont / GPU / Modèles (F5)"),
-    ("/new", "✨", "SESSION", "Ouvrir une nouvelle conversation et archiver la précédente (Ctrl+N)"),
-    ("/clear", "🧹", "PURGE", "Effacer les conversations locales du dossier avec sauvegarde"),
-    ("/quit", "⏻", "SORTIE", "Quitter proprement le studio JOBIA (Ctrl+Q)"),
+    ("/help", "?", "AIDE", "Commandes et raccourcis"),
+    ("/view", ">", "VUES", "Conversation, modules, agents, bilans, journal, fichiers"),
+    ("/modules", ">", "MODULES", "Parcours disponibles ; moteurs à vérifier"),
+    ("/chat", ">", "MODULE", "Conversation et rédaction"),
+    ("/code", ">", "MODULE", "Code, tests et livraison"),
+    ("/image", ">", "MODULE", "Création et édition d’images"),
+    ("/3d", ">", "MODULE", "Modélisation 3D et fabrication"),
+    ("/cyber", ">", "MODULE", "Analyse de sécurité sous permissions"),
+    ("/business", ">", "MODULE", "Analyse économique et données"),
+    ("/academy", ">", "MODULE", "Apprentissage et sciences"),
+    ("/voice", ">", "MODULE", "Transcription et synthèse vocale"),
+    ("/missions", ">", "SUIVI", "Retrouver les missions du serveur"),
+    ("/resume", ">", "REPRISE", "Reprendre un objectif : /resume ID"),
+    ("/attach", ">", "SUIVI", "Suivre sans relancer : /attach ID"),
+    ("/retry", ">", "REPRISE", "Réessayer l’acceptation avec la même clé"),
+    ("/models", ">", "MODÈLE", "Modèles observés (F3)"),
+    ("/theme", ">", "THÈME", "Prévisualiser puis choisir un univers (F2)"),
+    ("/mode", ">", "EXÉCUTION", "auto, local ou remote"),
+    ("/permissions", ">", "ACCÈS", "SAFE, STANDARD, AUTONOMOUS ou FULL"),
+    ("/doctor", ">", "CONNEXION", "Diagnostic du pont et des moteurs (F5)"),
+    ("/new", ">", "SESSION", "Nouvelle conversation (Ctrl+N)"),
+    ("/clear", ">", "SESSION", "Archiver et vider les conversations de ce dossier"),
+    ("/avant-apres", ">", "BILANS", "Mesures reçues et limites des comparaisons"),
+    ("/gains", ">", "BILANS", "Alias de /avant-apres"),
+    ("/agi", ">", "ANALYSE", "Objectif, plan et preuves observés"),
+    ("/ontologie", ">", "ANALYSE", "Contraintes de la demande, sans prédiction de résultat"),
+    ("/fin-cycle", ">", "CONTRÔLE", "Disponibilité du contrôle d’entraînement distant"),
+    ("/quit", ">", "SORTIE", "Quitter (Ctrl+Q)"),
 ]
 
-STUDIO_MODULES_META: dict[str, dict[str, str]] = {
-    "CHAT": {
-        "icon": "💬",
-        "title": "Conversation & Raisonnement Multimodal",
-        "master": "conversation-lead",
-        "engine": "Qwen3 / DeepSeek-R1 + Web Fact-Checker + Vision Qwen3-VL",
-        "capabilities": "Boucle 6 étapes (analyze→plan→draft→verify→refine→deliver), mémoire BM25/Chroma, citations vérifiées",
-    },
-    "CODE": {
-        "icon": "💻",
-        "title": "Ingénierie Logicielle, Motion Design & Sandbox",
-        "master": "code-lead",
-        "engine": "Qwen2.5-Coder / DeepSeek + Audit SymPy/Z3 + Sandbox 22 langages",
-        "capabilities": "Architecture multi-fichiers, UI 60fps cubic-bezier, zéro TODO/stub, auto-réparation compilateur",
-    },
-    "IMAGE": {
-        "icon": "🎨",
-        "title": "Studio Image FLUX.2-dev & 16K Ultra-Master PBR",
-        "master": "image-lead",
-        "engine": "FLUX.2-dev Q4_K_M + Mistral-Small FP8 + Upscale 8K/16K PBR",
-        "capabilities": "Ontologie Animé natif vs Peau Réelle, expansion FR→EN, ReferenceLatent fidèle, tri creations/modifications",
-    },
-    "3D": {
-        "icon": "🧊",
-        "title": "Studio 3D TRELLIS.2, Auto-Rigging Solo & Ingénierie CAO",
-        "master": "3d-lead",
-        "engine": "TRELLIS.2-4B (Flow-DPO Renforcé +0.47pt) + UniRig DQS + HY-Motion-1.0",
-        "capabilities": "Rigging & Animation Solo Auto (sans demander 'rig'), soudure UV + Taubin, PBR 16K, export GLB/STL",
-    },
-    "CYBER": {
-        "icon": "🛡",
-        "title": "Cybersécurité Offensive/Défensive & Preuve Z3",
-        "master": "cyber-lead",
-        "engine": "Solveur SMT Z3 + 9 Labs Cyber + Closed-Loop Patch Engine",
-        "capabilities": "Découverte 0-day AST/CFG par premiers principes, génération de correctifs minimaux prouvés UNSAT",
-    },
-    "BUSINESS": {
-        "icon": "📈",
-        "title": "Business Lab, Quant Walk-Forward & Risk Veto",
-        "master": "business-ceo",
-        "engine": "9 Agents Économiques + Monte-Carlo Queues Épaisses + IndependentRiskManager",
-        "capabilities": "Flux BCE/Yahoo/Binance temps réel, découpage Walk-Forward 60/20/20, droit de veto non-LLM (ruine <= 2%)",
-    },
-    "LEARNING": {
-        "icon": "🔬",
-        "title": "Académie Scientifique & Simulateur Multi-Physique",
-        "master": "learning-lead",
-        "engine": "Oracle Formel SymPy/Z3 + RK4 Physics/Fluid/Chemistry Simulator",
-        "capabilities": "Vérification formelle de théorèmes, cours & annales Bac, QCM/Anki .apkg, passerelle directe labo interactif",
-    },
-    "VOICE": {
-        "icon": "🎙",
-        "title": "Studio Voix Kokoro TTS, Whisper STT & Duplex Live",
-        "master": "voice-lead",
-        "engine": "Kokoro-82M FR + Faster-Whisper Large-v3 + Rhubarb Visèmes A-X",
-        "capabilities": "Dialogue vocal mains-libres avec barge-in, phonétique française soignée, synchronisation labiale temps réel",
-    },
+STUDIO_MODULES_META = {
+    "CHAT": {"title": "Conversation", "capabilities": "Dialogue, rédaction et synthèse"},
+    "CODE": {"title": "Code", "capabilities": "Développement, tests et livraison"},
+    "IMAGE": {"title": "Image", "capabilities": "Création et édition d’images"},
+    "3D": {"title": "3D", "capabilities": "Modélisation, textures et fabrication"},
+    "CYBER": {"title": "Sécurité", "capabilities": "Analyse et remédiation sous permissions"},
+    "BUSINESS": {"title": "Business", "capabilities": "Analyse économique et données"},
+    "LEARNING": {"title": "Académie", "capabilities": "Cours, exercices et sciences"},
+    "VOICE": {"title": "Voix", "capabilities": "Transcription et synthèse vocale"},
+}
+
+PAGE_LABELS = {
+    'conversation': 'Conversation', 'modules': 'Modules', 'agents': 'Agents',
+    'avant_apres': 'Bilans', 'journal': 'Journal', 'fichiers': 'Fichiers',
 }
 
 
 class SlashCommandCompleter(Completer):
-    """Interactive neon command palette completer for `/` studio commands and views."""
-
-    VIEW_CHOICES = [
-        ("conversation", "💬", "Dialogue de mission, flux temps réel & preuves"),
-        ("modules", "🛰", "Cockpit des 10 Modules & Cerveau Cognitif AGI"),
-        ("agents", "⚡", "Matrice des Agents Maîtres & Appliquants Spécialisés"),
-        ("avant_apres", "🏆", "Bilan Avant/Après 3D (70.66→71.13) & Auto-Rigging Solo"),
-        ("journal", "📜", "Journal JSON structuré des événements et outils"),
-        ("fichiers", "📦", "Fichiers et artefacts vérifiés de la mission"),
-    ]
+    """One searchable, theme-independent catalogue for help and completion."""
+    VIEW_CHOICES = [(name, '>', label) for name, label in PAGE_LABELS.items()]
 
     def get_completions(self, document, complete_event):
-        text = document.text_before_cursor
-        stripped = text.lstrip()
-        if not stripped.startswith("/"):
+        stripped = document.text_before_cursor.lstrip()
+        if not stripped.startswith('/'):
             return
-
-        # Sub-completion for `/view <page>`
-        if stripped.lower().startswith("/view "):
+        if stripped.lower().startswith('/view '):
             sub = stripped[6:].strip().lower()
-            for v_name, v_icon, v_desc in self.VIEW_CHOICES:
-                if v_name.startswith(sub):
-                    yield Completion(
-                        v_name,
-                        start_position=-len(stripped[6:]),
-                        display=f" {v_icon} {v_name:<14} ",
-                        display_meta=f" {v_desc} ",
-                    )
+            for name, _, description in self.VIEW_CHOICES:
+                if name.startswith(sub):
+                    yield Completion(name, start_position=-len(stripped[6:]),
+                                     display=name, display_meta=description)
             return
-
-        # Complete first slash token
-        if " " in stripped:
+        if ' ' in stripped:
             return
-
-        prefix = stripped.lower()
-        for cmd, icon, badge, desc in SLASH_COMMANDS_CATALOG:
-            if cmd.startswith(prefix):
-                yield Completion(
-                    cmd,
-                    start_position=-len(stripped),
-                    display=f" {icon} {cmd:<13} ",
-                    display_meta=f" [{badge}] {desc} ",
-                )
+        for command, _, badge, description in SLASH_COMMANDS_CATALOG:
+            if command.startswith(stripped.lower()):
+                yield Completion(command, start_position=-len(stripped), display=command,
+                                 display_meta=safe_text(description, unicode=display.view.caps.unicode))
 
 
 @dataclass
@@ -239,6 +172,9 @@ class MissionView:
         elif kind == 'reconnecting':
             self.phase = 'Reconnexion au flux'
             self.record(f"Reconnexion · tentative {event.get('attempt', '?')}", 'warning')
+        elif kind in {'permission_request','permission_required'}:
+            self.status, self.phase = 'permission', 'Autorisation requise'
+            self.record(event.get('message','Confirmation nécessaire sur le PC maître'), 'warning')
         elif kind == 'mission_complete':
             self.status = 'stopped' if event.get('stopped') else event.get('status','completed')
             self.verified = event.get('verification',{}).get('verified',[])
@@ -281,278 +217,28 @@ def retry_payload_valid(pending):
     )
 
 
-class CyberGlassFrame:
-    """Refined glassmorphism frame with holographic badge headers and clean borders."""
-    def __init__(self, body, title="", style="", width=None, height=None, key_bindings=None, modal=False):
-        self.title = title
-        self.body = body
-        self.style = style
+class HorizonFrame:
+    """Quiet rails with a label; character choice follows the active theme."""
+    def __init__(self, body, title='', *, height=None):
+        def label():
+            value = title() if callable(title) else title
+            return [('class:frame.label', safe_text(' '+value+' ', unicode=display.view.caps.unicode))]
 
-        def get_border_char(pos):
-            view = display.view
-            caps = view.caps
-            box_style = view.theme.box_for(caps)
-            if box_style == "ascii":
-                return {"TOP_LEFT": "+", "HORIZONTAL": "-", "TOP_RIGHT": "+",
-                        "VERTICAL_LEFT": "|", "VERTICAL_RIGHT": "|",
-                        "BOTTOM_LEFT": "+", "BOTTOM_RIGHT": "+"}.get(pos, "+")
-            elif box_style == "heavy":
-                return {"TOP_LEFT": "┏", "HORIZONTAL": "━", "TOP_RIGHT": "┓",
-                        "VERTICAL_LEFT": "┃", "VERTICAL_RIGHT": "┃",
-                        "BOTTOM_LEFT": "┗", "BOTTOM_RIGHT": "┛"}.get(pos, "┃")
-            else:
-                return {"TOP_LEFT": "╭", "HORIZONTAL": "─", "TOP_RIGHT": "╮",
-                        "VERTICAL_LEFT": "│", "VERTICAL_RIGHT": "│",
-                        "BOTTOM_LEFT": "╰", "BOTTOM_RIGHT": "╯"}.get(pos, "│")
+        def rail():
+            return safe_text(display.view.theme.components.rail, unicode=display.view.caps.unicode)[:1] or '|'
 
-        def horizontal_top():
-            t = self.title() if callable(self.title) else self.title
-            t = plain(t).strip()
-            badge = f"─⟦ {t} ⟧─" if (t and display.view.caps.unicode) else (f"─[ {t} ]─" if t else "──")
-            return [("class:frame.label", badge)]
-
-        def horizontal_fill():
-            char = get_border_char("HORIZONTAL")
-            return [("class:frame.border", char * 250)]
-
-        self.container = HSplit(
-            [
-                VSplit(
-                    [
-                        Window(width=1, height=1, char=lambda: get_border_char("TOP_LEFT"), style="class:frame.border"),
-                        Window(content=FormattedTextControl(horizontal_top), dont_extend_width=True, height=1),
-                        Window(content=FormattedTextControl(horizontal_fill), height=1, wrap_lines=False),
-                        Window(width=1, height=1, char=lambda: get_border_char("TOP_RIGHT"), style="class:frame.border"),
-                    ],
-                    height=1,
-                ),
-                VSplit(
-                    [
-                        Window(width=1, char=lambda: get_border_char("VERTICAL_LEFT"), style="class:frame.border"),
-                        self.body,
-                        Window(width=1, char=lambda: get_border_char("VERTICAL_RIGHT"), style="class:frame.border"),
-                    ],
-                    padding=0,
-                ),
-                VSplit(
-                    [
-                        Window(width=1, height=1, char=lambda: get_border_char("BOTTOM_LEFT"), style="class:frame.border"),
-                        Window(content=FormattedTextControl(horizontal_fill), height=1, wrap_lines=False),
-                        Window(width=1, height=1, char=lambda: get_border_char("BOTTOM_RIGHT"), style="class:frame.border"),
-                    ],
-                    height=1,
-                ),
-            ],
-            width=width,
-            height=height,
-            style="class:frame " + style,
-            key_bindings=key_bindings,
-            modal=modal,
-        )
+        self.container = HSplit([
+            Window(FormattedTextControl(label), height=1),
+            VSplit([Window(width=1, char=rail, style='class:frame.border'), body,
+                    Window(width=1)], padding=1),
+        ], height=height)
 
     def __pt_container__(self):
         return self.container
 
 
-GlassFrame = CyberGlassFrame
-
-
-class CyberHoloHUD:
-    """Cyber-Aurora Holographic HUD: interactive studio view tabs, 10-module neural fleet & quantum waveform."""
-    def __init__(self, app_ref):
-        self.app_ref = app_ref
-
-    def detect_active_agent(self) -> str:
-        app = self.app_ref
-        if getattr(app, "active_module", ""):
-            return app.active_module
-        state = app.state
-        phase_str = str(state.phase).lower()
-        goal_str = str(state.goal).lower()
-        tool_str = state.activity[-1][1].lower() if state.activity else ""
-        combined = f"{phase_str} {goal_str} {tool_str}"
-
-        if domain_label(state.goal) == "3D" or any(k in combined for k in ["3d", "mesh", "texture", "trellis", "stl", "cao", "rig"]):
-            return "3D"
-        if any(k in combined for k in ["code", "compil", "test", "patch", "git", "typescript", "python", "rust"]):
-            return "CODE"
-        if any(k in combined for k in ["image", "flux", "peint", "visuel", "16k", "pbr", "photo"]):
-            return "IMAGE"
-        if any(k in combined for k in ["cyber", "secur", "audit", "z3", "cve", "0-day", "vuln"]):
-            return "CYBER"
-        if any(k in combined for k in ["business", "marché", "finance", "quant", "cashflow", "bfr"]):
-            return "BUSINESS"
-        if any(k in combined for k in ["learn", "acad", "cours", "bac", "sympy", "physique", "chimie"]):
-            return "LEARNING"
-        if any(k in combined for k in ["voice", "audio", "tts", "kokoro", "whisper", "parole"]):
-            return "VOICE"
-        if any(k in combined for k in ["plan", "orchest", "dispatch", "agi", "cerveau"]):
-            return "ORCHESTRATOR"
-        return "CHAT"
-
-    def _detect_live_ontology_badge(self) -> tuple[str, str]:
-        app = self.app_ref
-        raw = ""
-        try:
-            raw = (app.prompt.text or "").strip()
-        except Exception:
-            raw = ""
-        if not raw or raw.startswith("/"):
-            raw = str(app.state.goal or "")
-        low = raw.lower()
-        if not low:
-            return ("class:status", "🧠 Ontologie FR→EN · 🎨 Animé/Réel Auto · 🦴 Rigging Solo Auto")
-
-        is_mod = any(k in low for k in ("modif", "change", "remplace", "garde", "sans toucher", "keep"))
-        is_real_override = any(
-            k in low
-            for k in ("personne réelle", "personne reelle", "peau réelle", "peau reelle", "vrai humain", "real human skin", "pores")
-        )
-        is_anime = any(
-            k in low
-            for k in (
-                "goku", "sangoku", "vegeta", "naruto", "sasuke", "luffy", "zoro", "gojo", "tanjiro",
-                "ichigo", "pikachu", "akira", "ghibli", "anime", "animé", "manga", "toon", "cel-shad",
-            )
-        )
-        is_character = is_anime or any(
-            k in low
-            for k in (
-                "perso", "character", "héros", "heros", "guerrier", "chevalier", "créature", "creature",
-                "dragon", "hibou", "owl", "loup", "robot", "humano", "femme", "homme", "portrait",
-            )
-        )
-
-        if is_mod:
-            ont = "🔒 MODIF CONSERVATRICE"
-            style = "class:warning"
-        elif is_anime and is_real_override:
-            ont = "🧬 OVERRIDE PEAU RÉELLE (Identité Animé)"
-            style = "class:warning"
-        elif is_anime:
-            ont = "🎨 ANIMÉ NATIF (Cel-Shaded Pur)"
-            style = "class:status"
-        else:
-            ont = "📷 PHOTORÉALISTE NATIF"
-            style = "class:success"
-
-        rig_tag = " · 🦴 RIGGING & ANIM SOLO AUTO" if is_character else " · 🌐 FR→EN AUTO"
-        return (style, f"{ont}{rig_tag}")
-
-    def get_text(self):
-        app = self.app_ref
-        state = app.state
-        view = display.view
-        caps = view.caps
-        time_s = time.monotonic()
-
-        try:
-            width = app.app.output.get_size().columns
-        except Exception:
-            width = 80
-        width = max(48, width)
-
-        active = state.status in {'starting', 'running', 'queued'}
-        active_agent = self.detect_active_agent()
-
-        fleet = [
-            ("⚡", "ORCHESTRATOR", "ORCH"),
-            ("💬", "CHAT", "CHAT"),
-            ("💻", "CODE", "CODE"),
-            ("🎨", "IMAGE", "IMAGE"),
-            ("🧊", "3D", "3D"),
-            ("🛡", "CYBER", "CYBER"),
-            ("📈", "BUSINESS", "BIZ"),
-            ("🔬", "LEARNING", "ACAD"),
-            ("🎙", "VOICE", "VOIX"),
-        ]
-
-        fragments = []
-
-        # --- LIGNE 1: INTERACTIVE STUDIO VIEW TABS + 3D PARETO SCORE + AGI PULSE ---
-        view_tabs = [
-            ("conversation", "1·DIALOGUE"),
-            ("modules", "2·MODULES"),
-            ("agents", "3·AGENTS"),
-            ("avant_apres", "4·AVANT/APRÈS"),
-            ("journal", "5·JOURNAL"),
-            ("fichiers", "6·FICHIERS"),
-        ]
-        fragments.append(("class:header", " ◈ VUES "))
-        fragments.append(("class:frame.border", "│"))
-        for v_id, v_label in view_tabs:
-            if getattr(app, "page", "conversation") == v_id:
-                pulse = "◉" if caps.unicode else "*"
-                fragments.append(("class:tab.active", f" [{pulse} {v_label}] "))
-            else:
-                dot = "○" if caps.unicode else "."
-                fragments.append(("class:footer", f" {dot}{v_label} "))
-
-        fragments.append(("class:frame.border", "│ "))
-        fragments.append(("class:success", "🏆3D:70.66→71.13(+0.47) "))
-        spin_ring = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"[int(time_s * 10) % 10] if (active and caps.animate and caps.unicode) else ("◈" if caps.unicode else "*")
-        fragments.append(("class:status", f"🧠AGI:{active_agent} {spin_ring}\n"))
-
-        # --- LIGNE 2: FLEET AGENTS COCKPIT STRIP + LIVE ONTOLOGY & SOLO AUTO-RIGGING ---
-        fragments.append(("class:header", " ◈ FLOTTE "))
-        fragments.append(("class:frame.border", "│ "))
-
-        for icon, key, short in fleet:
-            is_cur = (key == active_agent)
-            if active and is_cur:
-                spin = "◜◠◝◞◡◟"[int(time_s * 7) % 6] if (caps.animate and caps.unicode) else "●"
-                fragments.append(("class:warning", f"{icon}{short}[{spin}ACTIF] "))
-            elif is_cur:
-                fragments.append(("class:success", f"{icon}{short}[◉] "))
-            else:
-                fragments.append(("class:footer", f"{icon}{short} "))
-
-        fragments.append(("class:frame.border", "│ "))
-        ont_style, ont_text = self._detect_live_ontology_badge()
-        fragments.append((ont_style, ont_text))
-        fragments.append(("", "\n"))
-
-        # --- LIGNE 3: QUANTUM SPECTRAL WAVEFORM HUD ---
-        wave_chars = " ▁▂▃▄▅▆▇█" if caps.unicode else " .-=*#%@#"
-        wave_width = max(20, width - 2)
-        spectral_stops = ["#05f19c", "#00f0ff", "#38bdf8", "#818cf8", "#c084fc", "#f43f5e"]
-
-        fragments.append(("class:frame.border", " "))
-        freq_mult = 3.2 if active else 1.35
-        amp_mult = 1.0 if active else 0.52
-
-        for x in range(wave_width):
-            p1 = math.sin(x * 0.17 + time_s * freq_mult)
-            p2 = 0.55 * math.sin(x * 0.39 - time_s * (freq_mult * 0.75))
-            p3 = 0.30 * math.cos(x * 0.08 + time_s * (freq_mult * 1.4))
-            raw_v = (p1 + p2 + p3) * amp_mult
-            norm_v = max(0.0, min(1.0, (raw_v + 1.85) / 3.7))
-            char_idx = min(len(wave_chars) - 1, int(norm_v * len(wave_chars)))
-            char = wave_chars[char_idx]
-
-            ratio = x / max(1, wave_width - 1)
-            stop_idx = int(ratio * (len(spectral_stops) - 1))
-            next_idx = min(len(spectral_stops) - 1, stop_idx + 1)
-            local_ratio = (ratio * (len(spectral_stops) - 1)) - stop_idx
-
-            hex_col = core_color.blend(spectral_stops[stop_idx], spectral_stops[next_idx], local_ratio)
-            pt_col = core_color.to_prompt_toolkit(hex_col, caps.color_depth)
-
-            fragments.append((f"fg:{pt_col}", char))
-
-        fragments.append(("", "\n"))
-        return fragments
-
-    def __pt_container__(self):
-        return Window(
-            content=FormattedTextControl(self.get_text),
-            height=3,
-            wrap_lines=False
-        )
-
-
-OceanActivity = CyberHoloHUD
-AmbientBackground = None
+# Kept for callers of the old public layout helper.
+GlassFrame = HorizonFrame
 
 
 class WorkspaceApp:
@@ -566,25 +252,32 @@ class WorkspaceApp:
         self.state,self.page,self.task,self.local_process = MissionView(),'conversation',None,None
         self.active_module = ''
         self.models,self.health,self.journal = [],'Diagnostic en cours…',''
+        self.connection = 'non vérifiée'
+        self.latency_ms = None
+        self._active_target = ''
+        self._clock_handle = None
+        self._body_key = None
+        self._body_source = ''
+        self._body_page = ''
+        self._theme_selection = None
+        self._theme_original = None
+        self._theme_future = None
         self.partial = ''
         self._refresh_handle = None
         self._memory_warning = ''
-        self.transcript = ''.join(f"\n{'VOUS' if m['role']=='user' else 'JOBIA'}\n{plain(m['content'])}\n" for m in self.history)
+        self.transcript = ''.join(f"\n### {'VOUS' if m['role']=='user' else 'AURORA'}\n\n{plain(m['content'])}\n" for m in self.history)[-200000:]
         self.loop = None
-        welcome = (
-            "Bienvenue dans JOBIA · Cyber-Aurora Neural Studio (Cerveau AGI & 3D Pareto).\n\n"
-            "Décris le résultat que tu veux obtenir — le Directeur Cognitif traduit FR→EN, respecte "
-            "l'ontologie (Animé natif vs Peau réelle vs Photoréaliste) et déclenche le Rigging & Animation 3D en solo.\n"
-            "• Tape /avant-apres (ou Alt+4) pour voir la Note d'Amélioration 3D (70.66 → 71.13), les gains et la photo Avant/Après.\n"
-            "• Tape /fin-cycle à ton réveil pour arrêter proprement le cycle 3D Kaggle en cours une fois son audit terminé.\n"
-            "• Tape /ontologie <demande> ou /agi <demande> pour inspecter l'analyse cognitive en direct."
-        )
-        self.body = TextArea(text=self.transcript or welcome,
+        self.body_lexer = RenderedLexer()
+        self.body = TextArea(text='', lexer=self.body_lexer,
                              read_only=True,scrollbar=True,wrap_lines=True)
-        self.prompt = TextArea(height=3,multiline=True,wrap_lines=True,
+        self.prompt = TextArea(height=lambda: display.view.theme.spacing.prompt_rows,
+                               multiline=True,wrap_lines=True,
+                               input_processors=[TerminalInputProcessor(lambda:display.view.caps.unicode)],
                                completer=SlashCommandCompleter(),
-                               complete_while_typing=True)
-        self.sidebar = Window(FormattedTextControl(self.sidebar_text),width=36,wrap_lines=True)
+                               complete_while_typing=True, style='class:prompt')
+        self.sidebar = Window(FormattedTextControl(self.sidebar_text),
+                              width=lambda: display.view.theme.spacing.sidebar_width,
+                              wrap_lines=True)
         bindings = KeyBindings()
         @bindings.add('enter',filter=has_focus(self.prompt))
         def submit(event):
@@ -652,212 +345,133 @@ class WorkspaceApp:
             if not self.busy:
                 self.new_conversation()
 
-        header = Window(FormattedTextControl(self.header),height=2,style='class:header')
-        hud = CyberHoloHUD(self)
-        sidebar = ConditionalContainer(CyberGlassFrame(self.sidebar,title='Mission · preuves & télémétrie'),Condition(lambda:self.app.output.get_size().columns>=96))
+        theme_open = Condition(lambda:self._theme_selection is not None)
+        @bindings.add('up',filter=theme_open)
+        @bindings.add('left',filter=theme_open)
+        def previous_theme(event):
+            self.preview_theme(-1)
+        @bindings.add('down',filter=theme_open)
+        @bindings.add('right',filter=theme_open)
+        @bindings.add('tab',filter=theme_open)
+        def next_theme(event):
+            self.preview_theme(1)
+        @bindings.add('enter',filter=theme_open)
+        def commit_theme(event):
+            self.finish_theme_preview(commit=True)
+        @bindings.add('escape',filter=theme_open,eager=True)
+        def cancel_theme(event):
+            self.finish_theme_preview(commit=False)
 
+        header = Window(FormattedTextControl(self.header),height=3,style='class:header')
+        sidebar = ConditionalContainer(
+            HorizonFrame(self.sidebar,title='Mission · critères & preuves'),
+            Condition(lambda:self.app.output.get_size().columns>=110))
         slash_dock = ConditionalContainer(
-            Window(content=FormattedTextControl(self.slash_dock_text), height=2, wrap_lines=False, style='class:dock'),
-            Condition(lambda: self.prompt.text.lstrip().startswith('/'))
-        )
-
-        main_body = VSplit([CyberGlassFrame(self.body,title=lambda:' ⌘ '+self.page_title()+' '),sidebar],padding=1)
-
-        root_split = HSplit([
+            Window(FormattedTextControl(self.slash_dock_text), height=2, style='class:dock'),
+            Condition(lambda:self.prompt.text.lstrip().startswith('/')))
+        main_body = VSplit([self.body, sidebar], padding=lambda:display.view.theme.spacing.gutter)
+        root = HSplit([
             header,
-            hud,
+            Window(FormattedTextControl(self.tabs),height=1),
+            Window(height=1),
             main_body,
+            Window(FormattedTextControl(self.activity_text), height=lambda:3 if self.app.output.get_size().rows>=28 else 2),
             slash_dock,
-            CyberGlassFrame(self.prompt,title=lambda: self.prompt_title()),
-            Window(FormattedTextControl(self.footer),height=2,style='class:footer')
+            HorizonFrame(self.prompt,title=self.prompt_title),
+            Window(FormattedTextControl(self.footer),height=2,style='class:footer'),
         ])
-
-        layout = FloatContainer(
-            content=root_split,
-            floats=[
-                Float(
-                    xcursor=True,
-                    ycursor=True,
-                    content=CompletionsMenu(max_height=10, scroll_offset=1),
-                )
-            ],
-        )
-
+        theme_panel = ConditionalContainer(
+            HorizonFrame(Window(FormattedTextControl(self.theme_picker_text),style='class:dialog.body',wrap_lines=True),
+                         title='Thèmes · aperçu immédiat'),theme_open)
+        layout = FloatContainer(content=root, floats=[
+            Float(xcursor=True,ycursor=True,content=CompletionsMenu(max_height=8,scroll_offset=1)),
+            Float(content=theme_panel,width=lambda:min(68,self.app.output.get_size().columns-4),height=15)])
         self.app = Application(layout=Layout(layout,focused_element=self.prompt),key_bindings=bindings,
                                full_screen=True,mouse_support=True,style=self.style(),
-                               input=input,output=output,min_redraw_interval=.05,max_render_postpone_time=.1)
+                               color_depth=color_depth(display.view.caps),
+                               terminal_size_polling_interval=None if os.name=='posix' else 1,
+                               input=input,output=output,min_redraw_interval=.05,max_render_postpone_time=.1,
+                               before_render=self._before_render)
+        self.refresh_body()
+
+    def _before_render(self, app):
+        width = self.body_width()
+        if self._body_key and self._body_key[1] != width:
+            self.refresh_body(invalidate=False)
+
+    def body_width(self):
+        width = self.app.output.get_size().columns
+        if width >= 110:
+            width -= display.view.theme.spacing.sidebar_width + display.view.theme.spacing.gutter + 4
+        return max(20, width - 4)
+
+    def welcome_text(self):
+        return ('# Un horizon ouvert.\n\n'
+                'Décrivez le résultat que vous voulez obtenir.\n'
+                'Le plan, les outils et les preuves apparaîtront pendant la mission.\n\n'
+                '**/modules** explorer les parcours   **/missions** reprendre un travail\n\n'
+                '**/theme** choisir votre univers   **/help** toutes les commandes\n\n'
+                'La cible et la session restent visibles en haut de l’écran.')
 
     def prompt_title(self):
-        mod_prefix = f"[{self.active_module}] · " if self.active_module else ""
-        return f"{mod_prefix}Demande · Entrée envoyer · / Commandes (/avant-apres, /fin-cycle, /ontologie) · Alt+Entrée ligne"
+        prefix = f'{self.active_module} · ' if self.active_module else ''
+        return safe_text(prefix+'Demande · Entrée envoyer · Alt+Entrée ligne', unicode=display.view.caps.unicode)
+
+    def tabs(self):
+        width = self.app.output.get_size().columns
+        theme = display.view.theme
+        items = []
+        for index, (page, label) in enumerate(PAGE_LABELS.items(), 1):
+            short = label if width >= 90 else label[:3] if width < 70 else label[:4]
+            if page == self.page:
+                short = theme.components.tab_open+short+theme.components.tab_close
+            items.append(('class:tab.active' if page == self.page else 'class:footer', f' {index} {short} '))
+        return [(style, safe_text(text, unicode=display.view.caps.unicode)) for style,text in items]
 
     def slash_dock_text(self):
         raw = self.prompt.text.lstrip()
         if not raw.startswith('/'):
             return []
-        first_token = raw.split()[0].lower()
-        matches = [item for item in SLASH_COMMANDS_CATALOG if item[0].startswith(first_token)]
+        token = raw.split()[0].lower()
+        matches = [item for item in SLASH_COMMANDS_CATALOG if item[0].startswith(token)]
         if not matches:
-            matches = SLASH_COMMANDS_CATALOG[:6]
-        fragments = [("class:header", " ⚡ PALETTE / ")]
-        for cmd, icon, badge, _desc in matches[:7]:
-            is_top = (cmd == matches[0][0])
-            style = "class:tab.active" if is_top else "class:status"
-            fragments.append((style, f" {icon} {cmd} "))
-            fragments.append(("class:footer", " "))
-        fragments.append(("", "\n"))
-        top_cmd, top_icon, top_badge, top_desc = matches[0]
-        fragments.append(("class:warning", f" ↳ {top_icon} {top_cmd} [{top_badge}] : "))
-        fragments.append(("class:text-area", f"{top_desc}  (Tab pour compléter, Entrée pour exécuter)"))
-        return fragments
+            return [('class:warning', ' Commande inconnue · /help pour la liste')]
+        width = self.app.output.get_size().columns-2
+        line = '  '.join(command for command, *_ in matches[:5])
+        return [('class:tab.active', fit(line,width,display.view.caps.unicode)+'\n'),
+                ('class:footer',fit(matches[0][3]+' · Tab compléter',width,display.view.caps.unicode))]
 
     def page_title(self):
-        mod = self.active_module or domain_label(self.state.goal)
-        titles = {
-            'conversation': f'{mod} · DIALOGUE & RAISONNEMENT AGI',
-            'modules': 'COCKPIT DES 10 MODULES & CERVEAU COGNITIF AGI',
-            'agents': 'MATRICE DES AGENTS MAÎTRES & APPLIQUANTS SPÉCIALISÉS',
-            'avant_apres': 'BILAN VISUEL AVANT / APRÈS 3D (70.66 → 71.13) & AUTO-RIGGING SOLO',
-            'journal': 'JOURNAL STRUCTURÉ & ÉVÉNEMENTS TEMPS RÉEL',
-            'fichiers': 'FICHIERS VÉRIFIÉS & ARTEFACTS DE MISSION',
-        }
-        return titles.get(self.page, self.page.upper())
+        return PAGE_LABELS.get(self.page, self.page)
 
     def modules_cockpit_text(self):
-        active_mod = self.active_module or domain_label(self.state.goal).upper()
-        lines = [
-            "╔══════════════════════════════════════════════════════════════════════════════════════════╗",
-            "║  🛰  COCKPIT MULTI-MODULES AURORA // INTELLIGENCE COGNITIVE & MODÈLES RENFORCÉS          ║",
-            "╚══════════════════════════════════════════════════════════════════════════════════════════╝",
-            f"  Module Cible Actif : {active_mod or 'AUTO-ROUTAGE COGNITIF'}  │  Modèle : {config.get('default_model', 'local/auto')}  │  Mode : {config.get('mode', 'auto').upper()}",
-            "  Astuce : Tape /chat, /code, /image, /3d, /cyber, /business, /academy ou /voice pour cibler un module.",
-            "────────────────────────────────────────────────────────────────────────────────────────────",
-        ]
+        lines = ['# Modules', '', 'Choisir un parcours oriente la demande ; la disponibilité des moteurs se vérifie séparément.', '']
+        commands = {'CHAT':'chat','CODE':'code','IMAGE':'image','3D':'3d','CYBER':'cyber',
+                    'BUSINESS':'business','LEARNING':'academy','VOICE':'voice'}
         for key, meta in STUDIO_MODULES_META.items():
-            is_sel = (key == active_mod)
-            badge = "[◉ MODULE CIBLÉ]" if is_sel else "[● DISPONIBLE]"
-            lines.extend([
-                f"\n  {meta['icon']}  {key:<10} ── {meta['title']}   {badge}",
-                f"      ├─ Maître AGI  : {meta['master']}  │  Moteur : {meta['engine']}",
-                f"      └─ Capacités   : {meta['capabilities']}",
-            ])
-        lines.extend([
-            "",
-            "────────────────────────────────────────────────────────────────────────────────────────────",
-            "  🧠 CYCLE DE RAISONNEMENT AGI EN 7 PHASES FERMÉES (ZÉRO EXÉCUTION AVEUGLE) :",
-            "     1. Compréhension d'Intention  →  2. Diagnostic Épistémique (Canonical / Optimizable / Exploratory)",
-            "     3. Orchestration Maître/Expert →  4. Action & Preuve Réelle  →  5. Vérification Formelle (Z3/SymPy/Tests)",
-            "     6. Auto-Guérison Épistémique  →  7. Capitalisation Mémoire & Gains Renforcés (modele/renforce/)",
-            "────────────────────────────────────────────────────────────────────────────────────────────",
-            "  Navigation : F4 ou Alt+1..5 pour basculer de vue · /agi <demande> pour analyser une intention.",
-        ])
-        return "\n".join(lines)
+            selected = ' · sélectionné' if key == self.active_module else ''
+            lines.extend([f"### /{commands[key]} · {meta['title']}{selected}", meta['capabilities'], ''])
+        lines.append('**F5 /doctor** actualise les moteurs observés.')
+        return '\n'.join(lines)
 
-    def agi_cognitive_report(self, query: str) -> str:
-        q = (query or self.state.goal or "Optimiser l'intelligence, la précision et le graphisme des modules AuroraIA").strip()
-        q_low = q.lower()
-        detected_mod = self.active_module or "CONVERSATION"
-        if any(w in q_low for w in ("3d", "mesh", "trellis", "stl", "cao", "rig")):
-            detected_mod = "3D"
-        elif any(w in q_low for w in ("code", "ui", "cli", "graphisme", "bug", "typescript", "python", "rust")):
-            detected_mod = "CODE"
-        elif any(w in q_low for w in ("image", "flux", "photo", "16k", "pbr")):
-            detected_mod = "IMAGE"
-        elif any(w in q_low for w in ("cyber", "z3", "cve", "0-day", "sécurité")):
-            detected_mod = "CYBER"
-        elif any(w in q_low for w in ("business", "finance", "marché", "quant", "risque")):
-            detected_mod = "BUSINESS"
-        elif any(w in q_low for w in ("cours", "bac", "sympy", "physique", "chimie", "académie")):
-            detected_mod = "LEARNING"
-        elif any(w in q_low for w in ("voix", "audio", "kokoro", "whisper", "tts")):
-            detected_mod = "VOICE"
-
-        meta = STUDIO_MODULES_META.get(detected_mod, STUDIO_MODULES_META["CHAT"])
-        regime = (
-            "UNKNOWN_EXPLORATORY (Exploration Créative & Synthèse Multi-Domaine)"
-            if any(w in q_low for w in ("jamais vu", "innover", "créer", "architecture", "agi", "0-day"))
-            else "KNOWN_OPTIMIZABLE (Optimisation Pareto & Raffinement Haute Précision)"
-        )
-        return "\n".join([
-            "╔══════════════════════════════════════════════════════════════════════════════════════════╗",
-            "║  🧠 SYNTHÈSE COGNITIVE DU CERVEAU AGI // COMPRÉHENSION PAR PREMIERS PRINCIPES            ║",
-            "╚══════════════════════════════════════════════════════════════════════════════════════════╝",
-            f"  • Objectif Analysé     : {plain(q)}",
-            f"  • Module Expert Ciblé  : {meta['icon']} {detected_mod} ({meta['title']})",
-            f"  • Agent Maître Pilote  : {meta['master']}  │  Moteur : {meta['engine']}",
-            f"  • Régime Épistémique   : {regime}",
-            "  • Raisonnement Causal  : Au lieu d'appliquer un script précodé, le Cerveau AGI décompose",
-            "                           les contraintes implicites, sélectionne les sous-agents spécialisés",
-            "                           sans collision de périmètre et exige une vérification observable.",
-            f"  • Capacités Mobilisées : {meta['capabilities']}",
-            "╚══════════════════════════════════════════════════════════════════════════════════════════╝",
-        ])
+    def agi_cognitive_report(self, query):
+        request = query or self.state.goal
+        return ('### Analyse · observations disponibles\n\n'
+                + ('Objectif : '+plain(request)+'\n\n' if request else 'Aucun objectif actif.\n\n')
+                + f'Plan reçu : {len(self.state.plan)} étapes. Critères vérifiés : {len(self.state.verified)}.\n\n'
+                + 'Cette vue décrit les événements reçus. Elle ne mesure pas une capacité AGI ni un raisonnement interne.')
 
     def agents_matrix_text(self):
-        state = self.state
-        active = state.status in {'starting', 'running', 'queued'}
-        tokens = state.metrics.get('tokens_per_second')
-        tok_str = f"{tokens:.1f} t/s" if tokens is not None else "0.0 t/s"
-        phase_low = str(state.phase).lower()
-
-        is_orch = active and any(k in phase_low for k in ["plan", "orchest", "dispatch"])
-        is_code = (self.active_module == "CODE") or (active and any(k in phase_low for k in ["code", "compil", "test", "patch", "git"]))
-        is_img  = (self.active_module == "IMAGE") or (active and any(k in phase_low for k in ["image", "flux", "peint", "visuel"]))
-        is_3d   = (self.active_module == "3D") or (active and (domain_label(state.goal)=="3D" or any(k in phase_low for k in ["3d", "mesh", "texture", "trellis"])))
-        is_chat = (self.active_module == "CHAT") or (active and not is_3d and any(k in phase_low for k in ["convers", "dialog", "repons"]))
-
-        lines = [
-            "══════════════════════════════════════════════════════════════════════════════════",
-            "  ◈ AURORA INTELLIGENCE FLEET // MODULES DE LA MISSION",
-            "══════════════════════════════════════════════════════════════════════════════════",
-            f"  Statut : {state.status.upper()}  │  Phase : {plain(state.phase)}  │  Débit : {tok_str}",
-            f"  Modèle actif : {config.get('default_model', 'local/auto')}  │  Permissions : {config.get('default_permissions', 'SAFE')}",
-            "──────────────────────────────────────────────────────────────────────────────────",
-            "",
-            "  [1] ⚡ AURORA-ORCHESTRATOR    " + ("[◉ MISSION]" if is_orch else "[● VEILLE]"),
-            "      • Mission   : Planification dynamique, coordination et arbitrage des outils",
-            "      • Capacité  : Meta-Orchestration, Découpage DAG, Auto-Correction",
-            "      • Ressource : allocation non mesurée dans ce panneau",
-            "",
-            "  [2] 💻 CODE-LEAD             " + ("[◉ MISSION]" if is_code else "[○ INACTIF]"),
-            "      • Mission   : Conception logicielle, refactorisation, suites de tests, scripts",
-            "      • Capacité  : Python, TypeScript, Rust, Shell, Git Automation",
-            "      • Ressource : allocation non mesurée dans ce panneau",
-            "",
-            "  [3] 🎨 IMAGE-LEAD            " + ("[◉ MISSION]" if is_img else "[○ INACTIF]"),
-            "      • Mission   : Génération graphique haute définition, context prompt, inpainting",
-            "      • Capacité  : Flux.2 / ComfyUI / Diffusion PBR",
-            "      • Ressource : allocation non mesurée dans ce panneau",
-            "",
-            "  [4] 🧊 3D-STUDIO-LEAD        " + ("[◉ MISSION]" if is_3d else "[○ INACTIF]"),
-            "      • Mission   : Synthèse géométrique 3D, rigging, maillage et texturation",
-            "      • Capacité  : TRELLIS.2 / Tripo / Export OBJ & GLB",
-            "      • Ressource : allocation non mesurée dans ce panneau",
-            "",
-            "  [5] 💬 CONVERSATION-LEAD     " + ("[◉ MISSION]" if is_chat else "[○ INACTIF]"),
-            "      • Mission   : Dialogue interactif, clarification, synthèse de connaissances",
-            "      • Capacité  : Contexte étendu, Mémoire vectorielle, Nuance",
-            "      • Ressource : allocation non mesurée dans ce panneau",
-            "",
-            "  [6] 🛡 CYBER-DEFENSE         " + ("[◉ CIBLÉ]" if self.active_module == "CYBER" else "[○ À VÉRIFIER]"),
-            "      • Mission   : Sandboxing des commandes, audit des dépendances, politique de secrets",
-            "      • Capacité  : Analyse statique, permissions SAFE/AUTONOMOUS, intégrité",
-            "      • Ressource : allocation non mesurée dans ce panneau",
-            "",
-            "  [7] 🔬 LEARNING-LEAD         " + ("[◉ CIBLÉ]" if self.active_module == "LEARNING" else "[○ INACTIF]"),
-            "      • Mission   : Diagnostic pédagogique, fiches mémo et vectorisation durable",
-            "      • Capacité  : Adaptive Learning System, Synthèse multi-documents",
-            "      • Ressource : allocation non mesurée dans ce panneau",
-            "",
-            "  [8] 🩺 BRIDGE-DOCTOR         [○ À VÉRIFIER]",
-            "      • Mission   : Surveillance des sockets, détection des pannes et auto-récupération",
-            "      • Capacité  : Probe réseau, contrôle VRAM/OOM, heartbeat continu",
-            "      • Ressource : allocation non mesurée dans ce panneau",
-            "",
-            "──────────────────────────────────────────────────────────────────────────────────",
-            "  Navigation : Appuie sur F4 (ou Alt+1..5) pour basculer entre Dialogue, Modules/AGI, Agents, Journal et Fichiers."
-        ]
-        return "\n".join(lines)
+        lines = ['# Agents & outils', '', f'État reçu : **{self.state.status}**', '',
+                 'Seules les actions réellement reçues sont listées.', '']
+        for event in self.state.evidence[-30:]:
+            label = event.get('worker_id') or event.get('agent') or event.get('tool') or 'Outil'
+            lines.extend([f"### {plain(label)} · {'réussi' if event.get('ok') else 'échec'}",
+                          observation_text(event), ''])
+        if not self.state.evidence:
+            lines += ['Aucune action observée pour cette session.', '',
+                      'Le registre distant est consultable avec `jobia agents list`.']
+        return '\n'.join(lines)
 
     @property
     def busy(self):
@@ -865,63 +479,83 @@ class WorkspaceApp:
 
     def style(self):
         view = display.view
-        if view.caps.color_depth in {'none','ansi'}:
-            return Style.from_dict({'header':'bold','footer':'','frame.border':'','text-area':'',
-                                    'activity':'', 'success':'bold', 'warning':'bold', 'failure':'bold',
-                                    'tab.active':'bold reverse', 'dock':'bold'})
+        if not view.caps.color:
+            return Style.from_dict({'header':'bold', 'frame.label':'bold', 'frame.border':'',
+                                    'success':'bold', 'warning':'bold', 'failure':'bold',
+                                    'tab.active':'bold reverse', 'completion-menu.completion.current':'reverse',
+                                    'button.focused':'reverse','radio-selected':'reverse','radio-checked':'bold'})
         palette = view.theme.palette
-        base_dict = dict(view.theme.prompt_toolkit_style(view.caps))
-        base_dict.update({
-            'header': f'bold {palette.primary}',
-            'footer': palette.muted,
-            'frame': 'bg:#070b14',
-            'frame.border': palette.border,
-            'frame.label': f'bold {palette.secondary}',
-            'text-area': f'bg:#070b14 {palette.text}',
-            'status': palette.accent,
-            'prompt': palette.primary,
-            'activity': palette.info,
-            'success': palette.success,
-            'warning': palette.warning,
-            'failure': f'bold {palette.error}',
-            'tab.active': f'bg:{palette.primary} #050811 bold',
-            'dock': f'bg:#0d1526 {palette.text}',
-        })
-        return Style.from_dict(base_dict)
+        base = dict(view.theme.prompt_toolkit_style(view.caps))
+        base.update({'':'bg:'+palette.surface+' '+palette.text,
+                     'header':'bold '+palette.primary,'footer':palette.muted,
+                     'frame.border':palette.border,'frame.label':'bold '+palette.secondary,
+                     'text-area':'bg:'+palette.surface+' '+palette.text,
+                     'status':palette.accent,'prompt':palette.text,
+                     'activity':palette.info,'success':palette.success,
+                     'warning':palette.warning,'failure':'bold '+palette.error,
+                     'tab.active':'bold '+palette.primary,'dock':'bg:'+palette.raised+' '+palette.text})
+        return Style.from_dict(base)
+
+    def target(self):
+        if self._active_target:
+            return self._active_target
+        if config.get('mode','auto') == 'local':
+            return 'cet ordinateur'
+        return target_label(config.resolve_server_url())
+
+    def session(self):
+        return str(getattr(self.history, 'session_id', 'temporaire'))[:8]
 
     def header(self):
-        mode = config.get('mode','auto')
-        model = config.get('default_model','') or 'sélection du moteur'
-        elapsed = f" · {int(time.monotonic()-self.state.started)}s" if self.busy and self.state.started else ''
-        frames = '⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏' if display.view.caps.unicode else '|/-\\'
-        glyph = frames[int(time.monotonic()*6)%len(frames)] if self.busy and display.view.caps.animate else '◈'
-        dom = self.active_module or domain_label(self.state.goal)
-        return [('class:header',f'  JOBIA · {dom}  {glyph}  {plain(self.state.phase)}{elapsed}\n'),
-                ('class:footer',f'  {mode} · {model} · thème:{display.view.theme.id} · vue:{self.page} · / commandes & modules')]
+        width = self.app.output.get_size().columns-2
+        caps, theme = display.view.caps, display.view.theme
+        latency = f'{self.latency_ms:.0f} ms' if self.latency_ms is not None else 'n/d'
+        mission = self.state.id or 'aucune'
+        if width < 90:
+            mission = mission[:16]
+        identities = {'horizon':'A U R O R A', 'tidal':'≈ AURORA ≈', 'orbital':'◌ AURORA /',
+                      'sunset':'▰ A U R O R A', 'terminal':'> AURORA_', 'facet':'◇ AURORA',
+                      'block':'[ AURORA ]', 'editorial':'Aurora.'}
+        heading = '  '+identities.get(theme.components.header,'AURORA')+'  /  '+theme.label
+        first = fit(heading,width,caps.unicode)
+        target = fit(self.target(), max(8,width-len(self.connection)-len(latency)-20),caps.unicode)
+        second = fit(f'  Cible {target} · {self.connection} · Diag {latency}',width,caps.unicode)
+        third = fit(f'  Session {self.session()} · Mission {mission}',width,caps.unicode)
+        return [('class:header',first+'\n'),('class:status',second+'\n'),('class:footer',third)]
 
     def activity_text(self):
         state = self.state
-        active = state.status in {'starting', 'running', 'queued'}
-        quiet = max(0, int(time.monotonic() - (state.last_progress or state.started))) if state.started else 0
-        signal_age = max(0, int(time.monotonic() - state.last_signal)) if state.last_signal else None
-        if active and quiet >= 15:
+        active = state.status in {'starting','running','queued','permission'}
+        quiet = max(0,int(time.monotonic()-(state.last_progress or state.started))) if state.started else 0
+        signal_age = max(0,int(time.monotonic()-state.last_signal)) if state.last_signal else None
+        if active and quiet>=15:
             label = f'Aucune avancée reçue depuis {quiet}s'
-            label += ' · connexion vivante' if signal_age is not None and signal_age < 15 and self.local_process is None else ' · en attente de nouvelles'
+            label += ' · connexion vivante' if signal_age is not None and signal_age<15 and self.local_process is None else ' · en attente de nouvelles'
             style = 'warning'
         else:
-            label = {'starting':'Envoi · attente d’acceptation', 'running':'Mission acceptée · suivi du serveur',
-                     'completed':'Mission terminée', 'failed':'Mission en échec', 'interrupted':'Mission interrompue',
-                     'stopped':'Mission arrêtée'}.get(state.status, state.status)
-            style = 'failure' if state.status in {'failed', 'interrupted'} else 'activity'
-        rows = 1 if self.app.output.get_size().rows < 28 else 5
-        fragments = [(f'class:{style}', '  '+label+'\n'),
-                     ('class:footer', f'  {len(state.evidence)} observations · {len(state.files)} fichiers · {state.received_chars} caractères reçus\n')]
-        fragments.extend((f'class:{tone}', '  '+text+'\n') for tone,text in state.activity[-rows:])
-        return fragments
+            label = {'idle':'Prêt · aucun travail en cours','starting':'Envoi · attente d’acceptation',
+                     'running':'Mission acceptée · '+plain(state.phase),'queued':'En file d’attente',
+                     'permission':'Autorisation requise','completed':'Mission terminée','failed':'Mission en échec',
+                     'interrupted':'Mission interrompue','stopped':'Mission arrêtée'}.get(state.status,state.status)
+            style = 'failure' if state.status in {'failed','interrupted'} else 'activity'
+        width = self.app.output.get_size().columns-2
+        rows = [('class:'+style,fit(' Activité observée · '+label,width,display.view.caps.unicode)+'\n')]
+        if self.app.output.get_size().rows>=28:
+            counts = f' {len(state.evidence)} observations · {len(state.files)} fichiers · {state.received_chars} caractères reçus'
+            rows.append(('class:footer',fit(counts,width,display.view.caps.unicode)+'\n'))
+        if state.activity:
+            tone,text = state.activity[-1]
+            rows.append(('class:'+tone,fit(' '+text,width,display.view.caps.unicode)))
+        else:
+            rows.append(('class:footer',' Le plan et les outils apparaîtront ici.'))
+        return [(style,safe_text(text,unicode=display.view.caps.unicode)) for style,text in rows]
 
     def footer(self):
-        return [('class:footer','  / Palette Commandes  │  F2 Thème  │  F3 Modèle  │  F4 / Alt+1..5 Vues (Chat/Modules/Agents/Logs/Fichiers)  │  F5 Sonde  │  Ctrl+C Arrêt  │  Ctrl+Q Quitter\n'),
-                ('class:footer','  '+self.health)]
+        width = self.app.output.get_size().columns-2
+        actions = ' F2 Thème  F3 Modèle  F4 Vue  F5 Diagnostic'
+        status = ' Ctrl+C Arrêt · Ctrl+Q Sortie · Tab Défiler · / Aide'
+        return [('class:footer',fit(actions,width,display.view.caps.unicode)+'\n'),
+                ('class:footer',fit(status,width,display.view.caps.unicode))]
 
     def sidebar_text(self):
         state = self.state
@@ -941,7 +575,7 @@ class WorkspaceApp:
             pct = int((done_cnt / len(state.criteria)) * 100)
             bar_len = 10
             filled = int(bar_len * (pct / 100))
-            bar = "▰" * filled + "▱" * (bar_len - filled)
+            bar = "#" * filled + "-" * (bar_len - filled)
             lines.extend(["", f"PROGRESSION : [{bar}] {pct}%"])
 
         lines.extend(['','OBSERVATIONS'])
@@ -950,94 +584,27 @@ class WorkspaceApp:
         if state.metrics.get('tokens_per_second') is not None:
             lines.extend(['',f"Débit observé : {state.metrics['tokens_per_second']:.1f} tokens/s"])
         lines.append(f'Fichiers disponibles : {len(state.files)}')
-        return plain('\n'.join(lines))
+        return safe_text('\n'.join(lines), unicode=display.view.caps.unicode)
 
-    def avant_apres_text(self) -> str:
-        status_info = ""
-        try:
-            st_path = Path("/home/juan/AuroraIA/Outputs/auto_rl/status.json")
-            if st_path.is_file():
-                st = json.loads(st_path.read_text(encoding="utf-8"))
-                status_info = (
-                    f"  • Cycle 3D Supervisé : {st.get('run_id', 'actif')}  │  Phase : {st.get('phase', 'idle')}  │  "
-                    f"Kaggle : {st.get('kaggle_status', 'idle')} (Époque {st.get('epoch', '—')}, val_loss {st.get('validation_loss', '—')})"
-                )
-        except Exception:
-            pass
-        lines = [
-            "╔══════════════════════════════════════════════════════════════════════════════════════════════╗",
-            "║  🏆 BILAN VISUEL AVANT / APRÈS & NOTE D'AMÉLIORATION 3D + AGI (RÉSUMÉ SIMPLE À COMPRENDRE)   ║",
-            "╚══════════════════════════════════════════════════════════════════════════════════════════════╝",
-            "  📈 NOTE GLOBALE D'AMÉLIORATION 3D (AUDIT CERTIFIÉ SUR 96 MAILLAGES RTX 5070 Ti) :",
-            "     • AVANT (Modèle de Base 100% Intouchable) :  70.66 / 100",
-            "     • APRÈS (Modèle Renforcé Pareto Actif)    :  71.13 / 100  (+0.470 pt global · jusqu'à +12.38 pts)",
-            status_info or "  • Cycle 3D Supervisé : Actif sur Kaggle Double GPU (gpu_t4_x2) + Audit Local RTX 5070 Ti",
-            "────────────────────────────────────────────────────────────────────────────────────────────────",
-            "  🔍 3 EXEMPLES CONCRETS VÉRIFIÉS (AVEC RENDUS 360° DANS LA PHOTO COMPARATIVE) :",
-            "     1. 🦉 Créature & Animation Solo (Hibou ailes déployées — audit_owl_012_graine_137) :",
-            "        • Gain : +12.38 pts  │  Auto-intersections BVH : 5 982 → 2 281 (-61.9%)  │  Fragmentation : 0.9% → 0.0%",
-            "        • Rigging & Animation Solo : Squelette UniRig DQS + IK injecté tout seul sans écrire 'rig-moi ceci'",
-            "     2. 🚲 Précision Mécanique & Rayons Fins (Vélo Cargo 360° — audit_bicycle_016_graine_41) :",
-            "        • Gain : +7.09 pts   │  Auto-intersections BVH : 9 910 → 5 137 (-48.2%)  │  Fragmentation : 3.9% → 2.8%",
-            "     3. 🏰 Architecture & Arcs-Boutants (Cathédrale Gothique — audit_cathedral_010_graine_271) :",
-            "        • Gain : +7.59 pts   │  Auto-intersections BVH : 8 059 → 4 757 (-41.0%)  │  Fragmentation : 0.7% → 0.2%",
-            "────────────────────────────────────────────────────────────────────────────────────────────────",
-            "  🧠 INTELLIGENCE COGNITIVE SANS PRÉCODAGE RIGIDE :",
-            "     • Animé Natif vs Peau Réelle : Goku/Naruto restent 100% animés sauf si tu demandes une peau réelle.",
-            "     • Traduction & Expansion FR → EN automatique vers FLUX.2-dev et TRELLIS.2-4B.",
-            "     • Modèle de Base 100% Intouchable (SHA-256) : seul le Champion Pareto le plus puissant est gardé.",
-            "────────────────────────────────────────────────────────────────────────────────────────────────",
-            "  🖼 PHOTO COMPARATIVE AVANT/APRÈS & FICHIER .MD SUR TON BUREAU :",
-            "     • Photo  : /home/juan/Bureau/AuroraIA_Studio_&_Renforcement/AVANT_APRES_3D_COMPARAISON.png",
-            "     • Bilan  : /home/juan/Bureau/AuroraIA_Studio_&_Renforcement/BILAN_AVANT_APRES_ET_GAINS.md",
-            "     • Arrêt  : Tape /fin-cycle ici (ou double-clique sur Arreter_En_Fin_De_Cycle.desktop sur le Bureau).",
-        ]
-        return "\n".join(lines)
+    def avant_apres_text(self):
+        lines = ['# Bilans & mesures', '',
+                 'Aucun rapport comparatif vérifié n’a été reçu pour cette session.', '',
+                 'Les anciens scores ne constituent pas une mesure de la mission actuelle.', '']
+        if self.state.metrics:
+            lines.extend(['### Mesures reçues', '', '```json', json.dumps(self.state.metrics,ensure_ascii=False,indent=2), '```'])
+        if self.state.files:
+            lines.extend(['### Fichiers reçus', '', *('- '+plain(path) for path in self.state.files)])
+        return '\n'.join(lines)
 
-    def ontologie_report(self, query: str) -> str:
-        q = (query or self.state.goal or "fais sangoku en 3D").strip()
-        low = q.lower()
-        is_mod = any(k in low for k in ("modif", "change", "remplace", "garde", "sans toucher"))
-        is_real_override = any(
-            k in low for k in ("personne réelle", "personne reelle", "peau réelle", "peau reelle", "vrai humain", "pores")
-        )
-        is_anime = any(
-            k in low for k in ("goku", "sangoku", "vegeta", "naruto", "sasuke", "luffy", "zoro", "gojo", "anime", "animé", "manga")
-        )
-        is_char = is_anime or any(
-            k in low for k in ("perso", "character", "guerrier", "créature", "dragon", "hibou", "owl", "loup", "robot", "homme", "femme")
-        )
-        if is_mod:
-            ont_mode = "🔒 MODIFICATION CONSERVATRICE (Verrouillage strict de l'existant hors élément ciblé)"
-        elif is_anime and is_real_override:
-            ont_mode = "🧬 OVERRIDE TEXTURES PERSONNE RÉELLE (Identité/tenue animé conservées + peau humaine 8K)"
-        elif is_anime:
-            ont_mode = "🎨 FIDÉLITÉ ANIMÉ / CEL-SHADED NATIVE (Zéro dérive photoréaliste non sollicitée)"
-        else:
-            ont_mode = "📷 PHOTORÉALISME OPTIQUE & TOPOLOGIE STUDIO NATIVE"
-        rig_mode = (
-            "🦴 ACTIF EN SOLO D'OFFICE (UniRig Géodésique DQS + Foot-Lock IK sans demander 'rig-moi ceci')"
-            if is_char
-            else "⚙ Maillage Manifold Soudé (Activation Rigging si articulé)"
-        )
-        return "\n".join([
-            "╔══════════════════════════════════════════════════════════════════════════════════════════╗",
-            "║  🧬 DIRECTEUR COGNITIF D'ONTOLOGIE, TRADUCTION FR→EN & AUTO-RIGGING SOLO                 ║",
-            "╚══════════════════════════════════════════════════════════════════════════════════════════╝",
-            f"  • Demande Humaine      : {plain(q)}",
-            f"  • Régime Ontologique   : {ont_mode}",
-            "  • Expansion FR → EN    : Traduction anglaise + enrichissement anatomique/topologique automatique",
-            f"  • Rigging & Animation  : {rig_mode}",
-            "╚══════════════════════════════════════════════════════════════════════════════════════════╝",
-        ])
+    def ontologie_report(self, query):
+        request = query or self.state.goal
+        return ('### Contraintes de la demande\n\n'+(plain(request) if request else 'Aucune demande à examiner.')+
+                '\n\nLe CLI transmet la demande au moteur. Style, traduction et animation ne sont pas confirmés '
+                'sans événements ou fichiers vérifiés. Soumettez la demande pour observer son exécution.')
 
-    def refresh_body(self):
-        if self._refresh_handle is not None:
-            self._refresh_handle.cancel()
-            self._refresh_handle = None
-        follow = self.app.layout.has_focus(self.prompt)
+    def body_source(self):
         if self.page == 'conversation':
-            text = self.transcript
+            text = self.transcript or self.welcome_text()
         elif self.page == 'modules':
             text = self.modules_cockpit_text()
         elif self.page == 'agents':
@@ -1045,14 +612,38 @@ class WorkspaceApp:
         elif self.page == 'avant_apres':
             text = self.avant_apres_text()
         elif self.page == 'journal':
-            text = self.journal
+            text = self.journal or 'Aucun événement reçu.'
         else:
-            text = '\n'.join(self.state.files) or 'Aucun fichier reçu.'
+            text = '# Fichiers reçus\n\n'+('\n'.join('- '+plain(p) for p in self.state.files) or 'Aucun fichier reçu. Les livraisons vérifiées apparaîtront ici.')
         if self.page == 'conversation' and self.partial:
-            tail = ' · derniers 16 000 caractères' if len(self.partial) == 16000 else ''
-            text += '\n\nSORTIE REÇUE · résultat non encore confirmé'+tail+'\n'+self.partial
-        self.body.buffer.set_document(Document(text,len(text) if follow else min(self.body.buffer.cursor_position,len(text))),bypass_readonly=True)
-        self.app.invalidate()
+            tail = ' · derniers 16 000 caractères' if len(self.partial)==16000 else ''
+            text += '\n\n### SORTIE REÇUE · résultat non encore confirmé'+tail+'\n\n'+self.partial
+        if len(text)>64000:
+            text = ('Aperçu limité aux derniers 64 000 caractères ; conversation complète conservée dans l’archive.\n\n'+text[-64000:])
+        return text
+
+    def refresh_body(self, *, invalidate=True):
+        if self._refresh_handle is not None:
+            self._refresh_handle.cancel()
+            self._refresh_handle = None
+        source = self.body_source()
+        if self.page=='conversation' and not self.transcript and not self.partial:
+            art = display.view.theme.banner.art_for(display.view.caps.unicode).strip('\n')
+            if art and self.app.output.get_size().rows>=28:
+                source = '```text\n'+art+'\n```\n\n'+source
+        width = self.body_width()
+        key = (source,width,display.view.theme.id,display.view.caps.color_depth,display.view.caps.unicode,self.page)
+        if key != self._body_key:
+            changed_page = self._body_page != self.page
+            previous = self.body.buffer.cursor_position
+            follow = self.app.layout.has_focus(self.prompt)
+            text,lines = render_document(source,width,display.view.theme,display.view.caps,journal=self.page=='journal')
+            self.body_lexer.lines = lines
+            position = 0 if changed_page or (not self.transcript and not self.partial) else len(text) if follow else min(previous,len(text))
+            self.body.buffer.set_document(Document(text,position),bypass_readonly=True)
+            self._body_key,self._body_source,self._body_page = key,source,self.page
+        if invalidate:
+            self.app.invalidate()
 
     def schedule_refresh(self):
         # Coalesce token bursts and journal updates into at most ten body renders/s.
@@ -1072,6 +663,11 @@ class WorkspaceApp:
     def event(self,event):
         self.state.consume(event)
         kind = event.get('type')
+        if kind == 'reconnecting':
+            self.connection = 'reconnexion'
+        elif kind not in {'error','mission_interrupted'} and self._active_target != 'cet ordinateur':
+            self.connection = 'flux reçu'
+        self.ensure_clock()
         if kind not in {'token','heartbeat'}:
             self.journal = (self.journal+'\n'+plain(json.dumps(event,ensure_ascii=False,indent=2)))[-200000:]
         if kind == 'token':
@@ -1081,7 +677,7 @@ class WorkspaceApp:
             if hasattr(self.history,'state'):
                 self.history.state.pop('active_mission_id',None)
             result = event.get('result','')
-            self.note('\nJOBIA\n'+result)
+            self.note('\n### AURORA\n\n'+result)
             if result:
                 if not self.history or self.history[-1] != {'role':'assistant','content':result}:
                     self.history.append({'role':'assistant','content':result})
@@ -1092,7 +688,7 @@ class WorkspaceApp:
         elif kind=='file_received':
             self.note('Fichier reçu et vérifié : '+event['path'])
         elif kind=='plan' and not event.get('worker'):
-            self.note('PLAN REÇU\n'+'\n'.join(f'{i+1}. {plain(step)}' for i,step in enumerate(event.get('steps',[]))))
+            self.note('### PLAN REÇU\n\n'+'\n'.join(f'{i+1}. {plain(step)}' for i,step in enumerate(event.get('steps',[]))))
         elif kind=='plan_revision' and not event.get('worker'):
             self.note('ÉTAPES ADAPTÉES · '+plain(event.get('reason','Observations nouvelles'))+'\n'+
                       '\n'.join(f'{i+1}. {plain(step)}' for i,step in enumerate(event.get('steps',[]))))
@@ -1106,15 +702,20 @@ class WorkspaceApp:
 
     async def discover(self):
         try:
+            self.connection = 'diagnostic'
             if config.is_configured():
                 def remote():
                     # Doctor checks several services; its response can take
                     # longer than the former five-second read budget.
                     with self.bridge_factory(timeout=30) as client:
-                        doctor,models = client.doctor(),client.models()
-                    return doctor,models
-                doctor,models = await asyncio.to_thread(remote)
+                        started = time.monotonic()
+                        doctor = client.doctor()
+                        latency = (time.monotonic()-started)*1000
+                        models = client.models()
+                    return doctor,models,latency
+                doctor,models,self.latency_ms = await asyncio.to_thread(remote)
                 ready = doctor.get('ok') and doctor.get('ready', True)
+                self.connection = 'connecté' if ready else 'dégradé'
                 unavailable = [check['name'] for check in doctor.get('checks', [])
                                if check.get('name') in {'GPU', 'ComfyUI'} and check.get('ok') is False]
                 if doctor.get('gpu_ready') is False and 'GPU' not in unavailable:
@@ -1125,7 +726,7 @@ class WorkspaceApp:
                     self.health = 'Pont prêt pour les missions'
                 else:
                     self.health = 'Pont indisponible ou dégradé'
-                self.health += ' · '+plain(config.resolve_server_url())
+                self.health += ' · '+target_label(config.resolve_server_url())
                 if not ready:
                     reason = doctor.get('error') or '; '.join(
                         str(c.get('name', 'Contrôle'))+': '+str(c.get('detail') or 'échec')
@@ -1154,18 +755,61 @@ class WorkspaceApp:
                 result = await asyncio.to_thread(scan,deep=False)
                 self.models = [m.name for provider in result.providers if provider.healthy for m in provider.models]
                 self.health = f'{len(self.models)} modèle(s) servi(s) localement · jobia connect pour le pont'
+                self.connection = 'local'
+                self._active_target = 'cet ordinateur'
         except Exception as exc:
+            self.connection = 'hors ligne'
+            self.latency_ms = None
             self.health = 'Diagnostic : '+plain(exc)
         self.app.invalidate()
 
     async def choose_theme(self):
-        name = await radiolist_dialog(title='Thème Cyber-Aurora',text='Choisis le rendu visuel du studio terminal',
-                                     values=[(n,n) for n in themes.theme_ids()],style=self.style()).run_async()
-        if name:
-            display.view.use_theme(name)
-            config.set('theme',name)
-            self.app.style = self.style()
-            self.app.invalidate()
+        if self._theme_selection is not None:
+            return
+        self._theme_original = display.view.theme.id
+        self._theme_selection = themes.theme_ids().index(self._theme_original)
+        self._theme_future = asyncio.get_running_loop().create_future()
+        self.app.invalidate()
+        try:
+            await self._theme_future
+        finally:
+            if self._theme_selection is not None:
+                self.finish_theme_preview(commit=False)
+
+    def preview_theme(self, offset):
+        if self._theme_selection is None:
+            return
+        self._theme_selection = (self._theme_selection+offset)%len(themes.all_themes())
+        display.view.use_theme(themes.all_themes()[self._theme_selection].id)
+        self.app.style = self.style()
+        self.refresh_body()
+
+    def finish_theme_preview(self, *, commit):
+        if self._theme_selection is None:
+            return
+        if commit:
+            config.set('theme',display.view.theme.id)
+        else:
+            display.view.use_theme(self._theme_original)
+        self._theme_selection = None
+        self.app.style = self.style()
+        self.refresh_body()
+        if self._theme_future and not self._theme_future.done():
+            self._theme_future.set_result(None)
+
+    def theme_picker_text(self):
+        if self._theme_selection is None:
+            return []
+        rows = [('class:footer',' Flèches explorer · Entrée garder · Échap annuler\n\n')]
+        width = min(64,self.app.output.get_size().columns-8)
+        for index,theme in enumerate(themes.all_themes()):
+            selected = index==self._theme_selection
+            rows.append(('class:tab.active' if selected else 'class:text-area',
+                         fit((' > ' if selected else '   ')+theme.label,width,display.view.caps.unicode)+'\n'))
+        current = themes.all_themes()[self._theme_selection]
+        rows += [('class:footer','\n '+fit(current.description,width,display.view.caps.unicode)),
+                 ('class:success','\n\n Aperçu actif ; la configuration reste inchangée avant validation.')]
+        return [(style,safe_text(text,unicode=display.view.caps.unicode)) for style,text in rows]
 
     async def choose_model(self):
         if self.busy:
@@ -1307,35 +951,9 @@ class WorkspaceApp:
                 self.note(self.avant_apres_text())
                 return
             if cmd in {'/fin-cycle', '/stop-cycle'}:
-                def _trigger_stop_after_cycle():
-                    venv_py = "/home/juan/AuroraIA/application/.venv/bin/python"
-                    py_cmd = venv_py if os.path.isfile(venv_py) else sys.executable
-                    subprocess.run(
-                        [py_cmd, "-m", "auto_rl.control", "stop_after_cycle"],
-                        cwd="/home/juan/AuroraIA",
-                        capture_output=True,
-                        text=True,
-                        timeout=15,
-                    )
-                    subprocess.run(
-                        [py_cmd, "-m", "auto_rl.before_after_report"],
-                        cwd="/home/juan/AuroraIA",
-                        capture_output=True,
-                        text=True,
-                        timeout=25,
-                    )
-                try:
-                    await asyncio.to_thread(_trigger_stop_after_cycle)
-                except Exception:
-                    pass
-                self.page = 'conversation'
-                self.note(
-                    "⏹ ARRÊT EN FIN DE CYCLE 3D PROGRAMMÉ (stop_after_cycle actif)\n"
-                    "  • Le cycle Kaggle / RTX 5070 Ti en cours termine proprement son époque et son audit complet.\n"
-                    "  • Dès la fin du cycle, le Champion Pareto est vérifié et le processus s'arrête sans relancer de nouveau cycle.\n"
-                    "  • Photo Avant/Après mise à jour : /home/juan/Bureau/AuroraIA_Studio_&_Renforcement/AVANT_APRES_3D_COMPARAISON.png\n"
-                    "  • Bilan Markdown mis à jour     : /home/juan/Bureau/AuroraIA_Studio_&_Renforcement/BILAN_AVANT_APRES_ET_GAINS.md"
-                )
+                self.note('### Contrôle indisponible\n\n'
+                          'Le pont publié ne fournit pas de commande d’arrêt de cycle distant. '
+                          'Aucun entraînement n’a été modifié. Utilisez le contrôle Auto-RL sur le PC maître.')
                 return
             if cmd == '/ontologie':
                 self.page = 'conversation'
@@ -1383,12 +1001,8 @@ class WorkspaceApp:
                 meta = STUDIO_MODULES_META[mod_key]
                 if not arg:
                     self.page = 'conversation'
-                    self.note(
-                        f"◈ MODULE ACTIF VERROUILLÉ : {meta['icon']} {mod_key} — {meta['title']}\n"
-                        f"  • Agent Maître : {meta['master']}  │  Moteur : {meta['engine']}\n"
-                        f"  • Capacités    : {meta['capabilities']}\n"
-                        f"  ↳ Saisis maintenant ton objectif ou tape /modules (Alt+2) pour le cockpit complet."
-                    )
+                    self.note(f"### Module sélectionné · {mod_key}\n\n{meta['capabilities']}\n\n"
+                              'Saisissez votre objectif. La disponibilité du moteur sera vérifiée à l’exécution.')
                     return
                 raw = f"[{mod_key}] {arg}"
             elif cmd=='/missions':
@@ -1399,27 +1013,20 @@ class WorkspaceApp:
                 self.note('\n'.join(f"{m['id']} · {m['status']} · {m['request'][:70]}" for m in result.get('missions',[])) or 'Aucune mission enregistrée.')
                 return
             elif not raw.startswith(('/resume ','/attach ')):
-                help_lines = [
-                    "╔══════════════════════════════════════════════════════════════════════════════════╗",
-                    "║  ⚡ PALETTE DES COMMANDES STUDIO & MODULES AGI (Tape / pour l'autocomplétion)    ║",
-                    "╚══════════════════════════════════════════════════════════════════════════════════╝",
-                    "  • Bilan & 3D  : /avant-apres · /gains · /fin-cycle · /ontologie <demande> · /agi <demande>",
-                    "  • Modules AGI : /chat · /code · /image · /3d · /cyber · /business · /academy · /voice",
-                    "  • Vues Studio : /view [conversation|modules|agents|avant_apres|journal|fichiers] · F4 · Alt+1..6",
-                    "  • Missions    : /missions · /attach ID · /resume ID · /retry · /doctor",
-                    "  • Configuration : /models · /theme · /mode · /permissions · /new · /clear · /quit",
-                    "/clear : effacer les conversations locales de ce dossier (sauvegardées).",
-                    "F4 : journal et fichiers. Ctrl+C : arrêt. Ctrl+N : nouvelle conversation.",
-                    "Pour connecter le pont : jobia connect dans ton terminal.",
-                ]
-                self.note("\n".join(help_lines))
+                help_lines = ['# Commandes', '', 'Tapez / puis Tab pour compléter.', '']
+                help_lines.extend(f'**{command}** — {description}\n' for command,_,_,description in SLASH_COMMANDS_CATALOG)
+                help_lines.extend(['', 'F2 thèmes · F3 modèles · F4 vues · Alt+1..6 accès direct · F5 diagnostic',
+                                   'Ctrl+C arrêt · Ctrl+Q sortie · Ctrl+N nouvelle conversation · Tab lecture',
+                                   'Connexion : `jobia connect` dans le terminal.'])
+                self.note('\n'.join(help_lines))
                 return
         resume = raw.split(maxsplit=1)[1] if raw.startswith('/resume ') else None
         attach = raw.split(maxsplit=1)[1] if raw.startswith('/attach ') else None
         self.partial = ''
         self.state = MissionView(goal=raw,status='starting',phase='Reprise' if resume else 'Préparation',started=time.monotonic())
         self.state.record('Connexion · attente du serveur')
-        self.note('\nVOUS\n'+raw)
+        self.ensure_clock()
+        self.note('\n### VOUS\n\n'+raw)
         if not resume and not attach and not pending:
             self.history.append({'role':'user','content':raw})
             if hasattr(self.history,'save'):
@@ -1435,7 +1042,8 @@ class WorkspaceApp:
                     fallback = True
                     self.note('PC fixe indisponible · '+plain(reason)+'\nExécution sur cet ordinateur avec les moteurs locaux disponibles.')
             if remote:
-                self.note('Exécution sur le serveur · '+plain(config.resolve_server_url()))
+                self._active_target = target_label(config.resolve_server_url())
+                self.note('Exécution sur le serveur · '+self._active_target)
                 if not attach and not resume and not pending:
                     from urllib.parse import urlsplit
                     local_server = urlsplit(config.resolve_server_url()).hostname in {'127.0.0.1','localhost','::1'}
@@ -1459,6 +1067,8 @@ class WorkspaceApp:
             self.app.invalidate()
 
     async def local(self,raw,*,automatic=False):
+        self._active_target = 'cet ordinateur'
+        self.connection = 'local'
         from .core import locations
         receipt = locations.data_dir()/'ui-runs'/f'{uuid4().hex}.json'
         receipt.parent.mkdir(parents=True,exist_ok=True,mode=0o700)
@@ -1543,21 +1153,42 @@ class WorkspaceApp:
                 self.note('Une demande a une acceptation incertaine. /retry conserve sa clé pour éviter une double exécution.')
             else:
                 self.note('Une demande conservée a un format de reprise incomplet. /retry permet de la récupérer sans la lancer.')
-        async def tick():
-            while True:
-                await asyncio.sleep(.15 if display.view.caps.animate else 1)
-                if self.busy or (display.view.caps.animate and display.view.caps.animation != 'none'):
-                    self.app.invalidate()
         def start():
             self.app.create_background_task(self.discover())
-            self.app.create_background_task(tick())
-        await self.app.run_async(pre_run=start)
+            self.ensure_clock()
+        try:
+            await self.app.run_async(pre_run=start)
+        finally:
+            for handle in (self._clock_handle,self._refresh_handle):
+                if handle is not None:
+                    handle.cancel()
+
+    def ensure_clock(self):
+        """A one-second status clock exists only while a mission is active."""
+        if self.state.status not in {'starting','running','queued','permission'}:
+            if self._clock_handle is not None:
+                self._clock_handle.cancel()
+                self._clock_handle = None
+            return
+        if self._clock_handle is None:
+            try:
+                self._clock_handle = asyncio.get_running_loop().call_later(1,self._clock_tick)
+            except RuntimeError:
+                pass
+
+    def _clock_tick(self):
+        self._clock_handle = None
+        if self.state.status in {'starting','running','queued','permission'}:
+            self.app.invalidate()
+            self.ensure_clock()
 
 
-def run_ui():
+def run_ui(renderer=None):
     if not sys.stdin.isatty() or not sys.stdout.isatty():
         from .workspace import dashboard
         dashboard()
         display.hint('Ouvre un terminal interactif pour l’interface ; jobia --help pour les commandes.')
         return
-    asyncio.run(WorkspaceApp().run())
+    from .renderer import launch_native
+    if not launch_native(renderer):
+        asyncio.run(WorkspaceApp().run())

@@ -1,6 +1,6 @@
 # Progression — refonte du CLI
 
-Mise à jour : 26 octobre 2026. Branche de travail : `redesign/cli-ui`.
+Mise à jour : 27 octobre 2026. Branche de travail : `redesign/cli-ui`.
 
 ## État enregistré
 
@@ -25,3 +25,7 @@ Mise à jour : 26 octobre 2026. Branche de travail : `redesign/cli-ui`.
 ## Limites de preuve
 
 Pas d'accès au Mac physique ; Terminal.app, iTerm2 et SSH réels ne sont pas encore testés. Les capacités seront testées par environnements simulés et sorties terminal réelles sur Linux ; ces deux niveaux restent distincts. Aucun moteur IA ni entraînement n'est lancé.
+
+## Lot écran principal — 27 octobre
+
+Écran Python recomposé : contexte distant persistant, activité observée, markdown/code/diffs, six vues, aperçu F2 réversible, resize et ASCII. Les faux scores du HUD et le faux succès de fin de cycle ont été retirés. Le contrat de test historique du HUD est remplacé par la visibilité de l’objectif et des seules actions observées. 291 tests ciblés passent ; la suite d’intégration a passé 1209 tests, avec une assertion de libellé héritée ensuite corrigée. Renderer natif et passerelle présents mais validation de parité encore en cours ; aucun déploiement.
