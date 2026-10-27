@@ -2,7 +2,15 @@
 
 Mise à jour : 27 octobre 2026. Branche de travail : `redesign/cli-ui`.
 
-## État enregistré
+## État actuel
+
+Phase 1 validée localement et en CI au commit `34cfd012e4be0d4e44cc66d82462ab3d4bfa6b6c` : les **9 jobs** du [run GitHub 40524176404](https://github.com/juancodepyandc/aurora-remote-cli/actions/runs/40524176404) sont réussis. Python 3.10/3.13 sur Linux/macOS/Windows : tests, lint, wheel et sdist ; Rust sur les trois OS : tests, fmt, clippy et release. Les PTY Linux/macOS couvrent les quatre profondeurs de couleur et le repli Python. Windows valide le binaire et les tests, pas un PTY interactif.
+
+Phase 2 documentée dans [PLAN.md](PLAN.md) et [INVENTORY.md](INVENTORY.md), avec catalogue et registre AST vérifiables. Aucun item du plan n'est implémenté. La PR #4 peut être fusionnée après confirmation de la CI sur son dernier commit ; seule la branche de cette mission sera supprimée après fusion. Les limites physiques des terminaux et la divergence des copies PC restent explicites.
+
+Dernière vérification en lecture seule, le 27 octobre : HEAD PC inchangés (`4baddbd` serveur, `e4e0e5a` CLI). Les brouillons évoluent pendant la mission : serveur 210 suppressions non indexées, 124 fichiers modifiés, 4 modifiés à la fois dans l'index et le travail, 53 entrées non suivies ; CLI 10 fichiers modifiés et 1 entrée non suivie. Aucun de ces changements n'est intégré ni écrasé. `aurora-live` reste propre.
+
+## État initial enregistré
 
 - Phase 0 terminée : dépôt GitHub cloné isolément ; référence CLI `e4e0e5a`, serveur `4baddbd`.
 - Copie PC préservée : changements non commités dans les deux dépôts, aucun changement appliqué à ces copies.
@@ -45,3 +53,7 @@ Validation locale Phase 1 terminée : 1212 tests Python réussis, 18 ignorés (m
 ## Correctif de validation CI — 27 octobre
 
 La CI native Linux/Windows et les suites Python macOS/Linux passent ; les builds propres ont révélé setuptools absent avec --no-isolation. Ajout à dev de setuptools et wheel (outils de build, aucune dépendance de production). Un test Windows observait le rendu après 80 ms fixes : attente bornée du texte réellement visible. Ces défauts ne sont pas masqués par une exclusion. États de snapshot stockés en une ligne JSONL par fichier pour réduire la répétition du diff. Nouvelle CI exigée avant fusion.
+
+## Lot audit et plan — 27 octobre
+
+Inventaire : 2 222 sources canoniques, 675 déclarations statiques de routes, 111 rôles AST et 182 fichiers source/configuration/test du CLI refondu. Les deux registres ont les mêmes IDs ; cela ne prouve pas la parité des permissions, outils ou sorties. Tableau de maturité sur six axes par famille, audit de la boucle d'autonomie et 18 lots priorisés avec critères mesurables, risques et dépendances. Aucune génération IA, aucun entraînement ni serveur de production lancé. Les notes hors CLI qualifient la preuve disponible, pas une performance de modèle mesurée.

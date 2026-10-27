@@ -1,0 +1,2396 @@
+{
+  "server_commit": "4baddbd12e1c32a641455f0002f37eed8596c5a6",
+  "cli_commit": "34cfd012e4be0d4e44cc66d82462ab3d4bfa6b6c",
+  "method": "AST literal_eval of named dictionaries, no imports or execution",
+  "server_roles": 111,
+  "counts": {
+    "orchestrator": 1,
+    "master": 20,
+    "subagent": 90
+  },
+  "cli_roles": 111,
+  "missing_in_cli": [],
+  "extra_in_cli": [],
+  "roles": [
+    {
+      "id": "aurora-orchestrator",
+      "role_type": "orchestrator",
+      "parent_agent": null,
+      "module": "orchestration",
+      "feature": "cross_module_dispatch",
+      "description": "Coordonnateur suprême : découpe les demandes transverses et délègue exclusivement aux Maîtres de Module.",
+      "permissions": "AUTONOMOUS",
+      "files_owned": [
+        ".claude/agent-tracker/state.json"
+      ],
+      "routes_owned": [
+        "/api/agents/list",
+        "/api/agents/hierarchy",
+        "/api/agents/coverage",
+        "/api/agents/metrics"
+      ],
+      "never_touch": [
+        "Code métier direct des modules (toujours déléguer au *-lead propriétaire)"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "conversation-lead",
+      "role_type": "master",
+      "parent_agent": "aurora-orchestrator",
+      "module": "chat",
+      "feature": "module_master_conversation",
+      "description": "Maître du Module Conversation : pilote le dialogue, l'analyse d'intention, la recherche factuelle et la mémoire de chat.",
+      "permissions": "SAFE",
+      "files_owned": [
+        "application/src/views/ConversationView.tsx",
+        "application/src/views/v4/AuroraV4ChatView.tsx",
+        "application/src/views/manga/MangaChatView.tsx"
+      ],
+      "routes_owned": [
+        "/api/ollama/chat",
+        "/api/ext/chat"
+      ],
+      "never_touch": [
+        "Génération d'image ComfyUI",
+        "Exécution code sandbox",
+        "Pipeline 3D"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "chat-lead",
+      "role_type": "master",
+      "parent_agent": "aurora-orchestrator",
+      "module": "chat",
+      "feature": "module_master_chat",
+      "description": "Pilote le module conversationnel, délègue aux 5 sous-agents de fonctionnalité Chat et vérifie les sources.",
+      "permissions": "AUTONOMOUS",
+      "files_owned": [
+        "application/src/views/ConversationView.tsx",
+        "application/src/views/v4/AuroraV4ChatView.tsx",
+        "application/src/views/manga/MangaChatView.tsx"
+      ],
+      "routes_owned": [
+        "/api/ollama/chat",
+        "/api/ext/chat"
+      ],
+      "never_touch": [
+        "Pipelines Image/3D/Code hors délégation explicite"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "conversation-intent-router",
+      "role_type": "subagent",
+      "parent_agent": "conversation-lead",
+      "module": "chat",
+      "feature": "intent_routing_and_complexity",
+      "description": "Sous-agent Conversation : classifie l'intention, la complexité et la détection de bascule vers un autre module.",
+      "permissions": "SAFE",
+      "files_owned": [
+        "application/src/services/intentRouter.ts",
+        "application/src/services/queryUnderstanding.ts"
+      ],
+      "routes_owned": [],
+      "never_touch": [
+        "conversationOrchestrator.ts",
+        "conversationMemory.ts",
+        "realityAnalyzer.ts"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "conversation-pipeline-tuner",
+      "role_type": "subagent",
+      "parent_agent": "conversation-lead",
+      "module": "chat",
+      "feature": "six_step_orchestration_and_streaming",
+      "description": "Sous-agent Conversation : gère la boucle 6 étapes (analyze->plan->draft->verify->refine->deliver) et le streaming SSE.",
+      "permissions": "AUTONOMOUS",
+      "files_owned": [
+        "application/src/services/conversationOrchestrator.ts",
+        "application/src/services/conversationQuality.ts"
+      ],
+      "routes_owned": [
+        "/api/ollama/chat"
+      ],
+      "never_touch": [
+        "intentRouter.ts",
+        "conversationMemory.ts",
+        "VoiceCopilotView.tsx"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "conversation-web-factchecker",
+      "role_type": "subagent",
+      "parent_agent": "conversation-lead",
+      "module": "chat",
+      "feature": "web_search_and_fact_checking",
+      "description": "Sous-agent Conversation : recherche web temps réel, extraction de sources, citations et anti-hallucination.",
+      "permissions": "SAFE",
+      "files_owned": [
+        "application/src/services/realityAnalyzer.ts",
+        "application/src/services/webSearch.ts",
+        "application/routes/search_bp_routes.py"
+      ],
+      "routes_owned": [
+        "/api/search",
+        "/api/web/fetch"
+      ],
+      "never_touch": [
+        "conversationOrchestrator.ts",
+        "conversationMemory.ts"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "conversation-memory-keeper",
+      "role_type": "subagent",
+      "parent_agent": "conversation-lead",
+      "module": "chat",
+      "feature": "session_history_and_context_compression",
+      "description": "Sous-agent Conversation : gère l'historique des messages, la compression de fenêtre et les stores de chat.",
+      "permissions": "AUTONOMOUS",
+      "files_owned": [
+        "application/src/services/conversationMemory.ts",
+        "application/src/stores/chatStore.ts"
+      ],
+      "routes_owned": [],
+      "never_touch": [
+        "db_vector/ (géré par memory-lead)",
+        "conversationOrchestrator.ts"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "conversation-vision-multimodal",
+      "role_type": "subagent",
+      "parent_agent": "conversation-lead",
+      "module": "chat",
+      "feature": "multimodal_image_and_document_reading",
+      "description": "Sous-agent Conversation : analyse les images, captures d'écran et documents joints dans le chat via Qwen3-VL.",
+      "permissions": "SAFE",
+      "files_owned": [
+        "application/src/services/visionAnalyzer.ts"
+      ],
+      "routes_owned": [],
+      "never_touch": [
+        "image_module_engine.py (géré par image-lead)",
+        "aurora_3d_pipeline.py"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "code-lead",
+      "role_type": "master",
+      "parent_agent": "aurora-orchestrator",
+      "module": "code",
+      "feature": "module_master_code",
+      "description": "Maître du Module Code : coordonne l'architecture, le Motion Design UI, la performance Backend, l'audit et la sandbox.",
+      "permissions": "AUTONOMOUS",
+      "files_owned": [
+        "application/src/views/CodeView.tsx",
+        "application/src/views/v4/AuroraV4CodeView.tsx",
+        "application/src/views/manga/MangaCodeView.tsx",
+        "application/src/services/codeOrchestrator.ts"
+      ],
+      "routes_owned": [
+        "/api/code/install-model",
+        "/api/code/detect-editor",
+        "/api/code/open-folder"
+      ],
+      "never_touch": [
+        "Pipeline 3D TRELLIS",
+        "Workflows ComfyUI FLUX",
+        "Business Lab"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "code-architecture-planner",
+      "role_type": "subagent",
+      "parent_agent": "code-lead",
+      "module": "code",
+      "feature": "project_tree_and_dependency_planning",
+      "description": "Sous-agent Code : conçoit l'arborescence multi-fichiers, le graphe d'imports et le préflight des dépendances.",
+      "permissions": "AUTONOMOUS",
+      "files_owned": [
+        "application/src/services/codePipelinePlan.ts",
+        "application/src/services/codePreflight.ts",
+        "application/src/services/codeIntentAnalyzer.ts"
+      ],
+      "routes_owned": [],
+      "never_touch": [
+        "codeDesignPolishGate.ts",
+        "codeSandbox.ts",
+        "codeDelivery.ts"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "code-design-architect",
+      "role_type": "subagent",
+      "parent_agent": "code-lead",
+      "module": "code",
+      "feature": "motion_design_ui_ux_and_webgl_shaders",
+      "description": "Sous-agent Code : garantit le Motion Design physique (cubic-bezier, stagger, spotlight, rAF Lerp), le design UI et Three.js.",
+      "permissions": "AUTONOMOUS",
+      "files_owned": [
+        "application/src/services/codeDesignPolishGate.ts",
+        "application/src/services/codeExecutorQualityContract.ts",
+        "application/src/services/codeProductShapes.ts"
+      ],
+      "routes_owned": [],
+      "never_touch": [
+        "Logique SQL/API backend",
+        "codeSandbox.ts"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "code-backend-performance",
+      "role_type": "subagent",
+      "parent_agent": "code-lead",
+      "module": "code",
+      "feature": "backend_architecture_algorithms_and_perf",
+      "description": "Sous-agent Code : optimise l'architecture Backend, les API, les requêtes SQL/async, la concurrence et la complexité algorithmique.",
+      "permissions": "AUTONOMOUS",
+      "files_owned": [
+        "application/src/services/codeBackendContract.ts",
+        "application/src/services/codeAlgorithmicGate.ts"
+      ],
+      "routes_owned": [],
+      "never_touch": [
+        "Styles CSS/Motion Design",
+        "codeSandbox.ts"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "code-fidelity-auditor",
+      "role_type": "subagent",
+      "parent_agent": "code-lead",
+      "module": "code",
+      "feature": "zero_placeholder_and_formal_ast_audit",
+      "description": "Sous-agent Code : audite la fidélité au brief, bloque tout TODO/placeholder/stub et vérifie les invariants avec SymPy/Z3.",
+      "permissions": "SAFE",
+      "files_owned": [
+        "application/src/services/codeValidation.ts",
+        "application/src/services/codeFidelityGate.ts"
+      ],
+      "routes_owned": [],
+      "never_touch": [
+        "codeSandbox.ts",
+        "codeDelivery.ts"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "code-sandbox-runner",
+      "role_type": "subagent",
+      "parent_agent": "code-lead",
+      "module": "code",
+      "feature": "polyglot_sandbox_execution_and_autorepair",
+      "description": "Sous-agent Code : exécute le code dans la sandbox 22 langages, compile (tsc/py_compile/cargo) et pilote l'auto-réparation.",
+      "permissions": "AUTONOMOUS",
+      "files_owned": [
+        "application/src/services/codeSandbox.ts",
+        "application/src/services/codeRunner.ts",
+        "application/routes/python_bp_routes.py"
+      ],
+      "routes_owned": [
+        "/api/python/run",
+        "/api/code/sandbox"
+      ],
+      "never_touch": [
+        "codeDesignPolishGate.ts",
+        "codeDelivery.ts"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "code-delivery-packager",
+      "role_type": "subagent",
+      "parent_agent": "code-lead",
+      "module": "code",
+      "feature": "ide_export_zip_and_project_delivery",
+      "description": "Sous-agent Code : assemble le livrable final, génère le README, exporte le ZIP et ouvre le projet dans l'éditeur local.",
+      "permissions": "AUTONOMOUS",
+      "files_owned": [
+        "application/src/services/codeDelivery.ts"
+      ],
+      "routes_owned": [
+        "/api/code/detect-editor",
+        "/api/code/open-folder"
+      ],
+      "never_touch": [
+        "codeOrchestrator.ts",
+        "codeSandbox.ts"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "image-lead",
+      "role_type": "master",
+      "parent_agent": "aurora-orchestrator",
+      "module": "image",
+      "feature": "module_master_image",
+      "description": "Maître du Module Image : coordonne l'expansion de prompt, FLUX.2-dev, l'édition de référence, le 8K/16K PBR et le rangement.",
+      "permissions": "AUTONOMOUS",
+      "files_owned": [
+        "application/src/views/ImageView.tsx",
+        "application/src/views/v4/AuroraV4ImageView.tsx",
+        "application/src/views/v1/AuroraV1ImageView.tsx",
+        "application/src/views/v3/AuroraV3ImageView.tsx",
+        "application/src/views/manga/MangaImageView.tsx",
+        "application/src/hooks/useImageViewLogic.ts"
+      ],
+      "routes_owned": [
+        "/api/media/generate",
+        "/api/training/image-workflow"
+      ],
+      "never_touch": [
+        "Maillages 3D GLB/STL",
+        "Exécution code sandbox",
+        "Business Lab"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "image-prompt-director",
+      "role_type": "subagent",
+      "parent_agent": "image-lead",
+      "module": "image",
+      "feature": "adaptive_prompt_expansion_and_scene_completion",
+      "description": "Sous-agent Image : développe intelligemment les prompts humains courts/vagues et préserve à 100 % les prompts détaillés.",
+      "permissions": "SAFE",
+      "files_owned": [
+        "application/src/services/imagePromptEnhancer.ts"
+      ],
+      "routes_owned": [],
+      "never_touch": [
+        "upscaleImage.ts",
+        "comfyJobMonitor.ts",
+        "aurora_output_paths.py"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "image-flux-stylist",
+      "role_type": "subagent",
+      "parent_agent": "image-lead",
+      "module": "image",
+      "feature": "flux2_comfyui_workflow_and_styles",
+      "description": "Sous-agent Image : construit et exécute les graphes ComfyUI FLUX.2-dev (flux2-dev-Q4_K_M.gguf + mistral_3_small_flux2_fp8).",
+      "permissions": "AUTONOMOUS",
+      "files_owned": [
+        "application/python-services/image_module_engine.py",
+        "application/comfy_runtime.py"
+      ],
+      "routes_owned": [
+        "/api/training/image-workflow"
+      ],
+      "never_touch": [
+        "upscaleImage.ts",
+        "comfyJobMonitor.ts"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "image-reference-researcher",
+      "role_type": "subagent",
+      "parent_agent": "image-lead",
+      "module": "image",
+      "feature": "photo_reference_conditioning_and_identity_edit",
+      "description": "Sous-agent Image : gère la reproduction et la modification fidèle de photos/personnages via ReferenceLatent et recherche visuelle.",
+      "permissions": "AUTONOMOUS",
+      "files_owned": [
+        "application/src/services/referenceVisualResearch.ts",
+        "application/src/services/visualReferenceAnalyzer.ts"
+      ],
+      "routes_owned": [
+        "/api/training/reference"
+      ],
+      "never_touch": [
+        "upscaleImage.ts",
+        "aurora_output_paths.py"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "image-upscale-16k-pbr",
+      "role_type": "subagent",
+      "parent_agent": "image-lead",
+      "module": "image",
+      "feature": "super_resolution_8k_16k_and_pbr_maps",
+      "description": "Sous-agent Image : pilote la super-résolution 2×/4K/8K/16K Ultra-Master (16384×16384) et la synthèse Normal/Roughness/AO.",
+      "permissions": "AUTONOMOUS",
+      "files_owned": [
+        "application/src/utils/upscaleImage.ts"
+      ],
+      "routes_owned": [],
+      "never_touch": [
+        "imagePromptEnhancer.ts",
+        "comfyJobMonitor.ts"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "image-job-cancellation",
+      "role_type": "subagent",
+      "parent_agent": "image-lead",
+      "module": "image",
+      "feature": "step_telemetry_queue_and_instant_abort",
+      "description": "Sous-agent Image : assure l'affichage temps réel de l'étape exacte en cours, l'inscription dans Projets/File et l'arrêt immédiat.",
+      "permissions": "AUTONOMOUS",
+      "files_owned": [
+        "application/src/services/comfyJobMonitor.ts"
+      ],
+      "routes_owned": [
+        "/api/comfy/interrupt"
+      ],
+      "never_touch": [
+        "upscaleImage.ts",
+        "imagePromptEnhancer.ts"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "image-output-organizer",
+      "role_type": "subagent",
+      "parent_agent": "image-lead",
+      "module": "image",
+      "feature": "strict_creations_vs_modifications_storage",
+      "description": "Sous-agent Image : maintient l'organisation stricte de `application/output/image/` en 2 seuls dossiers (`creations/` et `modifications/`).",
+      "permissions": "AUTONOMOUS",
+      "files_owned": [
+        "application/python-services/aurora_output_paths.py",
+        "application/routes/media_bp_routes.py"
+      ],
+      "routes_owned": [
+        "/api/media/list",
+        "/api/media/file"
+      ],
+      "never_touch": [
+        "imagePromptEnhancer.ts",
+        "upscaleImage.ts"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "drawing-lead",
+      "role_type": "master",
+      "parent_agent": "aurora-orchestrator",
+      "module": "drawing",
+      "feature": "module_master_drawing_and_forge",
+      "description": "Maître du Module Dessin & Character Forge : coordonne la toile de croquis, l'interprétation du trait, le rendu Sketch-to-Image et la Forge.",
+      "permissions": "AUTONOMOUS",
+      "files_owned": [
+        "application/src/views/DrawingView.tsx",
+        "application/src/views/v4/AuroraV4DrawingView.tsx",
+        "application/src/views/manga/MangaDrawingView.tsx",
+        "application/src/hooks/useDrawingViewLogic.ts"
+      ],
+      "routes_owned": [],
+      "never_touch": [
+        "Pipeline 3D CAO",
+        "Exécution Code Sandbox"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "drawing-canvas-stroke",
+      "role_type": "subagent",
+      "parent_agent": "drawing-lead",
+      "module": "drawing",
+      "feature": "canvas_brushes_layers_and_bezier_strokes",
+      "description": "Sous-agent Dessin : gère le moteur de toile HTML5/WebGL, les pinceaux, la pression, les calques et l'historique undo/redo.",
+      "permissions": "AUTONOMOUS",
+      "files_owned": [
+        "application/src/components/drawing/DrawingCanvas.tsx",
+        "application/src/hooks/useDrawingViewLogic.ts"
+      ],
+      "routes_owned": [],
+      "never_touch": [
+        "characterForge.ts",
+        "image_module_engine.py"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "drawing-sketch-interpreter",
+      "role_type": "subagent",
+      "parent_agent": "drawing-lead",
+      "module": "drawing",
+      "feature": "visual_sketch_analysis_and_gesture_reading",
+      "description": "Sous-agent Dessin : analyse l'intention motrice, la composition, l'anatomie et les relations d'un croquis via Qwen3-VL.",
+      "permissions": "SAFE",
+      "files_owned": [
+        "application/src/services/drawingInterpreter.ts"
+      ],
+      "routes_owned": [],
+      "never_touch": [
+        "characterForge.ts",
+        "DrawingCanvas.tsx"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "drawing-controlnet-renderer",
+      "role_type": "subagent",
+      "parent_agent": "drawing-lead",
+      "module": "drawing",
+      "feature": "sketch_to_illustration_conditioned_render",
+      "description": "Sous-agent Dessin : transforme un croquis en illustration encrée/colorisée fidèle aux lignes maîtresses de l'esquisse.",
+      "permissions": "AUTONOMOUS",
+      "files_owned": [
+        "application/src/services/drawingRenderPipeline.ts"
+      ],
+      "routes_owned": [],
+      "never_touch": [
+        "characterForge.ts",
+        "aurora_3d_pipeline.py"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "drawing-character-forge",
+      "role_type": "subagent",
+      "parent_agent": "drawing-lead",
+      "module": "drawing",
+      "feature": "character_forge_multiview_and_queue",
+      "description": "Sous-agent Dessin/Forge : orchestre la création de personnages multi-vues, la file `forgeQueueStore` et le handoff vers 3D/Vidéo.",
+      "permissions": "AUTONOMOUS",
+      "files_owned": [
+        "application/src/services/characterForge.ts",
+        "application/src/stores/forgeQueueStore.ts",
+        "application/src/components/forge/CharacterForgeBench.tsx"
+      ],
+      "routes_owned": [],
+      "never_touch": [
+        "DrawingCanvas.tsx",
+        "engineering_project.py"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "3d-lead",
+      "role_type": "master",
+      "parent_agent": "aurora-orchestrator",
+      "module": "3d",
+      "feature": "module_master_3d_cad_and_assembly",
+      "description": "Maître du Module 3D : coordonne les 10 sous-agents 3D (routage, génération TRELLIS.2, topologie/Taubin, PBR 16K, rescue, rigging, CAO, assemblage, splats et viewers).",
+      "permissions": "AUTONOMOUS",
+      "files_owned": [
+        "application/python-services/aurora_3d_pipeline.py",
+        "application/src/services/threeDSubAgentsOrchestrator.ts"
+      ],
+      "routes_owned": [
+        "/api/ext/3d/generate",
+        "/api/ext/3d/status/<job_id>",
+        "/api/3d/list",
+        "/api/3d/file/<path:fname>"
+      ],
+      "never_touch": [
+        "Code Sandbox",
+        "Business Lab",
+        "Cyber Labs"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "3d-pipeline-router",
+      "role_type": "subagent",
+      "parent_agent": "3d-lead",
+      "module": "3d",
+      "feature": "3d_intent_routing_and_edit_planning",
+      "description": "Sous-agent 3D : décide du parcours (création TRELLIS.2, modification statique/posturale d'un GLB existant, multi-entités ou CAO).",
+      "permissions": "AUTONOMOUS",
+      "files_owned": [
+        "application/src/services/threeDIntent.ts",
+        "application/src/services/threeDEditPlan.ts",
+        "application/src/services/threeDRelation.ts",
+        "application/src/services/threeDClarification.ts",
+        "application/src/services/threeDViewPlanner.ts",
+        "application/src/services/threeDReferenceSupport.ts",
+        "application/python-services/subject_kind_extractor.py"
+      ],
+      "routes_owned": [],
+      "never_touch": [
+        "mesh_postprocess.py",
+        "rigify_autorig.py",
+        "engineering_mesh.py"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "3d-neural-generator",
+      "role_type": "subagent",
+      "parent_agent": "3d-lead",
+      "module": "3d",
+      "feature": "trellis2_hunyuan_neural_shape_synthesis",
+      "description": "Sous-agent 3D : exécute la génération neurale `microsoft/TRELLIS.2-4B` / `Hunyuan3D`, l'adaptateur `modele/renforce/3d/` et l'orchestration multi-entités.",
+      "permissions": "AUTONOMOUS",
+      "files_owned": [
+        "application/python-services/hunyuan3d_run.py",
+        "application/python-services/aurora_hunyuan/",
+        "application/python-services/scene_orchestrator.py",
+        "application/python-services/flux_reference_synth.py"
+      ],
+      "routes_owned": [
+        "/api/ext/3d/generate",
+        "/api/3d/run-pipeline"
+      ],
+      "never_touch": [
+        "engineering_motion.py",
+        "ModelView.tsx"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "3d-mesh-postprocessor",
+      "role_type": "subagent",
+      "parent_agent": "3d-lead",
+      "module": "3d",
+      "feature": "uv_seam_welding_taubin_refinement_and_manifold",
+      "description": "Sous-agent 3D : soude les îlots UV sans perte (`weld_fragmented_mesh.py`), applique le filtre Taubin λ/μ à arêtes verrouillées et nettoie la topologie.",
+      "permissions": "AUTONOMOUS",
+      "files_owned": [
+        "auto_rl/weld_fragmented_mesh.py",
+        "application/python-services/mesh_postprocess.py",
+        "application/python-services/mesh_sharpen.py",
+        "application/python-services/mesh_screenshot.py",
+        "application/src/services/meshPostprocess.ts"
+      ],
+      "routes_owned": [
+        "/api/3d/mesh-sharpen"
+      ],
+      "never_touch": [
+        "rigify_autorig.py",
+        "threeDIntent.ts",
+        "engineering_connections.py"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "3d-texture-lead",
+      "role_type": "subagent",
+      "parent_agent": "3d-lead",
+      "module": "3d-texture",
+      "feature": "pbr_8k_16k_textures_uv_and_neutral_face_projection",
+      "description": "Sous-agent 3D : génère et projette les textures PBR 8K/16K (Albedo, Normal Scharr+Sobel, Roughness, AO Cavity), `COLOR_0` et `face_refine.py`.",
+      "permissions": "AUTONOMOUS",
+      "files_owned": [
+        "application/python-services/bake_vertex_colors.py",
+        "application/python-services/face_refine.py",
+        "application/python-services/mesh_color_diagnostic.py",
+        "application/src/services/pbrProfile.ts"
+      ],
+      "routes_owned": [
+        "/api/3d/bake-colors",
+        "/api/3d/color-diagnostic"
+      ],
+      "never_touch": [
+        "threeDIntent.ts",
+        "engineering_motion.py",
+        "rigify_autorig.py"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "3d-quality-rescuer",
+      "role_type": "subagent",
+      "parent_agent": "3d-lead",
+      "module": "3d",
+      "feature": "acceptance_gate_scoring_and_autonomous_rescue",
+      "description": "Sous-agent 3D : pilote `perfection_gate.py`, `mesh_quality_score.py` (5 axes) et la chaîne de sauvetage autonome (`auto_rescue_mesh.py`).",
+      "permissions": "AUTONOMOUS",
+      "files_owned": [
+        "application/python-services/perfection_gate.py",
+        "application/python-services/mesh_acceptance_gate.py",
+        "application/python-services/mesh_quality_score.py",
+        "application/python-services/auto_validate_mesh.py",
+        "application/python-services/auto_rescue_mesh.py",
+        "application/python-services/mesh_reshape.py",
+        "application/python-services/mesh_compare.py",
+        "application/python-services/mesh_batch_rescue.py",
+        "application/src/services/meshRescue.ts"
+      ],
+      "routes_owned": [
+        "/api/3d/mesh-score",
+        "/api/3d/auto-validate",
+        "/api/3d/auto-rescue",
+        "/api/3d/mesh-compare"
+      ],
+      "never_touch": [
+        "threeDIntent.ts",
+        "engineering_project.py"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "3d-motion-rigger",
+      "role_type": "subagent",
+      "parent_agent": "3d-lead",
+      "module": "3d-motion",
+      "feature": "blender_rigging_skinning_and_semantic_animation",
+      "description": "Sous-agent 3D : pilote le rigging Blender 5.1 (`rig_skin_binding.py`, `rigify_autorig.py`), l'animation déclarative (`semantic_animation.py`) et la parité `motion_parser`.",
+      "permissions": "AUTONOMOUS",
+      "files_owned": [
+        "application/python-services/rig_skin_binding.py",
+        "application/python-services/rigify_autorig.py",
+        "application/python-services/semantic_animation.py",
+        "application/python-services/motion_parser.py",
+        "application/python-services/motion_baker.py",
+        "application/python-services/blender_bridge.py",
+        "application/src/services/motionPipeline.ts",
+        "application/src/services/motionSerializer.ts",
+        "application/src/services/kinematicsLibrary.ts",
+        "application/src/services/subjectAnatomy.ts",
+        "application/src/services/humanoidAnatomy.ts"
+      ],
+      "routes_owned": [
+        "/api/3d/motion-self-test",
+        "/api/3d/motion-parser-self-test"
+      ],
+      "never_touch": [
+        "weld_fragmented_mesh.py",
+        "engineering_mesh.py"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "3d-motion-lead",
+      "role_type": "subagent",
+      "parent_agent": "3d-lead",
+      "module": "3d-motion",
+      "feature": "skeletal_animation_and_motion_coordination",
+      "description": "Pilote le rigging squelettique, le skinning et l'animation sémantique 3D en coordination avec `3d-motion-rigger`.",
+      "permissions": "AUTONOMOUS",
+      "files_owned": [
+        "application/python-services/semantic_animation.py",
+        "application/src/services/motionPipeline.ts"
+      ],
+      "routes_owned": [
+        "/api/3d/motion-self-test"
+      ],
+      "never_touch": [
+        "engineering_mesh.py",
+        "bake_vertex_colors.py"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "3d-cad-engineering",
+      "role_type": "subagent",
+      "parent_agent": "3d-lead",
+      "module": "3d",
+      "feature": "parametric_cad_3d_printing_parts_and_bom",
+      "description": "Sous-agent 3D CAO : génère les pièces paramétriques imprimables (STL), la découpe par couleur/plateau, les fixations et la nomenclature (BOM).",
+      "permissions": "AUTONOMOUS",
+      "files_owned": [
+        "application/engineering_design_api.py",
+        "application/python-services/engineering_project.py",
+        "application/python-services/engineering_mesh.py",
+        "application/python-services/engineering_color_parts.py",
+        "application/python-services/engineering_connections.py",
+        "application/src/components/3d/EngineeringDesignPanel.tsx"
+      ],
+      "routes_owned": [
+        "/api/engineering/projects",
+        "/api/engineering/design"
+      ],
+      "never_touch": [
+        "hunyuan3d_run.py",
+        "rigify_autorig.py"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "3d-assembly-kinematics",
+      "role_type": "subagent",
+      "parent_agent": "3d-lead",
+      "module": "3d",
+      "feature": "metrology_boolean_interference_and_insertion_sweep",
+      "description": "Sous-agent 3D Assemblage : calcule la métrologie (`assembly_precision`), les interférences booléennes Manifold64 et le contrôle continu d'insertion.",
+      "permissions": "AUTONOMOUS",
+      "files_owned": [
+        "application/python-services/engineering_motion.py"
+      ],
+      "routes_owned": [
+        "/api/engineering/insertion-check"
+      ],
+      "never_touch": [
+        "hunyuan3d_run.py",
+        "bake_vertex_colors.py"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "3d-splat-telemetry",
+      "role_type": "subagent",
+      "parent_agent": "3d-lead",
+      "module": "3d",
+      "feature": "live_gaussian_splat_preview_and_stl_telemetry",
+      "description": "Sous-agent 3D Temps Réel : pilote le rendu de prévisualisation par Splats Gaussiens 3D (`HolographicSplatLoader.tsx`) depuis les STL réels.",
+      "permissions": "SAFE",
+      "files_owned": [
+        "application/src/components/3d/HolographicSplatLoader.tsx",
+        "application/src/services/threeDSubAgentsOrchestrator.ts"
+      ],
+      "routes_owned": [],
+      "never_touch": [
+        "engineering_mesh.py",
+        "hunyuan3d_run.py"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "3d-viewer-lead",
+      "role_type": "subagent",
+      "parent_agent": "3d-lead",
+      "module": "3d-viewer",
+      "feature": "threejs_viewers_exploded_view_and_xyz_section",
+      "description": "Sous-agent 3D Viewer : garantit l'affichage dans `ModelView.tsx`, `project_viewer.html` et `engineering_viewer.html` (éclaté 3D, coupe X/Y/Z, optique PBR).",
+      "permissions": "AUTONOMOUS",
+      "files_owned": [
+        "application/src/views/ModelView.tsx",
+        "application/src/views/v4/AuroraV4ModelView.tsx",
+        "application/src/views/manga/MangaModelView.tsx",
+        "application/python-services/aurora_3d_viewer.py",
+        "application/python-services/project_viewer.html",
+        "application/python-services/engineering_viewer.html",
+        "application/python-services/mesh_run_index.py"
+      ],
+      "routes_owned": [
+        "/api/3d/list",
+        "/api/3d/file/<path:fname>",
+        "/api/3d/viewer-html",
+        "/api/3d/run-index"
+      ],
+      "never_touch": [
+        "hunyuan3d_run.py",
+        "rigify_autorig.py"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "video-lead",
+      "role_type": "master",
+      "parent_agent": "aurora-orchestrator",
+      "module": "video",
+      "feature": "module_master_video_and_cinema",
+      "description": "Maître du Module Vidéo : coordonne le storyboard cinématographique, la synthèse Wan2.2 5B, HY-Motion et le lip-sync vidéo.",
+      "permissions": "AUTONOMOUS",
+      "files_owned": [
+        "application/src/views/VideoView.tsx",
+        "application/src/views/v4/AuroraV4VideoView.tsx",
+        "application/src/views/manga/MangaVideoView.tsx",
+        "application/src/services/cinemaApi.ts"
+      ],
+      "routes_owned": [
+        "/api/video/generate",
+        "/api/cinema/render"
+      ],
+      "never_touch": [
+        "CAO 3D STL",
+        "Code Sandbox",
+        "Business Lab"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "video-storyboard-director",
+      "role_type": "subagent",
+      "parent_agent": "video-lead",
+      "module": "video",
+      "feature": "cinematic_storyboard_shotlist_and_pacing",
+      "description": "Sous-agent Vidéo : décompose le brief en plans numérotés, valeurs de cadre, mouvements de caméra, raccords et rythme.",
+      "permissions": "SAFE",
+      "files_owned": [
+        "application/src/services/cinema/storyboardPlanner.ts"
+      ],
+      "routes_owned": [],
+      "never_touch": [
+        "video_generate.py",
+        "hymotion_infer.py"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "video-motion-director",
+      "role_type": "subagent",
+      "parent_agent": "video-lead",
+      "module": "video",
+      "feature": "wan22_temporal_video_generation",
+      "description": "Sous-agent Vidéo : pilote `Wan-AI/Wan2.2-TI2V-5B`, les presets de mouvement caméra et la cohérence temporelle inter-trames.",
+      "permissions": "AUTONOMOUS",
+      "files_owned": [
+        "application/python-services/video_generate.py",
+        "auto_rl/temporal_backend.py",
+        "auto_rl/temporal_judges.py"
+      ],
+      "routes_owned": [
+        "/api/video/generate"
+      ],
+      "never_touch": [
+        "hymotion_infer.py",
+        "voice_service.py"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "video-hymotion-kinematics",
+      "role_type": "subagent",
+      "parent_agent": "video-lead",
+      "module": "video",
+      "feature": "hymotion_skeletal_motion_synthesis",
+      "description": "Sous-agent Vidéo/Animation : pilote `tencent/HY-Motion-1.0` pour la synthèse de mouvements squelettiques 3D/temporels.",
+      "permissions": "AUTONOMOUS",
+      "files_owned": [
+        "auto_rl/hymotion_infer.py",
+        "auto_rl/motion_viewer.py"
+      ],
+      "routes_owned": [],
+      "never_touch": [
+        "video_generate.py",
+        "voice_service.py"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "video-talking-head",
+      "role_type": "subagent",
+      "parent_agent": "video-lead",
+      "module": "video",
+      "feature": "talking_head_musetalk_sadtalker_and_av_mux",
+      "description": "Sous-agent Vidéo : anime les visages parlants (`MuseTalk` / `SadTalker`) et multiplexe la piste audio Kokoro avec le flux MP4.",
+      "permissions": "AUTONOMOUS",
+      "files_owned": [
+        "application/python-services/talking_head_engine.py"
+      ],
+      "routes_owned": [],
+      "never_touch": [
+        "voice_service.py (géré par voice-lead)",
+        "video_generate.py"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "voice-lead",
+      "role_type": "master",
+      "parent_agent": "aurora-orchestrator",
+      "module": "voice",
+      "feature": "module_master_voice_and_audio",
+      "description": "Maître du Module Voix : coordonne la transcription Whisper STT, la synthèse Kokoro TTS, le lip-sync Rhubarb et le mode duplex Live.",
+      "permissions": "AUTONOMOUS",
+      "files_owned": [
+        "application/src/views/VoiceCopilotView.tsx",
+        "application/routes/voice_bp_routes.py"
+      ],
+      "routes_owned": [
+        "/api/voice/stt",
+        "/api/voice/tts",
+        "/api/voice/lipsync",
+        "/api/voice/status"
+      ],
+      "never_touch": [
+        "Génération 3D",
+        "Code Sandbox",
+        "Business Lab"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "voice-stt-transcriber",
+      "role_type": "subagent",
+      "parent_agent": "voice-lead",
+      "module": "voice",
+      "feature": "whisper_stt_vad_and_noise_suppression",
+      "description": "Sous-agent Voix : gère la capture micro, la détection d'activité vocale (VAD) et la transcription `faster-whisper-large-v3`.",
+      "permissions": "AUTONOMOUS",
+      "files_owned": [
+        "application/python-services/voice_stt_engine.py"
+      ],
+      "routes_owned": [
+        "/api/voice/stt"
+      ],
+      "never_touch": [
+        "useVoiceLive.ts",
+        "voice_lipsync.py"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "voice-tts-stt-tuner",
+      "role_type": "subagent",
+      "parent_agent": "voice-lead",
+      "module": "voice",
+      "feature": "kokoro_tts_french_phonetics_and_prosody",
+      "description": "Sous-agent Voix : pilote la synthèse `hexgrad/Kokoro-82M`, la phonétique française (liaisons, homophones) et le contrôle ASR Whisper.",
+      "permissions": "AUTONOMOUS",
+      "files_owned": [
+        "application/python-services/voice_service.py"
+      ],
+      "routes_owned": [
+        "/api/voice/tts"
+      ],
+      "never_touch": [
+        "useVoiceLive.ts",
+        "ConversationView.tsx"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "voice-lipsync",
+      "role_type": "subagent",
+      "parent_agent": "voice-lead",
+      "module": "voice",
+      "feature": "rhubarb_viseme_extraction_and_avatar_sync",
+      "description": "Sous-agent Voix : extrait les visèmes temporels (A-X) via Rhubarb et pilote l'animation labiale des avatars UI/3D.",
+      "permissions": "AUTONOMOUS",
+      "files_owned": [
+        "application/python-services/voice_lipsync.py",
+        "application/src/utils/lipSyncPlayer.ts"
+      ],
+      "routes_owned": [
+        "/api/voice/lipsync"
+      ],
+      "never_touch": [
+        "voice_service.py",
+        "useVoiceLive.ts"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "voice-live-duplex",
+      "role_type": "subagent",
+      "parent_agent": "voice-lead",
+      "module": "voice",
+      "feature": "full_duplex_voice_session_and_barge_in",
+      "description": "Sous-agent Voix : gère la boucle vocale interactive `useVoiceLive.ts`, le push-to-talk, le barge-in et la compatibilité HTTPS/tunnel.",
+      "permissions": "AUTONOMOUS",
+      "files_owned": [
+        "application/src/hooks/useVoiceLive.ts",
+        "application/src/views/VoiceCopilotView.tsx"
+      ],
+      "routes_owned": [],
+      "never_touch": [
+        "voice_service.py",
+        "conversationOrchestrator.ts"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "learning-lead",
+      "role_type": "master",
+      "parent_agent": "aurora-orchestrator",
+      "module": "learning",
+      "feature": "module_master_learning_and_academy",
+      "description": "Maître du Module Academy : coordonne l'oracle formel SymPy/Z3, le corpus académique/Bac, la vérification de quiz et les labs scientifiques.",
+      "permissions": "AUTONOMOUS",
+      "files_owned": [
+        "application/src/views/LearningView.tsx",
+        "application/src/views/v4/AuroraV4LearningView.tsx",
+        "application/src/views/manga/MangaAcademyView.tsx"
+      ],
+      "routes_owned": [
+        "/api/learning/courses",
+        "/api/learning/quiz",
+        "/api/learning/anki"
+      ],
+      "never_touch": [
+        "Pipeline 3D",
+        "Business Lab",
+        "Cyber Labs"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "learning-formal-oracle",
+      "role_type": "subagent",
+      "parent_agent": "learning-lead",
+      "module": "learning",
+      "feature": "sympy_z3_formal_proofs_and_counterexamples",
+      "description": "Sous-agent Academy : vérifie formellement les théorèmes, calculs algébriques et équations via `scientific_oracle.py` (SymPy + Z3).",
+      "permissions": "AUTONOMOUS",
+      "files_owned": [
+        "application/python-services/scientific_oracle.py"
+      ],
+      "routes_owned": [
+        "/api/cli/epistemic/evaluate"
+      ],
+      "never_touch": [
+        "bac_resources.py",
+        "anki_export.py"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "learning-bac-curator",
+      "role_type": "subagent",
+      "parent_agent": "learning-lead",
+      "module": "learning",
+      "feature": "academic_curricula_bac_resources_and_lessons",
+      "description": "Sous-agent Academy : structure les cours, annales du Bac, fiches méthodologiques et recherches documentaires académiques.",
+      "permissions": "AUTONOMOUS",
+      "files_owned": [
+        "application/src/services/learning/bacResources.ts",
+        "application/src/services/learning/learningResearch.ts",
+        "application/python-services/bac_resources.py"
+      ],
+      "routes_owned": [
+        "/api/learning/courses"
+      ],
+      "never_touch": [
+        "flashcardVerification.ts",
+        "scientific_oracle.py"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "learning-quiz-verifier",
+      "role_type": "subagent",
+      "parent_agent": "learning-lead",
+      "module": "learning",
+      "feature": "quiz_generation_semantic_grading_and_anki_export",
+      "description": "Sous-agent Academy : génère et vérifie les QCM, flashcards, évaluations sémantiques d'élèves et exports Anki `.apkg`.",
+      "permissions": "AUTONOMOUS",
+      "files_owned": [
+        "application/src/services/learning/flashcardVerification.ts",
+        "application/src/services/learning/learningSemanticEval.ts",
+        "application/python-services/anki_export.py"
+      ],
+      "routes_owned": [
+        "/api/learning/quiz",
+        "/api/learning/anki"
+      ],
+      "never_touch": [
+        "bac_resources.py",
+        "physicsEngine.ts"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "learning-lab-integrator",
+      "role_type": "subagent",
+      "parent_agent": "learning-lead",
+      "module": "learning",
+      "feature": "interactive_science_labs_ui_integration",
+      "description": "Sous-agent Academy : pilote les vues de laboratoires interactifs (`LabPhysics`, `LabChemistry`, `LabAstronomy`, `LabElectronics`).",
+      "permissions": "AUTONOMOUS",
+      "files_owned": [
+        "application/src/views/learning/LabPhysics.tsx",
+        "application/src/views/learning/LabChemistry.tsx",
+        "application/src/views/learning/LabAstronomy.tsx",
+        "application/src/views/learning/LabElectronics.tsx"
+      ],
+      "routes_owned": [],
+      "never_touch": [
+        "application/src/services/simulator/ (géré par simulator-lead)"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "simulator-lead",
+      "role_type": "master",
+      "parent_agent": "aurora-orchestrator",
+      "module": "simulator",
+      "feature": "module_master_simulator",
+      "description": "Maître du Module Simulateur : coordonne la dynamique des corps rigides, les fluides/particules, la chimie et la sérialisation de scènes.",
+      "permissions": "AUTONOMOUS",
+      "files_owned": [
+        "application/src/services/simulator/types.ts"
+      ],
+      "routes_owned": [],
+      "never_touch": [
+        "Pipeline 3D TRELLIS",
+        "Business Lab"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "simulator-physics-engine",
+      "role_type": "subagent",
+      "parent_agent": "simulator-lead",
+      "module": "simulator",
+      "feature": "rigid_body_dynamics_and_symplectic_integrators",
+      "description": "Sous-agent Simulateur : implémente la mécanique newtonienne/lagrangienne, les collisions et les contraintes dans `physicsEngine.ts`.",
+      "permissions": "AUTONOMOUS",
+      "files_owned": [
+        "application/src/services/simulator/physicsEngine.ts",
+        "application/src/services/simulator/phenomena.ts"
+      ],
+      "routes_owned": [],
+      "never_touch": [
+        "sceneIO.ts",
+        "chemistryReactions.ts"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "simulator-fluid-particles",
+      "role_type": "subagent",
+      "parent_agent": "simulator-lead",
+      "module": "simulator",
+      "feature": "sph_fluid_solver_and_particle_systems",
+      "description": "Sous-agent Simulateur : gère la mécanique des fluides (`fluidSolver.ts`) et la dynamique des systèmes de particules (`particleSystem.ts`).",
+      "permissions": "AUTONOMOUS",
+      "files_owned": [
+        "application/src/services/simulator/fluidSolver.ts",
+        "application/src/services/simulator/particleSystem.ts"
+      ],
+      "routes_owned": [],
+      "never_touch": [
+        "physicsEngine.ts",
+        "sceneIO.ts"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "simulator-chemistry-electronics",
+      "role_type": "subagent",
+      "parent_agent": "simulator-lead",
+      "module": "simulator",
+      "feature": "chemical_kinetics_stoichiometry_and_circuits",
+      "description": "Sous-agent Simulateur : modélise les réactions chimiques, la stœchiométrie, l'enthalpie et les lois de circuits.",
+      "permissions": "AUTONOMOUS",
+      "files_owned": [
+        "application/src/services/simulator/chemistryReactions.ts"
+      ],
+      "routes_owned": [],
+      "never_touch": [
+        "physicsEngine.ts",
+        "fluidSolver.ts"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "simulator-scene-io",
+      "role_type": "subagent",
+      "parent_agent": "simulator-lead",
+      "module": "simulator",
+      "feature": "scene_serialization_presets_and_store",
+      "description": "Sous-agent Simulateur : gère le chargement/sauvegarde de scènes (`sceneIO.ts`), le store (`sceneStore.ts`) et les presets (`presets.ts`).",
+      "permissions": "AUTONOMOUS",
+      "files_owned": [
+        "application/src/services/simulator/sceneIO.ts",
+        "application/src/services/simulator/sceneStore.ts",
+        "application/src/services/simulator/presets.ts",
+        "application/src/services/simulator/defaults.ts"
+      ],
+      "routes_owned": [],
+      "never_touch": [
+        "physicsEngine.ts",
+        "fluidSolver.ts"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "cyber-lead",
+      "role_type": "master",
+      "parent_agent": "aurora-orchestrator",
+      "module": "cyber",
+      "feature": "module_master_cybersecurity",
+      "description": "Maître du Module Cyber : coordonne l'exécution symbolique Z3/0-day, le patch en boucle fermée, les 9 labs Cyber, PyOps et l'audit réseau.",
+      "permissions": "AUTONOMOUS",
+      "files_owned": [
+        "application/src/views/CyberView.tsx",
+        "application/src/views/v4/AuroraV4CyberView.tsx"
+      ],
+      "routes_owned": [
+        "/api/cyber/run",
+        "/api/cyber/audit"
+      ],
+      "never_touch": [
+        "Pipeline 3D",
+        "Business Lab",
+        "Workflows FLUX"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "cyber-symbolic-zeroday",
+      "role_type": "subagent",
+      "parent_agent": "cyber-lead",
+      "module": "cyber",
+      "feature": "ast_cfg_symbolic_execution_and_z3_zeroday",
+      "description": "Sous-agent Cyber : extrait l'AST/CFG et résout les contraintes d'atteignabilité SMT Z3 pour découvrir les 0-days par premiers principes.",
+      "permissions": "AUTONOMOUS",
+      "files_owned": [
+        "application/src/services/cyber/symbolicExecutionEngine.ts",
+        "application/src/services/cyber/dynamicZeroDayEngine.ts",
+        "application/src/views/cyber/SymbolicExecutionLab.tsx",
+        "application/src/views/cyber/DynamicZeroDayLab.tsx"
+      ],
+      "routes_owned": [],
+      "never_touch": [
+        "closedLoopPatchEngine.ts",
+        "_safety.py"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "cyber-closedloop-patcher",
+      "role_type": "subagent",
+      "parent_agent": "cyber-lead",
+      "module": "cyber",
+      "feature": "automated_vulnerability_patching_and_reverification",
+      "description": "Sous-agent Cyber : génère les correctifs de sécurité minimaux (`closedLoopPatchEngine.ts`) et re-teste le PoC jusqu'à preuve UNSAT.",
+      "permissions": "AUTONOMOUS",
+      "files_owned": [
+        "application/src/services/cyber/closedLoopPatchEngine.ts"
+      ],
+      "routes_owned": [],
+      "never_touch": [
+        "symbolicExecutionEngine.ts",
+        "_safety.py"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "cyber-lab-builder",
+      "role_type": "subagent",
+      "parent_agent": "cyber-lead",
+      "module": "cyber",
+      "feature": "nine_interactive_cyber_labs_ui_and_services",
+      "description": "Sous-agent Cyber : maintient les 9 laboratoires spécialisés (CTF, Crypto, Forensics, Hash, Network, Password, Stego, ThreatIntel, WebSec).",
+      "permissions": "AUTONOMOUS",
+      "files_owned": [
+        "application/src/views/cyber/",
+        "application/src/services/cyber/"
+      ],
+      "routes_owned": [],
+      "never_touch": [
+        "application/python-services/cyber/_safety.py"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "cyber-pyops-keeper",
+      "role_type": "subagent",
+      "parent_agent": "cyber-lead",
+      "module": "cyber",
+      "feature": "sandboxed_python_security_ops_and_safety_gate",
+      "description": "Sous-agent Cyber : gère les scripts Python `application/python-services/cyber/` et le garde-fou central `_safety.py`.",
+      "permissions": "AUTONOMOUS",
+      "files_owned": [
+        "application/python-services/cyber/",
+        "application/routes/cyber_bp_routes.py"
+      ],
+      "routes_owned": [
+        "/api/cyber/run",
+        "/api/cyber/audit"
+      ],
+      "never_touch": [
+        "views/cyber/"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "cyber-network-recon",
+      "role_type": "subagent",
+      "parent_agent": "cyber-lead",
+      "module": "cyber",
+      "feature": "network_protocol_audit_posix_and_cve_intel",
+      "description": "Sous-agent Cyber : analyse les configurations réseau IPv4/IPv6, permissions POSIX, règles pare-feu et corrélations CVE/CWE.",
+      "permissions": "SAFE",
+      "files_owned": [
+        "application/src/services/cyber/threatIntelService.ts",
+        "application/src/services/cyber/networkAuditService.ts"
+      ],
+      "routes_owned": [],
+      "never_touch": [
+        "_safety.py",
+        "closedLoopPatchEngine.ts"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "cowork-lead",
+      "role_type": "master",
+      "parent_agent": "aurora-orchestrator",
+      "module": "cowork",
+      "feature": "module_master_cowork_and_automation",
+      "description": "Maître du Module Cowork : coordonne l'orchestrateur multi-étapes, l'extension Chrome MV3, l'audit de sécurité d'action et l'extraction documentaire.",
+      "permissions": "AUTONOMOUS",
+      "files_owned": [
+        "application/src/services/coworkOrchestrator.ts",
+        "application/routes/cowork_ext_bp_routes.py"
+      ],
+      "routes_owned": [
+        "/api/cowork/plan",
+        "/api/cowork/execute",
+        "/api/ext/do"
+      ],
+      "never_touch": [
+        "Pipeline 3D",
+        "Business Lab"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "cowork-orchestrator-tuner",
+      "role_type": "subagent",
+      "parent_agent": "cowork-lead",
+      "module": "cowork",
+      "feature": "multistep_action_planning_and_execution_dag",
+      "description": "Sous-agent Cowork : gère le planificateur (`coworkPlanner.ts`), l'exécuteur (`coworkExecutor.ts`) et le passage de relais inter-agents.",
+      "permissions": "AUTONOMOUS",
+      "files_owned": [
+        "application/src/services/coworkPlanner.ts",
+        "application/src/services/coworkExecutor.ts",
+        "application/src/services/coworkOrchestrator.ts"
+      ],
+      "routes_owned": [
+        "/api/cowork/plan",
+        "/api/cowork/execute"
+      ],
+      "never_touch": [
+        "coworkConnectors.ts",
+        "coworkSafety.ts"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "cowork-connector-keeper",
+      "role_type": "subagent",
+      "parent_agent": "cowork-lead",
+      "module": "cowork",
+      "feature": "chrome_mv3_extension_and_app_connectors",
+      "description": "Sous-agent Cowork : maintient `coworkConnectors.ts` et l'extension Chrome Manifest V3 (`application/extension/`, `extension_chrome/`).",
+      "permissions": "AUTONOMOUS",
+      "files_owned": [
+        "application/src/services/coworkConnectors.ts",
+        "application/extension/",
+        "application/aurora-connect-extension/",
+        "extension_chrome/"
+      ],
+      "routes_owned": [
+        "/api/ext/ping",
+        "/api/ext/do"
+      ],
+      "never_touch": [
+        "coworkPlanner.ts",
+        "coworkSafety.ts"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "cowork-safety-auditor",
+      "role_type": "subagent",
+      "parent_agent": "cowork-lead",
+      "module": "cowork",
+      "feature": "action_permission_gate_and_dom_safety",
+      "description": "Sous-agent Cowork : audite la sécurité des actions automatisées (`coworkSafety.ts`), bloque les actions destructrices non confirmées.",
+      "permissions": "SAFE",
+      "files_owned": [
+        "application/src/services/coworkSafety.ts"
+      ],
+      "routes_owned": [],
+      "never_touch": [
+        "coworkConnectors.ts",
+        "coworkPlanner.ts"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "cowork-doc-extractor",
+      "role_type": "subagent",
+      "parent_agent": "cowork-lead",
+      "module": "cowork",
+      "feature": "document_pdf_csv_ingestion_and_aggregation",
+      "description": "Sous-agent Cowork : ingère et vérifie les fichiers PDF, DOCX, CSV (`inspect_csv`, `csv_json`) et dossiers de travail.",
+      "permissions": "AUTONOMOUS",
+      "files_owned": [
+        "application/routes/extract_bp_routes.py"
+      ],
+      "routes_owned": [
+        "/api/extract/document"
+      ],
+      "never_touch": [
+        "coworkConnectors.ts",
+        "extension/"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "business-ceo",
+      "role_type": "master",
+      "parent_agent": "aurora-orchestrator",
+      "module": "business",
+      "feature": "module_master_business_intelligence",
+      "description": "Maître du Module Business (CEO Agent) : coordonne les 9 sous-agents économiques (Marché, Finance, Risque, Entreprise, Quant, Macro, Tech, Critic, Audit).",
+      "permissions": "AUTONOMOUS",
+      "files_owned": [
+        "application/business_intelligence.py",
+        "application/python-services/business_engine.py",
+        "application/src/views/BusinessView.tsx"
+      ],
+      "routes_owned": [
+        "/api/business/overview",
+        "/api/business/council/deliberate"
+      ],
+      "never_touch": [
+        "Pipeline 3D",
+        "Workflows ComfyUI",
+        "Cyber Labs"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "business-market-research",
+      "role_type": "subagent",
+      "parent_agent": "business-ceo",
+      "module": "business",
+      "feature": "live_market_feeds_and_competitive_intelligence",
+      "description": "Sous-agent Business : gère les flux de marché en direct (BCE, Binance, CoinGecko, Yahoo Finance) et l'analyse de la demande/CAC.",
+      "permissions": "AUTONOMOUS",
+      "files_owned": [
+        "application/python-services/business_engine.py"
+      ],
+      "routes_owned": [
+        "/api/business/market/quotes"
+      ],
+      "never_touch": [
+        "IndependentRiskManager",
+        "Walk-Forward trainer"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "business-financial-analyst",
+      "role_type": "subagent",
+      "parent_agent": "business-ceo",
+      "module": "business",
+      "feature": "unit_economics_dso_tax_and_beginner_net_mode",
+      "description": "Sous-agent Business : calcule coûts, marges, BFR (DSO), fiscalité et assure la traduction nette en poche pour le Mode Débutant.",
+      "permissions": "AUTONOMOUS",
+      "files_owned": [
+        "application/python-services/business_engine.py",
+        "application/src/views/BusinessView.tsx"
+      ],
+      "routes_owned": [
+        "/api/business/live/viability"
+      ],
+      "never_touch": [
+        "Connecteurs Binance/Yahoo",
+        "Validation Walk-Forward ML"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "business-risk-manager",
+      "role_type": "subagent",
+      "parent_agent": "business-ceo",
+      "module": "business",
+      "feature": "deterministic_risk_manager_veto_and_killswitch",
+      "description": "Sous-agent Business : exécute `IndependentRiskManager` (non-LLM), le droit de veto absolu (réserve >= 25%, ruine <= 2%) et l'arrêt d'urgence.",
+      "permissions": "SAFE",
+      "files_owned": [
+        "application/python-services/business_engine.py"
+      ],
+      "routes_owned": [
+        "/api/business/live/governance"
+      ],
+      "never_touch": [
+        "UI styling",
+        "Création d'offres commerciales"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "business-entrepreneur",
+      "role_type": "subagent",
+      "parent_agent": "business-ceo",
+      "module": "business",
+      "feature": "virtual_ventures_portfolio_and_live_lab_actions",
+      "description": "Sous-agent Business : pilote les entreprises numériques virtuelles (SaaS, B2B, e-commerce) et les actions en direct du Business Lab.",
+      "permissions": "AUTONOMOUS",
+      "files_owned": [
+        "application/business_intelligence.py"
+      ],
+      "routes_owned": [
+        "/api/business/lab/portfolio",
+        "/api/business/lab/live-tick",
+        "/api/business/lab/action"
+      ],
+      "never_touch": [
+        "IndependentRiskManager",
+        "Chaîne d'audit SHA-256"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "business-quant",
+      "role_type": "subagent",
+      "parent_agent": "business-ceo",
+      "module": "business",
+      "feature": "walk_forward_backtest_monte_carlo_and_anti_martingale",
+      "description": "Sous-agent Business : exécute le découpage Walk-Forward (60/20/20), les simulations Monte-Carlo à queues épaisses et l'optimisation bayésienne.",
+      "permissions": "AUTONOMOUS",
+      "files_owned": [
+        "application/python-services/business_engine.py",
+        "notebooks/aurora_business_rl_training.ipynb"
+      ],
+      "routes_owned": [
+        "/api/business/lab/simulate",
+        "/api/business/lab/train"
+      ],
+      "never_touch": [
+        "Mode Débutant UI",
+        "Connecteurs HTTP bruts"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "business-economist",
+      "role_type": "subagent",
+      "parent_agent": "business-ceo",
+      "module": "business",
+      "feature": "macroeconomic_regimes_inflation_and_stress_scenarios",
+      "description": "Sous-agent Business : modélise l'inflation, les taux directeurs BCE/Fed, la fiscalité et les stress tests macroéconomiques (2008, 2022).",
+      "permissions": "SAFE",
+      "files_owned": [
+        "application/python-services/business_engine.py"
+      ],
+      "routes_owned": [],
+      "never_touch": [
+        "Exécution d'ordres",
+        "UI React"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "business-technical",
+      "role_type": "subagent",
+      "parent_agent": "business-ceo",
+      "module": "business",
+      "feature": "resilient_business_api_fetch_chat_copilot_and_quotas",
+      "description": "Sous-agent Business : maintient le client résilient `businessApiFetch`, le Copilote Conversationnel (`/api/business/chat`) et les quotas cloud.",
+      "permissions": "AUTONOMOUS",
+      "files_owned": [
+        "application/src/views/BusinessView.tsx",
+        "application/business_intelligence.py"
+      ],
+      "routes_owned": [
+        "/api/business/chat",
+        "/api/business/compute/quotas"
+      ],
+      "never_touch": [
+        "Calculs fiscaux",
+        "Droit de veto Risk Manager"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "business-critic",
+      "role_type": "subagent",
+      "parent_agent": "business-ceo",
+      "module": "business",
+      "feature": "economic_red_team_survivorship_bias_and_hidden_costs",
+      "description": "Sous-agent Business : contradicteur systématique (Red-Team économique), débusque biais de survie, retards clients et coûts cachés.",
+      "permissions": "SAFE",
+      "files_owned": [
+        "application/python-services/business_engine.py"
+      ],
+      "routes_owned": [],
+      "never_touch": [
+        "Promotion de modèle",
+        "UI React"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "business-auditor",
+      "role_type": "subagent",
+      "parent_agent": "business-ceo",
+      "module": "business",
+      "feature": "sha256_audit_chain_data_provenance_and_model_gate",
+      "description": "Sous-agent Business : vérifie la chaîne d'audit SQLite SHA-256, la provenance des cotations et la porte de promotion/rollback des modèles.",
+      "permissions": "SAFE",
+      "files_owned": [
+        "application/python-services/business_engine.py"
+      ],
+      "routes_owned": [],
+      "never_touch": [
+        "Création d'offres",
+        "UI React"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "training-lead",
+      "role_type": "master",
+      "parent_agent": "aurora-orchestrator",
+      "module": "training",
+      "feature": "module_master_auto_rl_and_reinforced_models",
+      "description": "Maître du Module Entraînement & Modèles Renforcés : coordonne les cycles nocturnes, Kaggle 2×T4, le Flow-Matching DPO 3D, l'audit RTX 5070 Ti et `modele/renforce/`.",
+      "permissions": "AUTONOMOUS",
+      "files_owned": [
+        "auto_rl/config.py",
+        "auto_rl/cli.py",
+        "modele/renforce/GAINS_MODELES_RENFORCES.md"
+      ],
+      "routes_owned": [
+        "/api/training/status",
+        "/api/training/ui",
+        "/api/models/reinforced-status"
+      ],
+      "never_touch": [
+        "Poids des modèles de base intouchables (`modele/huggingface/`, `modele/comfyui/`)"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "training-control-supervisor",
+      "role_type": "subagent",
+      "parent_agent": "training-lead",
+      "module": "training",
+      "feature": "campaign_supervisor_locks_and_stop_after_cycle",
+      "description": "Sous-agent Training : gère le démon `auto_rl/control.py`, les verrous exclusifs, l'arrêt immédiat (`stop`) et l'arrêt en fin de cycle (`stop_after_cycle`).",
+      "permissions": "AUTONOMOUS",
+      "files_owned": [
+        "auto_rl/control.py",
+        "auto_rl/campaign.py",
+        "auto_rl/resources.py"
+      ],
+      "routes_owned": [
+        "/api/training/control/<action>",
+        "/api/models/training-stop",
+        "/api/models/training-start"
+      ],
+      "never_touch": [
+        "autonomous_train.py",
+        "reinforced_registry.py"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "training-kaggle-cloud",
+      "role_type": "subagent",
+      "parent_agent": "training-lead",
+      "module": "training",
+      "feature": "kaggle_dual_t4_cloud_dispatch_and_quota_guard",
+      "description": "Sous-agent Training : orchestre l'envoi des kernels sur Kaggle Double GPU (`gpu_t4_x2` = 30 Go VRAM), vérifie les quotas et rapatrie les poids.",
+      "permissions": "AUTONOMOUS",
+      "files_owned": [
+        "auto_rl/cloud.py",
+        "auto_rl/cloud_worker.py",
+        "auto_rl/kaggle_bridge.py",
+        "kaggle_sync/"
+      ],
+      "routes_owned": [],
+      "never_touch": [
+        "judges.py",
+        "reinforced_registry.py"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "training-3d-flow-dpo",
+      "role_type": "subagent",
+      "parent_agent": "training-lead",
+      "module": "training",
+      "feature": "trellis2_pareto_flow_matching_dpo_and_500k_pack",
+      "description": "Sous-agent Training 3D : pilote l'algorithme Pareto Flow-Matching DPO + Rectified Velocity Consistency sur `SparseStructureFlowModel` (1.3B) et le pack `TRELLIS-500K`.",
+      "permissions": "AUTONOMOUS",
+      "files_owned": [
+        "auto_rl/autonomous_train.py",
+        "auto_rl/dominance.py",
+        "auto_rl/failure_memory.py",
+        "modele/renforce/3d/datasets/TRELLIS-500K/"
+      ],
+      "routes_owned": [],
+      "never_touch": [
+        "control.py",
+        "ReinforcedModelBanner.tsx"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "training-multi-module-dpo",
+      "role_type": "subagent",
+      "parent_agent": "training-lead",
+      "module": "training",
+      "feature": "dpo_and_surrogate_es_for_image_code_cyber_voice_video",
+      "description": "Sous-agent Training Multi-Modules : entraîne les adaptateurs LoRA/DPO/Surrogate ES pour Image, Code, Cyber, Conversation, Cowork, Academy, Audio, Vidéo et Animation.",
+      "permissions": "AUTONOMOUS",
+      "files_owned": [
+        "auto_rl/preference_cycle.py",
+        "auto_rl/preference_train.py",
+        "auto_rl/lora.py",
+        "auto_rl/adapters.py",
+        "auto_rl/strategy.py",
+        "auto_rl/curriculum.py",
+        "auto_rl/challenge_curriculum.py",
+        "auto_rl/learning_curriculum.py",
+        "auto_rl/temporal_tasks.py"
+      ],
+      "routes_owned": [],
+      "never_touch": [
+        "autonomous_train.py",
+        "control.py"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "training-audit-evaluator",
+      "role_type": "subagent",
+      "parent_agent": "training-lead",
+      "module": "training",
+      "feature": "rtx_5070_ti_96_mesh_audit_and_moller_bvh_metrics",
+      "description": "Sous-agent Training Audit : exécute l'audit local sur RTX 5070 Ti (96 maillages 3D / oracles multi-graines), le test BVH de Möller et le juge CLIP 4-vues.",
+      "permissions": "SAFE",
+      "files_owned": [
+        "auto_rl/evaluation.py",
+        "auto_rl/judges.py",
+        "auto_rl/mesh_metrics.py",
+        "auto_rl/render_mesh.py",
+        "auto_rl/lineage.py"
+      ],
+      "routes_owned": [
+        "/api/training/review/<run_id>",
+        "/api/training/samples/<run_id>"
+      ],
+      "never_touch": [
+        "autonomous_train.py",
+        "cloud.py"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "training-reinforced-registry",
+      "role_type": "subagent",
+      "parent_agent": "training-lead",
+      "module": "training",
+      "feature": "modele_renforce_storage_gains_md_and_ui_selector",
+      "description": "Sous-agent Training Registre : synchronise `/home/juan/AuroraIA/modele/renforce/<module>/`, génère les fiches `GAINS.md` et pilote le sélecteur UI Base ↔ Renforcé.",
+      "permissions": "AUTONOMOUS",
+      "files_owned": [
+        "auto_rl/reinforced_registry.py",
+        "auto_rl/versions.py",
+        "auto_rl/integration.py",
+        "auto_rl/runtime.py",
+        "auto_rl/serve.py",
+        "auto_rl/image_runtime.py",
+        "application/src/components/common/ReinforcedModelBanner.tsx"
+      ],
+      "routes_owned": [
+        "/api/models/reinforced-status",
+        "/api/models/reinforced-select",
+        "/api/training/selection"
+      ],
+      "never_touch": [
+        "Poids originaux dans `modele/huggingface/` et `modele/comfyui/`"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "missions-lead",
+      "role_type": "master",
+      "parent_agent": "aurora-orchestrator",
+      "module": "missions",
+      "feature": "module_master_autonomous_missions_and_agi_core",
+      "description": "Maître du Module Missions (`agi_core`) : coordonne le journal SQLite/baux, le protocole d'outils structurés, la reprise épistémique et la délégation.",
+      "permissions": "AUTONOMOUS",
+      "files_owned": [
+        "aurora_agi_daemon.py",
+        "application/mission_api.py"
+      ],
+      "routes_owned": [
+        "/api/cli/missions",
+        "/api/projects",
+        "/api/projects/reconcile"
+      ],
+      "never_touch": [
+        "Vues React créatives",
+        "Workflows ComfyUI"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "missions-store-lease",
+      "role_type": "subagent",
+      "parent_agent": "missions-lead",
+      "module": "missions",
+      "feature": "sqlite_mission_store_idempotency_and_lease_reconciliation",
+      "description": "Sous-agent Missions : gère `agi_core/mission_store.py`, `projectAdmission.ts`, les clés d'idempotence, les baux et la réconciliation des tickets expirés.",
+      "permissions": "AUTONOMOUS",
+      "files_owned": [
+        "agi_core/mission_store.py",
+        "application/project_admission.py",
+        "application/src/services/projectAdmission.ts"
+      ],
+      "routes_owned": [
+        "/api/projects",
+        "/api/projects/reconcile"
+      ],
+      "never_touch": [
+        "mission_protocol.py",
+        "mission_recovery.py"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "missions-protocol-verifier",
+      "role_type": "subagent",
+      "parent_agent": "missions-lead",
+      "module": "missions",
+      "feature": "structured_tool_schemas_sha256_verify_and_independent_review",
+      "description": "Sous-agent Missions : maintient `mission_protocol.py`, `mission_tools.py`, les contrôles `verify` (`file`/`text`/`json`/`csv_json`) et la revue LLM séparée.",
+      "permissions": "AUTONOMOUS",
+      "files_owned": [
+        "agi_core/mission_protocol.py",
+        "agi_core/mission_tools.py"
+      ],
+      "routes_owned": [],
+      "never_touch": [
+        "mission_store.py",
+        "mission_recovery.py"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "missions-epistemic-recovery",
+      "role_type": "subagent",
+      "parent_agent": "missions-lead",
+      "module": "missions",
+      "feature": "three_regime_epistemic_engine_and_stagnation_recovery",
+      "description": "Sous-agent Missions : pilote les 3 régimes épistémiques (`KNOWN_CANONICAL`, `KNOWN_OPTIMIZABLE`, `UNKNOWN_EXPLORATORY`) et `_recover_stagnation`.",
+      "permissions": "AUTONOMOUS",
+      "files_owned": [
+        "agi_core/mission_recovery.py"
+      ],
+      "routes_owned": [
+        "/api/cli/epistemic/evaluate"
+      ],
+      "never_touch": [
+        "mission_store.py",
+        "projectAdmission.ts"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "missions-delegation-spawner",
+      "role_type": "subagent",
+      "parent_agent": "missions-lead",
+      "module": "missions",
+      "feature": "bounded_subagent_spawning_and_permission_inheritance",
+      "description": "Sous-agent Missions : orchestre `spawn_agent` dans `agi_core/mission_agent.py`, le plafonnement de profondeur (`depth <= 2`) et le contrôle parent des workers.",
+      "permissions": "AUTONOMOUS",
+      "files_owned": [
+        "agi_core/mission_agent.py"
+      ],
+      "routes_owned": [],
+      "never_touch": [
+        "mission_store.py",
+        "mission_protocol.py"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "bridge-doctor",
+      "role_type": "master",
+      "parent_agent": "aurora-orchestrator",
+      "module": "bridge",
+      "feature": "module_master_bridge_gpu_and_tauri_native",
+      "description": "Maître du Module Bridge & Runtime : coordonne le serveur Flask `:3001`, les blueprints HTTP, le gouverneur GPU/VRAM, le binaire Tauri et systemd.",
+      "permissions": "SAFE",
+      "files_owned": [
+        "application/bridge_server.py",
+        "bridge_doctor.py"
+      ],
+      "routes_owned": [
+        "/api/health",
+        "/api/status",
+        "/aurora-api.md"
+      ],
+      "never_touch": [
+        "Logique métier interne des modules créatifs"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "bridge-routes-contract",
+      "role_type": "subagent",
+      "parent_agent": "bridge-doctor",
+      "module": "bridge",
+      "feature": "flask_blueprints_auth_cors_and_http_contracts",
+      "description": "Sous-agent Bridge : maintient l'enregistrement des 26 blueprints dans `application/routes/`, l'authentification Bearer/Appareil et les règles CORS.",
+      "permissions": "AUTONOMOUS",
+      "files_owned": [
+        "application/routes/vite_bp_routes.py",
+        "application/routes/cli_bp_routes.py",
+        "application/routes/fs_bp_routes.py"
+      ],
+      "routes_owned": [
+        "/api/ext/key/status",
+        "/api/ext/key/generate",
+        "/api/ext/key/revoke"
+      ],
+      "never_touch": [
+        "src-tauri/",
+        "llm_gateway.py"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "bridge-gpu-governor",
+      "role_type": "subagent",
+      "parent_agent": "bridge-doctor",
+      "module": "bridge",
+      "feature": "vram_ram_scheduler_ollama_comfyui_and_model_configs",
+      "description": "Sous-agent Bridge GPU : coordonne l'allocation des 16 Go VRAM (RTX 5070 Ti) et 30 Go RAM entre Ollama (`:11434`), ComfyUI (`:8188`) et TRELLIS.2.",
+      "permissions": "AUTONOMOUS",
+      "files_owned": [
+        "agi_core/llm_gateway.py",
+        "agi_core/runtime_policy.py",
+        "application/src/config/models.ts",
+        "application/routes/hardware_bp_routes.py"
+      ],
+      "routes_owned": [
+        "/api/hardware/stats",
+        "/api/ollama/models"
+      ],
+      "never_touch": [
+        "src-tauri/",
+        "persistent-workspace.mjs"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "bridge-tauri-native",
+      "role_type": "subagent",
+      "parent_agent": "bridge-doctor",
+      "module": "bridge",
+      "feature": "tauri_v2_rust_binary_window_controls_and_build_sync",
+      "description": "Sous-agent Bridge Natif : maintient le cœur Rust Tauri v2 (`application/src-tauri/`), `useTauri.ts`, le fenêtrage Linux/Windows/macOS et `launch_runtime.py`.",
+      "permissions": "AUTONOMOUS",
+      "files_owned": [
+        "application/src-tauri/",
+        "application/src/hooks/useTauri.ts",
+        "scripts/launch_runtime.py"
+      ],
+      "routes_owned": [],
+      "never_touch": [
+        "bridge_server.py",
+        "aurora_agi_daemon.py"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "bridge-systemd-watchdog",
+      "role_type": "subagent",
+      "parent_agent": "bridge-doctor",
+      "module": "bridge",
+      "feature": "systemd_services_ipc_bus_3002_and_health_diagnostics",
+      "description": "Sous-agent Bridge Supervision : vérifie la liveness/readiness de `aurora-bridge`, `aurora-comfyui`, `ollama`, du bus TCP `:3002` et de `start-aurora.sh`.",
+      "permissions": "SAFE",
+      "files_owned": [
+        "start-aurora.sh",
+        "agi_core/bus.py"
+      ],
+      "routes_owned": [
+        "/api/health"
+      ],
+      "never_touch": [
+        "Code métier des vues React"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "cli-tunnel-lead",
+      "role_type": "master",
+      "parent_agent": "aurora-orchestrator",
+      "module": "cli-tunnel",
+      "feature": "module_master_cli_tunnel_and_persistent_workspace",
+      "description": "Maître du Module CLI, Tunnel & Mobilité : coordonne JOBIA CLI (`aurora-remote-cli`), le tunnel Cloudflare (`aurora-live`), la livraison d'artefacts et l'espace persistant `:3034`.",
+      "permissions": "AUTONOMOUS",
+      "files_owned": [
+        "aurora_cli.py",
+        "../aurora-remote-cli/aurora_cli/",
+        "../aurora-live/"
+      ],
+      "routes_owned": [
+        "/api/cli/status",
+        "/api/workspace-session"
+      ],
+      "never_touch": [
+        "Entraînement LoRA 3D",
+        "Moteur physique Simulator"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "cli-jobia-tui",
+      "role_type": "subagent",
+      "parent_agent": "cli-tunnel-lead",
+      "module": "cli-tunnel",
+      "feature": "jobia_fullscreen_tui_and_local_mission_parity",
+      "description": "Sous-agent CLI : maintient l'interface plein écran `prompt_toolkit` JOBIA 1.3.0 (`cli.py`, `local_mission.py`) et la parité multi-OS Windows/macOS/Linux.",
+      "permissions": "AUTONOMOUS",
+      "files_owned": [
+        "../aurora-remote-cli/aurora_cli/cli.py",
+        "../aurora-remote-cli/aurora_cli/local_mission.py",
+        "../aurora-remote-cli/aurora_cli/epistemic.py"
+      ],
+      "routes_owned": [],
+      "never_touch": [
+        "persistent-workspace.mjs",
+        "cli_artifacts.py"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "tunnel-validator",
+      "role_type": "subagent",
+      "parent_agent": "cli-tunnel-lead",
+      "module": "cli-tunnel",
+      "feature": "cloudflare_tunnel_sse_polling_fallback_and_aurora_live",
+      "description": "Sous-agent Tunnel : valide l'URL Cloudflare active, la publication `aurora-live/tunnel.txt`, le polling JSON cursé (compatibilité Quick Tunnel sans SSE) et la reprise sur HTTP 530.",
+      "permissions": "SAFE",
+      "files_owned": [
+        "../aurora-remote-cli/aurora_cli/bridge.py",
+        "restart_tunnel.py",
+        "scripts/verify-tunnel-url.sh",
+        "../aurora-live/tunnel.txt"
+      ],
+      "routes_owned": [
+        "/api/cli/missions/<mission_id>/events"
+      ],
+      "never_touch": [
+        "Code métier des modules",
+        "local_mission.py"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "cli-artifact-delivery",
+      "role_type": "subagent",
+      "parent_agent": "cli-tunnel-lead",
+      "module": "cli-tunnel",
+      "feature": "confined_artifact_transfer_sha256_and_export3d",
+      "description": "Sous-agent CLI Livraison : gère `.transfer_to_client/<mission_id>/`, `cli_artifacts.py`, `cli_inputs.py`, `projects_api.py` et la commande `export3d`.",
+      "permissions": "AUTONOMOUS",
+      "files_owned": [
+        "application/cli_artifacts.py",
+        "application/cli_inputs.py",
+        "application/projects_api.py"
+      ],
+      "routes_owned": [
+        "/api/cli/artifacts",
+        "/api/projects/<project_id>/archive"
+      ],
+      "never_touch": [
+        "persistent-workspace.mjs",
+        "bridge.py"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "web-action-runner",
+      "role_type": "subagent",
+      "parent_agent": "cli-tunnel-lead",
+      "module": "cli-tunnel",
+      "feature": "persistent_pc_workspace_3034_mobile_pairing_and_v4_touch",
+      "description": "Sous-agent Mobilité & Workspace : pilote l'espace navigateur persistant `:3034` (`persistent-workspace.mjs`), l'appairage mobile sans clé (`device_pairing.py`) et la navigation tactile V4.",
+      "permissions": "AUTONOMOUS",
+      "files_owned": [
+        "application/scripts/persistent-workspace.mjs",
+        "application/persistent_workspace_api.py",
+        "application/device_pairing.py",
+        "application/scripts/mobile-navigation.mjs"
+      ],
+      "routes_owned": [
+        "/workspace",
+        "/api/workspace-session",
+        "/api/device/pair"
+      ],
+      "never_touch": [
+        "local_mission.py",
+        "cli_artifacts.py"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "memory-lead",
+      "role_type": "master",
+      "parent_agent": "aurora-orchestrator",
+      "module": "memory",
+      "feature": "module_master_memory",
+      "description": "Maître du Module Mémoire : coordonne l'indexation vectorielle ChromaDB et la consolidation épisodique/sémantique inter-sessions.",
+      "permissions": "AUTONOMOUS",
+      "files_owned": [
+        "agi_core/memory.py"
+      ],
+      "routes_owned": [
+        "/api/memory/search",
+        "/api/memory/store"
+      ],
+      "never_touch": [
+        "Consigne originale immuable d'une mission en cours"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "memory-vector-indexer",
+      "role_type": "subagent",
+      "parent_agent": "memory-lead",
+      "module": "memory",
+      "feature": "chromadb_vector_embeddings_and_sqlite_descriptor_hygiene",
+      "description": "Sous-agent Mémoire : gère l'indexation vectorielle ChromaDB (`db_vector/`), la déduplication par hash et la fermeture explicite des descripteurs SQLite.",
+      "permissions": "AUTONOMOUS",
+      "files_owned": [
+        "agi_core/memory.py"
+      ],
+      "routes_owned": [
+        "/api/memory/search"
+      ],
+      "never_touch": [
+        "chatStore.ts",
+        "mission_store.py"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "memory-episodic-consolidator",
+      "role_type": "subagent",
+      "parent_agent": "memory-lead",
+      "module": "memory",
+      "feature": "cross_session_fact_consolidation_and_goal_isolation",
+      "description": "Sous-agent Mémoire : consolide les connaissances vérifiées entre sessions tout en les gardant strictement séparées de l'objectif de la mission active.",
+      "permissions": "SAFE",
+      "files_owned": [
+        "agi_core/context.py"
+      ],
+      "routes_owned": [
+        "/api/memory/store"
+      ],
+      "never_touch": [
+        "mission_protocol.py"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "mcp-lead",
+      "role_type": "master",
+      "parent_agent": "aurora-orchestrator",
+      "module": "mcp",
+      "feature": "module_master_mcp",
+      "description": "Maître du Module MCP : coordonne la découverte/sonde des serveurs MCP (JSON-RPC 2.0 stdio/HTTP) et l'exécution bornée des outils MCP.",
+      "permissions": "AUTONOMOUS",
+      "files_owned": [
+        "agi_core/context.py",
+        ".mcp.json"
+      ],
+      "routes_owned": [
+        "/api/cli/mcp/tools",
+        "/api/cli/mcp/call"
+      ],
+      "never_touch": [
+        "Skills `.aurora/skills/` (gérés par skills-lead)"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "mcp-stdio-prober",
+      "role_type": "subagent",
+      "parent_agent": "mcp-lead",
+      "module": "mcp",
+      "feature": "mcp_server_discovery_and_jsonrpc_handshake",
+      "description": "Sous-agent MCP : découvre `.mcp.json` / `.aurora/mcp_config.json`, effectue le handshake `initialize` + `tools/list` (`probe_mcp_tools`) avec timeout borné.",
+      "permissions": "SAFE",
+      "files_owned": [
+        "agi_core/context.py"
+      ],
+      "routes_owned": [
+        "/api/cli/mcp/tools"
+      ],
+      "never_touch": [
+        "mission_agent.py"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "mcp-tool-executor",
+      "role_type": "subagent",
+      "parent_agent": "mcp-lead",
+      "module": "mcp",
+      "feature": "sandboxed_mcp_tool_invocation_and_receipt",
+      "description": "Sous-agent MCP : exécute `call_mcp_tool` / `invoke_mcp_tool`, vérifie les permissions (`STANDARD`/`AUTONOMOUS`) et enregistre la preuve dans la mission.",
+      "permissions": "AUTONOMOUS",
+      "files_owned": [
+        "agi_core/mission_tools.py"
+      ],
+      "routes_owned": [
+        "/api/cli/mcp/call"
+      ],
+      "never_touch": [
+        "coworkConnectors.ts"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "skills-lead",
+      "role_type": "master",
+      "parent_agent": "aurora-orchestrator",
+      "module": "skills",
+      "feature": "module_master_skills",
+      "description": "Maître du Module Skills : coordonne la création/audit de compétences réutilisables (`.aurora/skills/<nom>/SKILL.md`) et leur injection contextuelle.",
+      "permissions": "AUTONOMOUS",
+      "files_owned": [
+        ".aurora/skills/",
+        "skills/"
+      ],
+      "routes_owned": [
+        "/api/cli/skills",
+        "/api/cli/skills/create"
+      ],
+      "never_touch": [
+        "Serveurs MCP (gérés par mcp-lead)"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "skills-curator-creator",
+      "role_type": "subagent",
+      "parent_agent": "skills-lead",
+      "module": "skills",
+      "feature": "skill_creation_yaml_frontmatter_and_idempotency",
+      "description": "Sous-agent Skills : crée et valide les fichiers `.aurora/skills/<nom>/SKILL.md` (`create_skill`) sans écraser une définition différente existante.",
+      "permissions": "AUTONOMOUS",
+      "files_owned": [
+        ".aurora/skills/"
+      ],
+      "routes_owned": [
+        "/api/cli/skills/create"
+      ],
+      "never_touch": [
+        "mission_store.py"
+      ],
+      "cli_present": true
+    },
+    {
+      "id": "skills-context-injector",
+      "role_type": "subagent",
+      "parent_agent": "skills-lead",
+      "module": "skills",
+      "feature": "progressive_skill_discovery_and_context_budget",
+      "description": "Sous-agent Skills : découvre les skills (workspace, parent, utilisateur, `/etc/aurora/skills`), filtre par `triggers` et injecte jusqu'à 24 000 caractères.",
+      "permissions": "SAFE",
+      "files_owned": [
+        "agi_core/context.py"
+      ],
+      "routes_owned": [
+        "/api/cli/skills"
+      ],
+      "never_touch": [
+        "mission_protocol.py"
+      ],
+      "cli_present": true
+    }
+  ]
+}

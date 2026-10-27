@@ -1,0 +1,29 @@
+{
+  "schema": "aurora.architecture-catalog.v1",
+  "scope": "Static indexed sources and literal Python route decorators; no imports, runtime calls, weights, secrets, generated results or unstaged drafts.",
+  "repositories": {
+    "AuroraIA": {
+      "source": "git-index",
+      "working_tree_drafts_included": false
+    },
+    "aurora-remote-cli": {
+      "source": "origin/main",
+      "working_tree_drafts_included": false
+    },
+    "aurora-live": {
+      "source": "origin/main",
+      "working_tree_drafts_included": false
+    }
+  },
+  "source_files": 2222,
+  "source_lines": 760084,
+  "static_route_declarations": 675,
+  "by_repository": {
+    "AuroraIA": 2059,
+    "aurora-remote-cli": 159,
+    "aurora-live": 4
+  },
+  "server_commit": "4baddbd12e1c32a641455f0002f37eed8596c5a6",
+  "cli_redesign_source_files": 182,
+  "scope_note": "Catalogue canonique conservé sans réinterpréter ses hashes. Sources CLI après refonte listées séparément. Aucun secret, poids ou état de production lu."
+}

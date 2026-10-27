@@ -2,6 +2,8 @@
 
 Ces constats sont des preuves de code ou de tests ciblés, pas une évaluation de générations réelles. Le plan global viendra après validation de la Phase 1.
 
+Le plan issu de ces constats est désormais disponible dans [PLAN.md](PLAN.md), avec ses limites de preuve et sans implémentation des recommandations.
+
 | Domaine | Constat et preuve | Suite |
 |---|---|---|
 | Synchronisation | HEAD PC = GitHub, mais CLI 8 fichiers modifiés ; AuroraIA nombreuses modifications/suppressions et nouveaux fichiers non suivis | Ne pas publier les brouillons du PC ni modifier deux copies |
@@ -16,3 +18,12 @@ Ces constats sont des preuves de code ou de tests ciblés, pas une évaluation d
 | Permissions | Chemins de mission linéaire exécutent des commandes client ; shell hôte sans sandbox OS | Auditer en Phase 2, ne pas revendiquer sécurité complète |
 | Tests | 866 pass, 18 skip, 5 sous-tests ; moteurs optionnels absents et tests ignorés | Aucun score de qualité IA déduit de ces tests |
 | Maintenance | Lint non défini dans dépôt ; import de types manquant, styles dispersés | Définir un contrôle reproductible, documenter dette restante |
+| Registre des rôles | Extraction AST : 111 IDs communs serveur/CLI, 1 orchestrateur, 20 maîtres, 90 sous-agents ; comptes 21/95 du maître périmés | Q1 : contrat et compte issus d'une source unique ; aucune suppression d'alias sans analyse |
+| Alias et permissions | `conversation-lead` SAFE et `chat-lead` AUTONOMOUS sont deux entrées distinctes | Égalité des noms entre dépôts insuffisante pour conclure à la parité des politiques |
+| Reprise et effets | Journal et baux présents ; reçus moteur intégrés en 3D, généralisation aux autres moteurs non établie | S3 : injections de crash, état inconnu et absence de double effet |
+| Preuves d'autonomie | Hash, structure et revue d'un modèle ne prouvent pas seuls la conformité au besoin | Q2/Q5 : corpus indépendant et verdict mission + livrable |
+| Mémoire et skills | Chroma/SQLite ; repli mémoire sur 500 expériences récentes, sélection de skills bornée | S6 : provenance, périmètre, invalidation et oubli vérifiables |
+| Authentification | Garde Flask par préfixes, exception loopback, jetons appairés révocables | Q3 : inventaire des routes actives et tests négatifs, sans sonder le bridge de production |
+| Installation propre | CI a détecté setuptools absent pour le build sans isolation | Corrigé dans les dépendances de développement ; les 6 jobs Python multiplateformes passent |
+| Test de thème à chaud | Attente fixe de 80 ms fragile sur Windows | Corrigé : attente bornée de l'état et de sa représentation ; aucune exclusion de test |
+| Validation physique | PTY macOS/Linux et tests Windows réussis ; images et terminaux du Mac utilisateur non observés | Ne pas transformer un résultat CI en validation physique de Terminal.app/iTerm2/SSH |
