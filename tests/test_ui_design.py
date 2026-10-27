@@ -27,6 +27,13 @@ def grid(app):
                      for y in range(size.rows))
 
 
+async def wait_visible(app, text, condition=lambda:True):
+    async def observed():
+        while app.app.renderer._last_screen is None or text not in grid(app) or not condition():
+            await asyncio.sleep(.01)
+    await asyncio.wait_for(observed(),3)
+
+
 def caps(width=80,**overrides):
     value = Capabilities('linux',True,'truecolor',True,'none',width,32,True,False)
     return replace(value,**overrides)
@@ -105,7 +112,7 @@ def test_idle_has_no_status_clock_and_theme_preview_rolls_back(monkeypatch):
             picker = asyncio.create_task(app.choose_theme())
             await asyncio.sleep(.02)
             pipe.send_text('\x1b[B')
-            await asyncio.sleep(.08)
+            await wait_visible(app,'aperçu immédiat',lambda:display.view.theme.id!='otter')
             preview = display.view.theme.id
             assert preview != 'otter' and config.get('theme')=='otter'
             assert 'aperçu immédiat' in grid(app)
