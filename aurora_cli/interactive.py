@@ -1,18 +1,14 @@
 """Interactive REPL for the remote bridge."""
 from __future__ import annotations
 import signal
-import sys
 import time
-from typing import Any
 
 from prompt_toolkit import PromptSession
 from prompt_toolkit.history import FileHistory
 from prompt_toolkit.completion import WordCompleter
-from rich.console import Console
-from rich.markdown import Markdown
 
 from aurora_cli import brand, config, display
-from aurora_cli.core import capabilities, locations
+from aurora_cli.core import locations
 from aurora_cli.bridge import Bridge
 try:
     from aurora_cli.core.jobia import JOBIACore
@@ -20,40 +16,36 @@ try:
 except ImportError:
     jobia_engine = None
 
-agi_engine = None
-
-console = Console()
 
 INTERNAL_COMMANDS = {
-    "/help": "⚡ Palette complète des commandes et modules AGI",
-    "/agi": "🧠 Analyse cognitive d'intention, régime épistémique & 8 boucles AGI",
-    "/modules": "🛰 Cockpit des 10 modules AuroraIA & état des moteurs",
-    "/chat": "💬 Cibler ou interroger le module Conversation & Multimodal",
-    "/code": "💻 Cibler ou interroger le module Code, Motion UI & Sandbox",
-    "/image": "🎨 Cibler ou interroger le module Image FLUX.2-dev & 16K PBR",
-    "/3d": "🧊 Cibler ou interroger le module 3D TRELLIS.2, Rigging & CAO",
-    "/cyber": "🛡 Cibler ou interroger le module Cyber Z3, 9 Labs & Patch",
-    "/business": "📈 Cibler ou interroger le module Business Lab & Quant",
-    "/academy": "🔬 Cibler ou interroger le module Académie & Oracle SymPy/Z3",
-    "/voice": "🎙 Cibler ou interroger le module Voix Kokoro TTS & Whisper STT",
-    "/status": "🩺 État du pont et de la télémétrie",
-    "/permissions": "🔐 Voir ou régler les permissions (SAFE, STANDARD, AUTONOMOUS, FULL)",
-    "/agents": "🤖 Lister les agents maîtres et appliquants",
-    "/tools": "🛠 Lister les outils vérifiés",
-    "/models": "🎛 Lister les modèles du pont",
-    "/local": "🖥 Lister les modèles disponibles sur cette machine",
-    "/mcp": "🔌 Serveurs MCP et leurs outils",
-    "/skills": "📚 Compétences chargées (.aurora/skills)",
-    "/connections": "🌐 Connexions aux services",
-    "/files": "📦 Fichiers modifiés dans la session",
-    "/sources": "🔎 Sources web consultées",
-    "/session": "🆔 Informations de la session courante",
-    "/sessions": "🗂 Lister et gérer toutes les sessions",
-    "/theme": "🌈 Changer de thème Cyber-Aurora pour cette session",
-    "/clear": "🧹 Effacer le terminal",
-    "/stop": "⏹ Arrêter la tâche en cours",
-    "/exit": "⏻ Quitter",
-    "/mode": "🚀 Niveau d'effort cognitif et modèle (pro, balanced, deep, fast)",
+    '/help': 'Toutes les commandes de cette session',
+    '/agi': 'Inspecter l’analyse de la demande',
+    '/modules': 'Catalogue des modules déclarés',
+    '/chat': 'Choisir le module Conversation',
+    '/code': 'Choisir le module Code',
+    '/image': 'Choisir le module Image',
+    '/3d': 'Choisir le module 3D',
+    '/cyber': 'Choisir le module Cyber',
+    '/business': 'Choisir le module Business',
+    '/academy': 'Choisir le module Académie',
+    '/voice': 'Choisir le module Voix',
+    '/status': 'État observé du pont',
+    '/permissions': 'Voir ou régler les permissions',
+    '/agents': 'Agents du pont',
+    '/tools': 'Outils du pont',
+    '/models': 'Modèles du pont',
+    '/local': 'Modèles présents sur cette machine',
+    '/mcp': 'Serveurs MCP et outils',
+    '/skills': 'Skills du pont',
+    '/connections': 'Connexions aux services',
+    '/session': 'Identifiant de la session',
+    '/sessions': 'Lister, reprendre ou supprimer une session',
+    '/fresh': 'Nouvelle session distante',
+    '/theme': 'Thème de cette session',
+    '/clear': 'Effacer le terminal',
+    '/stop': 'Demander l’arrêt de la mission',
+    '/exit': 'Quitter',
+    '/mode': 'Mode d’exécution et modèle demandé',
 }
 
 COMMAND_COMPLETER = WordCompleter(
@@ -64,350 +56,249 @@ COMMAND_COMPLETER = WordCompleter(
 
 
 def run_interactive(client: Bridge) -> None:
-    """Main interactive REPL loop."""
-    caps = display.view.caps
-    theme = display.view.theme
+    """Linear remote session using the same components as all CLI commands."""
+    from prompt_toolkit.styles import Style
+    from aurora_cli.terminal import target_label
+
+    measured = time.monotonic()
     try:
         status = client.status()
-        display.banner(status)
-    except Exception as e:
-        display.error(f"Pont injoignable : {e}")
-        display.hint(f"Lancez « {brand.APP_COMMANDS[0]} connect » pour enregistrer un pont distant.")
+        latency_ms = (time.monotonic() - measured) * 1000
+        display.banner(animate=False)
+        display.header('SESSION DISTANTE', target_label(client.server_url))
+        if status.get('ok') is False:
+            display.warning(status.get('error', 'Le pont signale un état dégradé.'))
+    except Exception as exc:
+        display.error(f'Pont injoignable : {exc}')
+        display.hint(f'{brand.APP_COMMANDS[0]} connect pour enregistrer un pont distant.')
         return
 
-    # Create or Resume Session
+    session_id = ''
+    session_permissions = config.get('default_permissions', 'AUTONOMOUS')
     try:
-        from rich.prompt import Prompt
-        data = client.session_list()
-        sessions = data.get("sessions", [])
-        
-        session_id = ""
+        sessions = client.session_list().get('sessions', [])
         if sessions:
-            console.print("\n[bold cyan]Sessions Actives Détectées :[/bold cyan]")
-            for i, s in enumerate(sessions):
-                console.print(f"  [bold yellow]{i+1}.[/bold yellow] {s['id']} (Perms: {s.get('permissions', 'N/A')})")
-            
-            console.print("\n[dim]Tapez le numéro pour reprendre, ou Entrée pour une nouvelle session.[/dim]")
-            ans = Prompt.ask("Choix", default="")
-            if ans.isdigit() and 1 <= int(ans) <= len(sessions):
-                session_id = sessions[int(ans)-1]["id"]
-                console.print(f"[bold green]✔ Contexte restauré : {session_id}[/bold green]\n")
-            
+            display.print(display.view.table('REPRENDRE UNE SESSION',
+                [('Choix', 'primary'), ('Session', 'text'), ('Permissions', 'muted')],
+                [(str(i), item['id'], item.get('permissions', 'non précisées'))
+                 for i, item in enumerate(sessions, 1)]))
+            answer = display.view.console.input(display.mark('accent', 'Numéro, ou Entrée pour une nouvelle session : ')).strip()
+            if answer.isdigit() and 1 <= int(answer) <= len(sessions):
+                session_id = sessions[int(answer)-1]['id']
+                session_permissions = sessions[int(answer)-1].get('permissions', 'non précisées')
+                display.success('Session reprise : '+session_id)
         if not session_id:
-            session_data = client.session_create(permissions=config.get("default_permissions", "AUTONOMOUS"))
-            session_id = session_data.get("session", {}).get("id", "")
-            if sessions:
-                console.print(f"[bold magenta]✨ Nouvelle session initiée : {session_id}[/bold magenta]\n")
-    except Exception as e:
-        session_id = ""
+            data = client.session_create(permissions=config.get('default_permissions', 'AUTONOMOUS'))
+            session_id = data.get('session', {}).get('id', '')
+            if session_id:
+                display.success('Nouvelle session : '+session_id)
+    except Exception as exc:
+        display.warning(f'Session non confirmée : {exc}')
 
-    messages: list[dict] = []
-    history_file = str(locations.history_file())
     locations.ensure_dirs()
-    from prompt_toolkit.styles import Style
-    from prompt_toolkit.lexers import PygmentsLexer
-    from pygments.lexer import RegexLexer, bygroups
-    from pygments.token import Keyword, String, Text
-    
-    class SlashLexer(RegexLexer):
-        tokens = {
-            'root': [
-                (r'(^/\w+)(\s+)(.*)$', bygroups(Keyword, Text, String)),
-                (r'(^/\w+)$', Keyword),
-                (r'.', Text),
-            ]
-        }
-    
-    # Completion menu colours are derived from the active palette, so the
-    # dropdown matches the rest of the interface in every theme.
-    custom_style = Style.from_dict(theme.prompt_toolkit_style(caps))
+    prompt_session = PromptSession(history=FileHistory(str(locations.history_file())),
+                                   completer=COMMAND_COMPLETER, complete_while_typing=True)
+    current_mission_id = ''
+    active_repl_module = ''
 
-    prompt_session: PromptSession = PromptSession(
-        history=FileHistory(history_file),
-        completer=COMMAND_COMPLETER,
-        style=custom_style,
-        lexer=PygmentsLexer(SlashLexer),
-        complete_while_typing=True
-    )
-
-    # Handle Ctrl+C gracefully
-    current_mission_id: str = ""
-    active_repl_module: str = ""
-
-    def signal_handler(sig: int, frame: Any) -> None:
+    def signal_handler(sig, frame):
         nonlocal current_mission_id
         if current_mission_id:
             try:
                 result = client.mission_stop(current_mission_id)
-                if not result.get("ok"):
-                    display.error(result.get("error", "Arrêt non confirmé."))
-                    return
-                console.print("\n[yellow]Arrêt demandé au serveur.[/yellow]")
-            except Exception:
-                pass
-            current_mission_id = ""
+                if result.get('ok'):
+                    display.info('Arrêt demandé au serveur.')
+                else:
+                    display.error(result.get('error', 'Arrêt non confirmé.'))
+            except Exception as exc:
+                display.error(f'Arrêt non confirmé : {exc}')
         else:
-            console.print("\n[dim]Ctrl+C pour interrompre, /exit pour quitter.[/dim]")
+            display.hint('Ctrl+C pour interrompre, /exit pour quitter.')
 
-    signal.signal(signal.SIGINT, signal_handler)
-
-    console.print("[dim]Tapez votre message ou / pour ouvrir la palette interactive des commandes et modules.[/dim]\n")
-
-    while True:
-        try:
-            theme = display.view.theme
-            prompt_session.style = Style.from_dict(theme.prompt_toolkit_style(caps))
-            mod_tag = f"[{active_repl_module}] " if active_repl_module else ""
-            user_input = prompt_session.prompt(mod_tag + theme.prompt_text(caps)).strip()
-        except (EOFError, KeyboardInterrupt):
-            console.print("\n[dim]Au revoir.[/dim]")
-            break
-
-        if not user_input:
-            continue
-
-        # Internal commands
-        if user_input.startswith("/"):
-            parts = user_input.split(maxsplit=1)
-            cmd = parts[0].lower()
-            arg = parts[1].strip() if len(parts) > 1 else ""
-            if cmd == "/exit":
-                console.print("[dim]Au revoir.[/dim]")
+    previous_signal = signal.signal(signal.SIGINT, signal_handler)
+    display.hint('Décris ta demande · / pour les commandes · /exit pour quitter')
+    try:
+        while True:
+            try:
+                view = display.view
+                prompt_session.style = Style.from_dict(view.theme.prompt_toolkit_style(view.caps))
+                context = (f'{target_label(client.server_url)} · session {session_id or "non confirmée"}'
+                           f' · {latency_ms:.0f} ms au diagnostic · {session_permissions}')
+                user_input = prompt_session.prompt(
+                    [('class:prompt', view.text((active_repl_module+' · ' if active_repl_module else '')+view.theme.prompt_text(view.caps)))],
+                    bottom_toolbar=view.text(context)).strip()
+            except (EOFError, KeyboardInterrupt):
+                display.info('À bientôt.')
                 break
-            elif cmd == "/help":
-                _show_help()
-            elif cmd == "/modules":
-                from aurora_cli.ui import STUDIO_MODULES_META
-                from rich.table import Table
-                from rich import box
-                mod_table = Table(
-                    title="[bold cyan]🛰 Cockpit des Modules AuroraIA & Agents Maîtres[/bold cyan]",
-                    border_style="cyan",
-                    box=box.ROUNDED,
-                    expand=True,
-                )
-                mod_table.add_column("Module", style="bold yellow", width=12)
-                mod_table.add_column("Maître AGI", style="bold magenta", width=20)
-                mod_table.add_column("Moteur & Spécialités", style="white")
-                for k, meta in STUDIO_MODULES_META.items():
-                    mod_table.add_row(f"{meta['icon']} {k}", meta["master"], f"[cyan]{meta['engine']}[/cyan]\n[dim]{meta['capabilities']}[/dim]")
-                console.print(mod_table)
-            elif cmd == "/agi":
-                from aurora_cli.ui import WorkspaceApp
-                from rich.panel import Panel
-                from rich import box
-                dummy = WorkspaceApp.__new__(WorkspaceApp)
-                dummy.active_module = active_repl_module
-                dummy.state = type("S", (), {"goal": arg or "Diagnostic cognitif AGI"})()
-                console.print(Panel(dummy.agi_cognitive_report(arg), border_style="cyan", box=box.ROUNDED))
-            elif cmd in {"/chat", "/code", "/image", "/3d", "/cyber", "/business", "/academy", "/voice"}:
-                mod_map = {
-                    "/chat": "CHAT", "/code": "CODE", "/image": "IMAGE", "/3d": "3D",
-                    "/cyber": "CYBER", "/business": "BUSINESS", "/academy": "LEARNING", "/voice": "VOICE",
-                }
-                active_repl_module = mod_map[cmd]
-                if not arg:
-                    console.print(f"[bold cyan]✔ Module actif verrouillé sur : {active_repl_module}[/bold cyan]")
-                    continue
-                user_input = f"[{active_repl_module}] {arg}"
-                # Fall through to execute request!
-            elif cmd == "/status":
-                _cmd_status(client)
-            elif cmd == "/permissions":
-                _cmd_permissions(client, user_input)
-            elif cmd == "/agents":
-                _cmd_agents(client)
-            elif cmd == "/tools":
-                _cmd_tools(client)
-            elif cmd == "/models":
-                _cmd_models(client)
-            elif cmd == "/local":
-                _cmd_local_models()
-            elif cmd == "/theme":
-                _cmd_theme(theme)
-            elif cmd == "/mcp":
-                _cmd_mcp(client)
-            elif cmd == "/skills":
-                _cmd_skills(client)
-            elif cmd == "/connections":
-                _cmd_connections(client)
-            elif cmd == "/session":
-                console.print(f"[dim]Session: {session_id}[/dim]")
-            elif cmd == "/sessions":
-                session_id = _cmd_sessions(client, session_id)
-            elif cmd == "/fresh":
-                try:
-                    session_data = client.session_create(permissions=config.get("default_permissions", "AUTONOMOUS"))
-                    session_id = session_data.get("session", {}).get("id", "")
-                    console.print(f"\n[bold green]✔ Contexte réinitialisé. Nouvelle session : {session_id}[/bold green]\n")
-                except Exception as e:
-                    console.print(f"[red]Erreur session : {e}[/red]")
-            elif cmd == "/clear":
-                console.clear()
-            elif cmd == "/mode":
-                if jobia_engine:
-                    from rich.table import Table
-                    from rich.prompt import Prompt
-
-                    modes = list(jobia_engine.MODE_TO_MODEL.keys())
-                    table = Table(title="[bold magenta]✧ Niveau d'Effort Cognitif & Routage Neuronal ✧[/bold magenta]",
-                                  border_style="cyan", show_header=True, header_style="bold cyan", expand=True)
-                    table.add_column("ID", justify="center", style="bold yellow", width=4)
-                    table.add_column("Mode / Effort", style="bold white", width=16)
-                    table.add_column("Modèle IA Déployé", style="bold green", width=25)
-                    for idx, mode in enumerate(modes, 1):
-                        model = jobia_engine.MODE_TO_MODEL[mode] or "Suprême Serveur (défaut)"
-                        table.add_row(str(idx), mode.capitalize(), model)
-
-                    console.print(table)
-
-                    raw = Prompt.ask("\n[bold cyan]Mode (ID, nom, ou Entrée pour conserver le courant)[/bold cyan]", default="")
-                    if not raw.strip():
-                        console.print(f"[yellow]Mode conservé : {jobia_engine.mode}[/yellow]")
+            if not user_input:
+                continue
+            if user_input.startswith('/'):
+                parts = user_input.split(maxsplit=1)
+                cmd, arg = parts[0].lower(), parts[1].strip() if len(parts) > 1 else ''
+                if cmd in {'/exit', '/quit'}:
+                    display.info('À bientôt.')
+                    break
+                if cmd in {'/help', '/?'}:
+                    _show_help()
+                elif cmd == '/modules':
+                    from aurora_cli.ui import STUDIO_MODULES_META
+                    display.print(view.table('MODULES DÉCLARÉS',
+                        [('Module', 'primary'), ('Rôle', 'secondary'), ('Description', 'text')],
+                        [(key, meta['master'], meta['engine']+'\n'+meta['capabilities'])
+                         for key, meta in STUDIO_MODULES_META.items()]))
+                    display.hint('Catalogue déclaré ; disponibilité réelle à vérifier avec /status.')
+                elif cmd == '/agi':
+                    from aurora_cli.ui import WorkspaceApp
+                    diagnostic = WorkspaceApp.__new__(WorkspaceApp)
+                    diagnostic.active_module = active_repl_module
+                    diagnostic.state = type('State', (), {'goal': arg or 'Diagnostic'})()
+                    display.print(view.markdown(diagnostic.agi_cognitive_report(arg), title='Analyse de la demande'))
+                elif cmd in {'/chat', '/code', '/image', '/3d', '/cyber', '/business', '/academy', '/voice'}:
+                    active_repl_module = {'/academy': 'LEARNING'}.get(cmd, cmd[1:].upper())
+                    if not arg:
+                        display.success('Module choisi : '+active_repl_module)
                         continue
-                    if raw.strip().isdigit():
-                        idx = int(raw.strip())
-                        selected_mode = modes[idx - 1] if 1 <= idx <= len(modes) else ""
+                    user_input = '['+active_repl_module+'] '+arg
+                elif cmd == '/status':
+                    _cmd_status(client)
+                elif cmd == '/permissions':
+                    applied = _cmd_permissions(client, user_input)
+                    if applied:
+                        session_permissions = applied
+                elif cmd == '/agents':
+                    _cmd_agents(client)
+                elif cmd == '/tools':
+                    _cmd_tools(client)
+                elif cmd == '/models':
+                    _cmd_models(client)
+                elif cmd == '/local':
+                    _cmd_local_models()
+                elif cmd == '/theme':
+                    _cmd_theme(view.theme)
+                elif cmd == '/mcp':
+                    _cmd_mcp(client)
+                elif cmd == '/skills':
+                    _cmd_skills(client)
+                elif cmd == '/connections':
+                    _cmd_connections(client)
+                elif cmd == '/session':
+                    display.kv('Session', session_id or 'non confirmée')
+                elif cmd == '/sessions':
+                    session_id = _cmd_sessions(client, session_id)
+                elif cmd == '/fresh':
+                    try:
+                        data = client.session_create(permissions=config.get('default_permissions', 'AUTONOMOUS'))
+                        session_id = data.get('session', {}).get('id', '')
+                        display.success('Nouvelle session : '+session_id) if session_id else display.warning('Session non confirmée.')
+                    except Exception as exc:
+                        display.error(f'Erreur de session : {exc}')
+                elif cmd == '/clear':
+                    view.clear()
+                elif cmd == '/mode':
+                    _cmd_mode()
+                elif cmd == '/stop':
+                    if current_mission_id:
+                        signal_handler(None, None)
                     else:
-                        selected_mode = raw.strip().lower()
-                    if jobia_engine.set_mode(selected_mode):
-                        model_name = jobia_engine.get_model() or "Suprême Serveur (défaut)"
-                        console.print(f"[bold green]✔ Architecture verrouillée sur le mode : {selected_mode.upper()} [{model_name}][/bold green]")
-                    else:
-                        console.print("[red]✖ Mode non reconnu.[/red]")
+                        display.hint('Aucune mission en cours.')
                 else:
-                    console.print("[red]Moteur J.O.B.I.A. non disponible.[/red]")
-            elif cmd == "/stop":
-                if current_mission_id:
-                    result = client.mission_stop(current_mission_id)
-                    if result.get("ok"):
-                        current_mission_id = ""
-                        display.info("Arrêt demandé au serveur.")
-                    else:
-                        display.error(result.get("error", "Arrêt non confirmé."))
-                else:
-                    console.print("[dim]Aucune mission en cours.[/dim]")
-            else:
-                console.print(f"[dim]Commande inconnue: {cmd}. Tapez /help.[/dim]")
-            if user_input.startswith("/"):
+                    display.warning(f'Commande inconnue : {cmd}. /help pour les commandes.')
+                if user_input.startswith('/'):
+                    continue
+            if jobia_engine is None:
+                display.error('Moteur JOBIA indisponible. jobia doctor pour le diagnostic.')
                 continue
 
-        # --- J.O.B.I.A. Core Execution ---
-        try:
-            if jobia_engine:
+            try:
                 import threading
                 import queue
-                import time
-                from rich.live import Live
-                from rich.panel import Panel
-                from rich.markdown import Markdown
-                from rich.text import Text
-                from rich.spinner import Spinner
-                from rich.table import Table
-                from rich import box
-                
-                done_event = threading.Event()
-                first_token_received = threading.Event()
-                token_queue: queue.Queue = queue.Queue()
-                task_result = {"text": "", "status": "error", "reconnecting": False, "transferred_files": []}
-                
-                def on_jobia_done(task_id, result):
-                    nonlocal current_mission_id
-                    if isinstance(result, dict) and result.get("mission_id"):
-                        current_mission_id = result["mission_id"]
-                    if isinstance(result, dict) and result.get("reconnecting"):
-                        task_result["reconnecting"] = True
-                    elif isinstance(result, dict) and result.get("file_transfer"):
-                        task_result.setdefault("transferred_files", []).append(result)
-                    elif isinstance(result, dict) and result.get("stream"):
-                        task_result["reconnecting"] = False
-                        chunk = str(result["data"])
-                        token_queue.put(chunk)
-                        first_token_received.set()
-                    elif isinstance(result, dict) and result.get("stream_done"):
-                        task_result["status"] = result.get("status", "error")
-                        task_result["text"] = str(result["data"])
-                        done_event.set()
-                    elif isinstance(result, dict) and "data" in result:
-                        task_result["status"] = result.get("status", "error")
-                        if isinstance(result["data"], dict) and "data" in result["data"]:
-                            task_result["text"] = str(result["data"]["data"])
-                        else:
-                            task_result["text"] = str(result["data"])
-                        done_event.set()
-                    else:
-                        task_result["text"] = str(result)
-                        done_event.set()
-                    if done_event.is_set():
-                        current_mission_id = ""
-                
-                console.print(f"\n[bold cyan]Routage AGI :[/bold cyan] [bold magenta]Transmission de la mission...[/bold magenta]")
-                task_id, route, past_ctx = jobia_engine.process_request(user_input, callback=on_jobia_done, client=client, session_id=session_id)
-                
-                start_time = time.time()
-                
-                # Phase 1: Attente / Réflexion (Spinner compact qui ne déborde jamais le terminal)
-                with Live(console=console, auto_refresh=True, refresh_per_second=10) as live:
-                    while not done_event.is_set() and not first_token_received.is_set():
-                        elapsed = time.time() - start_time
-                        grid = Table.grid(expand=True)
-                        grid.add_column()
-                        grid.add_row(Spinner("dots", text=Text(" Les agents réfléchissent (Exploration de l'arbre des possibles)...", style="bold cyan")))
-                        grid.add_row(f"[dim magenta]Phase de réflexion | Temps écoulé: {elapsed:.1f}s[/dim magenta]")
-                        if task_result["reconnecting"]:
-                            grid.add_row("[bold yellow]⚡ Reconnexion au flux distant en cours...[/bold yellow]")
-                        panel = Panel(grid, border_style="magenta", title="[bold cyan]🧠 J.O.B.I.A COGNITIVE ENGINE[/bold cyan]", box=box.ROUNDED, padding=(0, 1))
-                        live.update(panel)
-                        time.sleep(0.06)
+                done = threading.Event()
+                first = threading.Event()
+                chunks = queue.Queue()
+                result = {'text': '', 'status': 'error', 'reconnecting': False, 'files': []}
 
-                # Phase 2: Flux direct de la réponse dans le terminal (aucun scroll glitch, zéro duplication)
-                if first_token_received.is_set():
-                    console.print(f"\n[bold cyan]┏━━━━ 🧠 Synthèse J.O.B.I.A ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓[/bold cyan]\n")
-                    while not done_event.is_set() or not token_queue.empty():
+                def received(task_id, payload):
+                    nonlocal current_mission_id
+                    if isinstance(payload, dict) and payload.get('mission_id'):
+                        current_mission_id = payload['mission_id']
+                    if isinstance(payload, dict) and payload.get('reconnecting'):
+                        result['reconnecting'] = True
+                    elif isinstance(payload, dict) and payload.get('file_transfer'):
+                        result['files'].append(payload)
+                    elif isinstance(payload, dict) and payload.get('stream'):
+                        result['reconnecting'] = False
+                        chunks.put(str(payload['data']))
+                        first.set()
+                    elif isinstance(payload, dict) and (payload.get('stream_done') or 'data' in payload):
+                        result['status'] = payload.get('status', 'error')
+                        data = payload.get('data', '')
+                        result['text'] = str(data.get('data', data) if isinstance(data, dict) else data)
+                        done.set()
+                    else:
+                        result['text'] = str(payload)
+                        done.set()
+                    if done.is_set():
+                        current_mission_id = ''
+
+                display.info('Transmission de la demande au PC · attente de confirmation')
+                started = time.monotonic()
+                jobia_engine.process_request(user_input, callback=received, client=client, session_id=session_id)
+                with display.thinking('Attente d’événements du serveur', started) as thinking:
+                    was_reconnecting = False
+                    while not done.is_set() and not first.is_set():
+                        if result['reconnecting'] and not was_reconnecting:
+                            display.warning('Connexion interrompue · reprise du même flux distant')
+                        was_reconnecting = result['reconnecting']
+                        thinking.update()
+                        done.wait(.1)
+                if first.is_set():
+                    display.header('RÉPONSE EN COURS')
+                    while not done.is_set() or not chunks.empty():
                         try:
-                            chunk = token_queue.get(timeout=0.05)
-                            sys.stdout.write(chunk)
-                            sys.stdout.flush()
+                            view.stream(chunks.get(timeout=.1))
                         except queue.Empty:
                             pass
-                    console.print(f"\n\n[bold cyan]┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛[/bold cyan]")
-                elif task_result["text"]:
-                    md_final = Markdown(task_result["text"], justify="left", code_theme="monokai")
-                    panel_final = Panel(md_final, border_style="cyan", title="🧠 Synthèse J.O.B.I.A", box=box.ROUNDED, padding=(1, 2))
-                    console.print(panel_final)
+                    view.stream('\n')
+                elif result['text']:
+                    display.print(view.markdown(result['text'], title='Réponse'))
+                else:
+                    display.warning('Aucune réponse reçue.')
+                if result['files']:
+                    display.files_received(result['files'])
+                outcome = result['status']
+                label = 'Mission accomplie' if outcome == 'success' else 'Mission arrêtée' if outcome == 'stopped' else 'Mission interrompue ou échouée'
+                report = display.success if outcome == 'success' else display.warning if outcome == 'stopped' else display.error
+                report(f'{label} · {time.monotonic()-started:.1f}s')
+            except KeyboardInterrupt:
+                display.warning('Interrompu par l’utilisateur.')
+            except Exception as exc:
+                display.error(f'Erreur d’exécution : {exc}')
+    finally:
+        signal.signal(signal.SIGINT, previous_signal)
 
-                transferred = task_result.get("transferred_files", [])
-                if transferred:
-                    from rich.table import Table
-                    file_table = Table(title="[bold green]📦 Fichiers transférés sur votre machine[/bold green]", border_style="green", box=box.ROUNDED)
-                    file_table.add_column("Fichier", style="bold white")
-                    file_table.add_column("Taille", justify="right", style="cyan")
-                    file_table.add_column("Emplacement Local", style="dim green")
-                    for tf in transferred:
-                        size_kb = tf.get("size", 0) / 1024
-                        size_str = f"{size_kb:.1f} Ko" if size_kb < 1024 else f"{size_kb/1024:.2f} Mo"
-                        file_table.add_row(tf.get("filename", ""), size_str, tf.get("path", ""))
-                    console.print(file_table)
 
-                outcome = task_result["status"]
-                color = "green" if outcome == "success" else "yellow" if outcome == "stopped" else "red"
-                label = "✔ Mission accomplie" if outcome == "success" else "⚠ Mission arrêtée" if outcome == "stopped" else "✖ Mission interrompue ou échouée"
-                console.print(f"[bold {color}]{label} en {time.time() - start_time:.1f}s.[/bold {color}]\n")
-
-            else:
-                console.print("[red]ERREUR FATALE: Moteur J.O.B.I.A. hors-service. Dépannage requis.[/red]")
-        except KeyboardInterrupt:
-            console.print("\n[yellow]Interrompu par l'utilisateur.[/yellow]\n")
-        except Exception as e:
-            display.error(f"Erreur d'exécution: {e}")
-            console.print()
+def _cmd_mode():
+    if jobia_engine is None:
+        display.error('Moteur JOBIA indisponible.')
+        return
+    modes = list(jobia_engine.MODE_TO_MODEL)
+    display.print(display.view.table('MODE D’EXÉCUTION',
+        [('Choix', 'primary'), ('Mode', 'text'), ('Modèle demandé', 'muted')],
+        [(str(index), mode, jobia_engine.MODE_TO_MODEL[mode] or 'Défaut du serveur')
+         for index, mode in enumerate(modes, 1)]))
+    raw = display.view.console.input(display.mark('accent', 'Mode (numéro ou nom, Entrée pour conserver) : ')).strip()
+    if not raw:
+        display.hint('Mode conservé : '+jobia_engine.mode)
+        return
+    selected = modes[int(raw)-1] if raw.isdigit() and 1 <= int(raw) <= len(modes) else raw.lower()
+    if jobia_engine.set_mode(selected):
+        display.success(f'Mode : {selected} · modèle : {jobia_engine.get_model() or "défaut du serveur"}')
+    else:
+        display.error('Mode non reconnu.')
 
 
 def _show_help() -> None:
-    console.print("\n[bold]Commandes disponibles :[/bold]")
-    for cmd, desc in INTERNAL_COMMANDS.items():
-        console.print(f"  [cyan]{cmd:16s}[/cyan] {desc}")
-    console.print()
+    display.print(display.view.table('COMMANDES', [('Commande', 'primary'), ('Usage', 'text')], INTERNAL_COMMANDS.items()))
 
 
 def _cmd_status(client: Bridge) -> None:
@@ -427,8 +318,8 @@ def _cmd_permissions(client, user_input: str) -> None:
         try:
             data = client.permissions_get()
             display.permissions_display(data.get("levels", {}))
-            console.print("[cyan]Entrez le nom de la permission (ex: AUTONOMOUS, SAFE) ou laissez vide pour annuler :[/cyan]")
-            level = input("Nouvelle permission > ").strip().upper()
+            display.hint('Entrée pour conserver les permissions actuelles.')
+            level = display.view.console.input(display.mark('accent', 'Nouvelle permission : ')).strip().upper()
             if not level:
                 return
         except Exception as e:
@@ -443,6 +334,7 @@ def _cmd_permissions(client, user_input: str) -> None:
         result = client.permissions_set(level)
         if result.get("ok"):
             display.success(f"Permissions: {level}")
+            return level
         else:
             display.error(result.get("error", "Failed"))
     except Exception as e:
@@ -469,7 +361,13 @@ def _cmd_tools(client: Bridge) -> None:
 def _cmd_models(client: Bridge) -> None:
     try:
         data = client.models()
-        display.models_table(data.get("models", []))
+        rows = data.get('models', [])
+        if not rows:
+            display.hint('Aucun modèle annoncé par le pont.')
+        else:
+            display.print(display.view.table('MODÈLES DU PONT', [('Modèle', 'primary'), ('Source', 'muted')],
+                [(row.get('name', row.get('id', 'non précisé')), row.get('provider', 'serveur'))
+                 if isinstance(row, dict) else (str(row), 'serveur') for row in rows]))
     except Exception as e:
         display.error(str(e))
 
@@ -494,7 +392,7 @@ def _cmd_theme(theme) -> None:
     from aurora_cli import themes
 
     display.hint(themes.describe())
-    choice = console.input(display.mark("accent", "Thème : ")).strip()
+    choice = display.view.console.input(display.mark("accent", "Thème : ")).strip()
     if not choice:
         return
     if not themes.is_known(choice):
@@ -502,7 +400,7 @@ def _cmd_theme(theme) -> None:
         return
     new_id, origin = display.view.use_theme(choice)
     display.success(f"Thème de session : {new_id} ({origin})")
-    display.hint("Il ne sera pas enregistré. Utilisez --theme pour le rendre permanent.")
+    display.hint("Il ne sera pas enregistré. Utilisez jobia theme set NOM pour le rendre permanent.")
 
 
 def _cmd_mcp(client: Bridge) -> None:
@@ -530,43 +428,32 @@ def _cmd_connections(client: Bridge) -> None:
         display.error(str(e))
 
 
-def _cmd_sessions(client: Bridge, current_session_id: str = "") -> str:
+def _cmd_sessions(client: Bridge, current_session_id: str = '') -> str:
     try:
-        data = client.session_list()
-        sessions = data.get("sessions", [])
+        sessions = client.session_list().get('sessions', [])
         if not sessions:
-            console.print("[yellow]Aucune session active.[/yellow]")
+            display.hint('Aucune session active.')
             return current_session_id
-            
-        import questionary
-        choices = [{"name": f"Session {s['id']} (Msg: {s.get('message_count',0)})", "value": s["id"]} for s in sessions]
-        action = questionary.select(
-            "Gérer les sessions :",
-            choices=[
-                {"name": "Lister les sessions", "value": "list"},
-                {"name": "Reprendre une session", "value": "resume"},
-                {"name": "Supprimer une session", "value": "delete"},
-                {"name": "Annuler", "value": "cancel"}
-            ]
-        ).ask()
-        
-        if action == "list":
-            display.sessions_table(sessions)
-        elif action == "resume":
-            sid = questionary.select("Choisir la session à reprendre:", choices=choices).ask()
-            if sid:
-                console.print(f"[bold green]✔ Session reprise : {sid}[/bold green]")
-                return sid
-        elif action == "delete":
-            sid = questionary.select("Choisir la session à supprimer:", choices=choices).ask()
-            if sid:
-                res = client.session_delete(sid)
-                if res.get("ok"):
-                    console.print(f"[bold red]Session {sid} supprimée avec succès.[/bold red]")
-                    if sid == current_session_id:
-                        console.print("[yellow]Vous avez supprimé la session actuelle. Tapez /fresh pour en recréer une.[/yellow]")
-                else:
-                    console.print(f"[red]Erreur: {res.get('error')}[/red]")
-    except Exception as e:
-        display.error(str(e))
+        display.sessions_table(sessions)
+        display.hint('Entrée pour conserver la session · reprendre ID · supprimer ID')
+        action = display.view.console.input(display.mark('accent', 'Session : ')).strip().split(maxsplit=1)
+        if len(action) != 2:
+            return current_session_id
+        operation, sid = action
+        if sid not in {item['id'] for item in sessions}:
+            display.error('Session inconnue : '+sid)
+        elif operation in {'reprendre', 'resume'}:
+            display.success('Session reprise : '+sid)
+            return sid
+        elif operation in {'supprimer', 'delete'} and display.confirm('Supprimer la session '+sid+' ?', default=False):
+            result = client.session_delete(sid)
+            if result.get('ok'):
+                display.success('Session supprimée : '+sid)
+                if sid == current_session_id:
+                    display.warning('Session actuelle supprimée. /fresh pour en créer une nouvelle.')
+                    return ''
+            else:
+                display.error(result.get('error', 'Suppression non confirmée.'))
+    except Exception as exc:
+        display.error(str(exc))
     return current_session_id

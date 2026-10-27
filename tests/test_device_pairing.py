@@ -4,16 +4,16 @@ from aurora_cli.device_pairing import pair_device
 from aurora_cli import device_pairing,config,connect
 
 
-def test_pending_code_approval_saved_credential_never_displayed(monkeypatch):
-    calls=[];messages=[];credential='aurora_device:'+'x'*64
+def test_pending_code_approval_saved_credential_never_displayed(capsys):
+    calls=[];credential='aurora_device:'+'x'*64
     def handle(request):
         calls.append(request)
         if request.url.path.endswith('/pair'):return httpx.Response(200,json={'code':'123456','claim':'nonce','expires_in':30})
         return httpx.Response(200,json={'connected':len(calls)>2,**({'credential':credential} if len(calls)>2 else {})})
-    monkeypatch.setattr(device_pairing.display,'hint',messages.append)
     result=pair_device('https://aurora.test',client_factory=lambda **kw:httpx.Client(transport=httpx.MockTransport(handle),**kw),sleep=lambda n:None)
     assert result==credential and len(calls)==3
-    assert any('123456' in m for m in messages) and all(credential not in m for m in messages)
+    visible = capsys.readouterr().out
+    assert '123456' in visible and credential not in visible and 'nonce' not in visible
     assert b'"transport":"cli"' in calls[0].content
 
 

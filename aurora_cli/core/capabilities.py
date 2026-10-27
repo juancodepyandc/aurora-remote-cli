@@ -64,6 +64,9 @@ def _supports_unicode() -> bool:
 
 
 def _detect_color_depth(stream) -> ColorDepth:
+    # An explicit policy is more specific than automatic environment detection.
+    if os.environ.get('JOBIA_COLOR') == 'always':
+        return 'truecolor'
     if "NO_COLOR" in os.environ:
         return "none"
     forced = os.environ.get("JOBIA_COLOR")

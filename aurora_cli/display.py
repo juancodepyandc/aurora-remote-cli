@@ -383,20 +383,19 @@ class Display:
         for agent in official:
             icon = (self.glyph("ok") if agent.get("enabled", True)
                     else self.mark("error", self.glyph("fail")))
-            self.console.print(
-                f"  {icon} [{self.style('text', bold=True)}]{agent.get('name', '?')}[/]"
-                f"  [{self.style('muted')}]{agent.get('description', '')}[/]"
-            )
+            self.console.print(Text.assemble(
+                ('  '+self.glyph('ok' if agent.get('enabled', True) else 'fail')+' ', self.style('primary')),
+                (self.text(agent.get('name', '?')), self.style('text', bold=True)),
+                ('  '+self.text(agent.get('description', '')), self.style('muted'))))
         if dynamic:
             self.console.print(
                 f"\n[{self.style('secondary', bold=True)}]Agents dynamiques "
                 f"({len(dynamic)})[/]")
             for agent in dynamic:
-                self.console.print(
-                    f"  [{self.style('secondary')}]{self.glyph('bullet')}[/]"
-                    f" [{self.style('text', bold=True)}]{agent.get('name', '?')}[/]"
-                    f"  [{self.style('muted')}]{agent.get('role', '')}[/]"
-                )
+                self.console.print(Text.assemble(
+                    ('  '+self.glyph('bullet')+' ', self.style('secondary')),
+                    (self.text(agent.get('name', '?')), self.style('text', bold=True)),
+                    ('  '+self.text(agent.get('role', '')), self.style('muted'))))
         self.console.print()
 
     def connections_table(self, connections: Sequence[dict]) -> None:
@@ -431,11 +430,10 @@ class Display:
                 state = "ok" if check.get("ok") else "error"
             slot, glyph_key = self._CHECK_STATES.get(state, ("muted", "info"))
             detail = check.get("detail") or check.get("error") or check.get("message") or ""
-            self.console.print(
-                f"  {self.mark(slot, self.glyph(glyph_key))} "
-                f"[{self.style('text')}]{check.get('name', '?')}[/]"
-                + (f"  [{self.style('muted')}]{detail}[/]" if detail else "")
-            )
+            self.console.print(Text.assemble(
+                ('  '+self.glyph(glyph_key)+' ', self.style(slot)),
+                (self.text(check.get('name', '?')), self.style('text')),
+                ('  '+self.text(detail) if detail else '', self.style('muted'))))
         self.console.print()
 
     # --- content ---------------------------------------------------------

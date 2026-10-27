@@ -17,6 +17,7 @@ from urllib.parse import urlsplit
 import httpx
 
 from aurora_cli import brand, config, display
+from aurora_cli.terminal import target_label
 
 TUNNEL_SOURCE = (
     "https://api.github.com/repos/juancodepyandc/aurora-live/contents/tunnel.txt"
@@ -90,6 +91,8 @@ def connect(server: str = "", api_key: str = "", *, then_interactive: bool = Tru
                          and not os.environ.get(brand.env_legacy("server_url")))
         url = (server or config.resolve_server_url() or discover_tunnel()).rstrip("/")
         _valid_url(url)
+        display.header('CONNEXION', 'Appairage avec le PC Aurora')
+        display.kv('Cible', target_label(url))
 
         key = api_key or config.get("api_key")
         if not key:
@@ -97,6 +100,7 @@ def connect(server: str = "", api_key: str = "", *, then_interactive: bool = Tru
             key=pair_device(url)
 
         try:
+            started = time.monotonic()
             response = _register(url, key)
             # A cached tunnel can answer 5xx while the old edge is draining.
             if auto_discover and response.status_code in (502, 503, 504, 530):
@@ -109,11 +113,14 @@ def connect(server: str = "", api_key: str = "", *, then_interactive: bool = Tru
             if refreshed == url:
                 raise
             url = refreshed
+            display.kv('Nouvelle cible', target_label(url))
+            started = time.monotonic()
             response = _register(url, key)
 
         if response.status_code == 401 and not api_key:
             from aurora_cli.device_pairing import pair_device
             key=pair_device(url)
+            started = time.monotonic()
             response=_register(url,key)
         if response.status_code == 401:
             display.error(
@@ -127,7 +134,8 @@ def connect(server: str = "", api_key: str = "", *, then_interactive: bool = Tru
 
         config.set_key("server_url", url)
         config.set_key("api_key", key)
-        display.success(f"Connexion établie : {url}")
+        display.success(f"Connexion établie : {target_label(url)}")
+        display.kv('Aller-retour enregistrement', f'{(time.monotonic()-started)*1000:.0f} ms')
 
         if then_interactive:
             from aurora_cli.bridge import Bridge

@@ -29,3 +29,7 @@ Pas d'accès au Mac physique ; Terminal.app, iTerm2 et SSH réels ne sont pas en
 ## Lot écran principal — 27 octobre
 
 Écran Python recomposé : contexte distant persistant, activité observée, markdown/code/diffs, six vues, aperçu F2 réversible, resize et ASCII. Les faux scores du HUD et le faux succès de fin de cycle ont été retirés. Le contrat de test historique du HUD est remplacé par la visibilité de l’objectif et des seules actions observées. 291 tests ciblés passent ; la suite d’intégration a passé 1209 tests, avec une assertion de libellé héritée ensuite corrigée. Renderer natif et passerelle présents mais validation de parité encore en cours ; aucun déploiement.
+
+## Lot commandes — 27 octobre
+
+Toutes les aides Click utilisent le rendu commun ; erreurs, connexion, appairage, missions, REPL et export suivent les tokens et la dégradation ASCII. Tests : 325 ciblés réussis, dont toutes les aides aux quatre largeurs, JSON, aperçu non persistant, coupure simulée et absence de double streaming. NO_COLOR est prioritaire en détection automatique ; --color always est une demande explicite supérieure. Les contrôles reçus et les balises Rich sont affichés comme texte sûr.

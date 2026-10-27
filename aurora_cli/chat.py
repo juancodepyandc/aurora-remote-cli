@@ -7,11 +7,10 @@ capabilities, so it behaves the same on a dumb pipe and on a full colour TTY.
 """
 from __future__ import annotations
 
-import sys
 import time
+from itertools import chain
 
-from aurora_cli import config, display, themes
-from aurora_cli.core import capabilities
+from aurora_cli import display, themes
 from aurora_cli.core.discovery import scan
 from aurora_cli.core.router import Mode, Router
 
@@ -55,10 +54,9 @@ def _print_help() -> None:
 
 def run_local_chat(model: str = "") -> int:
     """Start a REPL bound to a local model. Returns a process exit code."""
-    caps = capabilities.detect()
-    theme, origin = themes.resolve(config.get("theme", ""), caps)
-    view = display.bind(theme=theme, caps=caps)
-    view.banner(caption=True)
+    view = display.view
+    caps, theme, origin = view.caps, view.theme, 'session'
+    view.banner(caption=True, animate=False)
 
     display.hint("Recherche des modèles locaux...")
     router = Router(mode=Mode.LOCAL.value, result=scan(deep=True))
@@ -96,7 +94,7 @@ def run_local_chat(model: str = "") -> int:
             _print_help()
             continue
         if message == "/clear":
-            view.console.clear()
+            view.clear()
             continue
         if message == "/new":
             history = history.new()
@@ -125,22 +123,27 @@ def run_local_chat(model: str = "") -> int:
                 continue
             view.use_theme(name)
             theme = view.theme
-            view.console.clear()
-            view.banner(caption=True)
+            view.clear()
+            view.banner(caption=True, animate=False)
             continue
         if message == "/theme":
             display.hint(themes.describe())
             display.hint("Relancez avec --theme <id> pour en choisir un.")
             continue
 
+        display.header('Réponse', f'{route.target} · {chosen}')
         started = time.monotonic()
-        chunks: list[str] = []
+        fragments = characters = 0
+        has_text = False
         try:
             with display.thinking("génération", started):
-                for text in respond_with_fallback(route.runtime, chosen, history, message, models=route.models):
-                    chunks.append(text)
-                    sys.stdout.write(text)
-                    sys.stdout.flush()
+                response = iter(respond_with_fallback(route.runtime, chosen, history, message, models=route.models))
+                first = next(response, None)
+            for text in chain(() if first is None else (first,), response):
+                fragments += 1
+                characters += len(text)
+                has_text = has_text or bool(text.strip())
+                view.stream(text)
         except KeyboardInterrupt:
             display.hint("")
             display.warning("Interrompu.")
@@ -151,9 +154,8 @@ def run_local_chat(model: str = "") -> int:
             display.hint(f"Source : {route.target}")
             continue
 
-        print()
-        answer = "".join(chunks).strip()
-        if answer:
-            display.hint(f"{len(chunks)} fragment(s) · {len(answer)} caractères")
+        view.stream('\n')
+        if has_text:
+            display.hint(f"{fragments} fragment(s) · {characters} caractères")
         else:
             display.warning("Réponse vide.")
