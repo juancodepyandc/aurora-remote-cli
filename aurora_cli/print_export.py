@@ -10,6 +10,8 @@ import click
 
 from .bridge import Bridge
 from .assembly_viewer import launch_viewer
+from . import display
+from .click_ui import AuroraCommand
 
 
 def prepare_export(client, source, options, output, *, wait_seconds=210):
@@ -62,7 +64,7 @@ def prepare_export(client, source, options, output, *, wait_seconds=210):
     return state.get('report', {})
 
 
-@click.command('export3d')
+@click.command('export3d', cls=AuroraCommand)
 @click.argument('mesh', type=click.Path(exists=True, dir_okay=False, path_type=Path))
 @click.option('--variant', type=click.Choice(['geometry','textured','assembly']), default='geometry')
 @click.option('--size-mm', type=click.FloatRange(1,2000), default=200, show_default=True,
@@ -101,18 +103,18 @@ def export3d(mesh, variant, size_mm, profile, axis, cut_mm, output, constraints,
             options['profile'] = json.loads(profile.read_text(encoding='utf-8'))
         with Bridge() as client:
             report = prepare_export(client, mesh, options, output)
-        click.echo(f'Archive vérifiée : {output}')
+        display.success(f'Archive vérifiée : {output}')
         if variant == 'assembly':
-            click.echo(f"{report['piece_count']} pièce(s), {report['pin_count']} pion(s). Ajustement physique à calibrer.")
+            display.hint(f"{report['piece_count']} pièce(s), {report['pin_count']} pion(s). Ajustement physique à calibrer.")
             url, opened = launch_viewer(output, open_browser=open_browser, appearance=viewer, exploded=viewer=='textured')
-            click.echo(f'Viewer : {url}')
+            display.info('Viewer : '+url)
             if open_browser and not opened:
-                click.echo('Navigateur indisponible : ouvrir cette URL sur cette machine.')
+                display.warning('Navigateur indisponible : ouvrir cette URL sur cette machine.')
     except Exception as exc:
         raise click.ClickException(str(exc)) from exc
 
 
-@click.command('view3d')
+@click.command('view3d', cls=AuroraCommand)
 @click.argument('archive', type=click.Path(exists=True, dir_okay=False, path_type=Path))
 @click.option('--viewer', type=click.Choice(['colors','textured']), default='colors')
 @click.option('--exploded', is_flag=True, help='Commencer en vue éclatée.')
@@ -121,8 +123,8 @@ def view3d(archive, viewer, exploded, open_browser):
     """Rouvrir le viewer d'une archive livrée, sans relancer son export."""
     try:
         url, opened = launch_viewer(archive, open_browser=open_browser, appearance=viewer, exploded=exploded or viewer=='textured')
-        click.echo(f'Viewer : {url}')
+        display.info('Viewer : '+url)
         if open_browser and not opened:
-            click.echo('Navigateur indisponible : ouvrir cette URL sur cette machine.')
+            display.warning('Navigateur indisponible : ouvrir cette URL sur cette machine.')
     except Exception as exc:
         raise click.ClickException(str(exc)) from exc

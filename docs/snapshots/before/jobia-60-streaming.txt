@@ -1,0 +1,32 @@
+  JOBIA · Mission  ◈  read_file
+  remote · modele-observe · thème:jobia · vue:conversation ·
+ ◈ VUES │ [◉ 1·DIALOGUE]  ○2·MODULES  ○3·AGENTS  ○4·AVANT/AP
+ ◈ FLOTTE │ ⚡ORCH 💬CHAT 💻CODE[●ACTIF] 🎨IMAGE 🧊3D 🛡CYBER
+ ▅▆▇▇███▇▇▆▅▄▄▃▃▂▂▂▂▃▃▃▂▂▂▁▁   ▁▁▂▃▄▅▆▆▇▇▇▆▆▅▅▅▅▅▅▅▅▅▅▅▅▄▄▃
+╭─⟦ ⌘ Mission · DIALOGUE & RAI────────────────────────────╮
+│## Vous                                                 ^│
+│Inspecte ce projet et vérifie les tests.                 │
+│                                                         │
+│## Aurora                                                │
+│Le plan est prêt. Je commence par le fichier d’entrée.   │
+│                                                         │
+│```python                                                │
+│def ready():                                             │
+│    return True                                          │
+│```                                                      │
+│                                                         │
+│                                                         │
+│SORTIE REÇUE · résultat non encore confirmé              │
+│Lecture de la configuration en cours…                    │
+│                                                         │
+│                                                         │
+│                                                         │
+│                                                        v│
+╰─────────────────────────────────────────────────────────╯
+╭─⟦ Demande · Entrée envoyer ·─────────────────────────────╮
+│Explique le résultat                                      │
+│                                                          │
+│                                                          │
+╰──────────────────────────────────────────────────────────╯
+  / Palette Commandes  │  F2 Thème  │  F3 Modèle  │  F4 / Al
+  Diagnostic de démonstration

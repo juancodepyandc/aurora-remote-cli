@@ -34,6 +34,10 @@ import argparse
 import json
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import numpy as np
 
 
 # Canonical projection: which 3D axes map to image (U, V) for a subject kind.

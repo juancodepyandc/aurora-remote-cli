@@ -1,0 +1,32 @@
+  Aurora.  /  Édition
+  Cible pc-maitre.example · connecté · Diag 24 ms
+  Session demo-42 · Mission aucune
+ 1 [Conv]  2 Modu  3 Agen  4 Bila  5 Jour  6 Fich
+
+                                                                            ^
+  AURORA.
+  ─────────────────────
+  Un objectif. Des preuves.
+
+
+                             Un horizon ouvert.
+
+Décrivez le résultat que vous voulez obtenir. Le plan, les outils et les
+preuves apparaîtront pendant la mission.
+
+/modules explorer les parcours   /missions reprendre un travail
+
+/theme choisir votre univers   /help toutes les commandes
+
+La cible et la session restent visibles en haut de l’écran.
+
+
+                                                                            v
+ Activité observée · Prêt · aucun travail en cours
+ 0 observations · 0 fichiers · 0 caractères reçus
+ Le plan et les outils apparaîtront ici.
+ Demande · Entrée envoyer · Alt+Entrée ligne
+│
+│
+ F2 Thème  F3 Modèle  F4 Vue  F5 Diagnostic
+ Ctrl+C Arrêt · Ctrl+Q Sortie · Tab Défiler · / Aide

@@ -4,12 +4,6 @@ from __future__ import annotations
 from pathlib import Path
 import shlex
 
-import click
-from rich import box
-from rich.columns import Columns
-from rich.panel import Panel
-from rich.text import Text
-
 from aurora_cli import config, display, themes
 from aurora_cli.core import catalog, fetcher, governor
 from aurora_cli.core.agents import get
@@ -38,25 +32,19 @@ def _remote_mission(request, history):
 
 def dashboard(result=None):
     view = display.view
-    theme, caps = view.theme, view.caps
-    view.banner(caption=True)
+    theme = view.theme
+    view.banner(caption=True, animate=False)
     cards = [
         ("CRÉER", "Images · personnages · modèles 3D\nDécris ton résultat, connu ou inventé."),
         ("TRAVAILLER", "Code · rédaction · conversation\nModèles locaux et missions sur ton PC fixe."),
         ("PRÉPARER", "Détection · mémoire · installation\n/models  /apps  /prepare ta demande"),
     ]
-    panels = [Panel(Text(body, style=theme.style("text", caps)),
-                    title=Text(title, style=theme.style("accent", caps, bold=True)),
-                    border_style=theme.style("primary", caps),
-                    box=box.ROUNDED if caps.unicode else box.ASCII, padding=(1, 2))
-              for title, body in cards]
-    view.console.print(Columns(panels, equal=True, expand=True))
+    view.print(view.table('VOTRE ESPACE', [('Action', 'primary'), ('Possibilités', 'text')], cards))
     if result is not None:
         active = sum(p.healthy for p in result.providers)
-        view.console.print(Text(
+        display.hint(
             f"  {active} moteur(s) actif(s)  ·  {result.total_models} modèle(s) détecté(s)"
-            f"  ·  thème {theme.id}  ·  mode {config.get('mode', 'auto')}",
-            style=theme.style("secondary", caps)))
+            f"  ·  thème {theme.id}  ·  mode {config.get('mode', 'auto')}")
     display.hint("/theme otter · /models · /apps · /help · /quit")
 
 
@@ -88,7 +76,7 @@ def prepare(request: str, *, yes=False):
     if not downloads:
         return True
     display.hint("Les tailles sont estimées ; certaines dépendances ont une taille inconnue.")
-    if not yes and not click.confirm("Installer ces modèles pour poursuivre ?", default=False):
+    if not yes and not display.confirm("Installer ces modèles pour poursuivre ?", default=False):
         return False
     for artifact in catalog.merge_downloads(downloads):
         from aurora_cli.core.bootstrap import ensure_hf, start_ollama
@@ -223,9 +211,9 @@ def execute(request: str, history: list, *, local_only=False, allow_model_select
     from .core.conversation import respond_with_fallback
     try:
         for text in respond_with_fallback(route.runtime, chosen, history, request, models=route.models, role=role):
-            display.view.console.print(text, end="", markup=False, highlight=False)
+            display.view.stream(text)
     finally:
-        display.view.console.print()
+        display.view.stream('\n')
     return True
 
 
@@ -296,7 +284,7 @@ def run_text_workspace():
                     continue
                 view.use_theme(name)
                 config.set("theme", name)
-                view.console.clear()
+                view.clear()
                 dashboard(result)
             elif raw == "/models":
                 result = scan(deep=True)
@@ -313,7 +301,7 @@ def run_text_workspace():
             elif raw == '/verify' or raw.startswith('/verify '):
                 verify_delivery(raw[len('/verify'):].strip())
             elif raw == "/clear":
-                view.console.clear()
+                view.clear()
                 dashboard(result)
             elif raw == "/new":
                 history = history.new()

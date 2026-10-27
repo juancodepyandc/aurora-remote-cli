@@ -1,0 +1,6 @@
+include native/Cargo.toml native/Cargo.lock native/.gitignore
+recursive-include native/src *.rs
+recursive-include native/tests *.rs
+recursive-include scripts *.py
+recursive-include docs *.md
+prune native/target

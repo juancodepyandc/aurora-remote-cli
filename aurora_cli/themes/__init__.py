@@ -18,18 +18,17 @@ from typing import Iterable
 from aurora_cli import brand
 from aurora_cli.core.capabilities import Capabilities
 from aurora_cli.themes.base import Theme
-from aurora_cli.themes.extra import ABYSS, PLAIN
-from aurora_cli.themes.jobia import JOBIA
-from aurora_cli.themes.otter import OTTER
+from aurora_cli.themes.loader import bundled_themes
 
 #: Registered themes, in menu order. The first entry is the default.
-_REGISTRY: tuple[Theme, ...] = (JOBIA, OTTER, ABYSS, PLAIN)
+_REGISTRY: tuple[Theme, ...] = bundled_themes()
 
 _BY_ID: dict[str, Theme] = {theme.id: theme for theme in _REGISTRY}
+JOBIA, OTTER, ABYSS, PLAIN = (_BY_ID[name] for name in ('jobia', 'otter', 'abyss', 'plain'))
 
 #: Also accept the pre-rename identifier so old config files keep working.
 _ALIASES: dict[str, str] = {
-    "default": JOBIA.id,
+    "default": OTTER.id,
     "nexus": JOBIA.id,
     "cyber": JOBIA.id,
     "loutre": OTTER.id,
@@ -37,7 +36,7 @@ _ALIASES: dict[str, str] = {
     "none": PLAIN.id,
 }
 
-DEFAULT_THEME_ID = JOBIA.id
+DEFAULT_THEME_ID = OTTER.id
 
 
 def all_themes() -> tuple[Theme, ...]:

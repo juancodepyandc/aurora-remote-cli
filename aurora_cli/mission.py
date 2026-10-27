@@ -7,14 +7,11 @@ from uuid import uuid4
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from rich.live import Live
-from rich.spinner import Spinner
-from rich.text import Text
-
 from aurora_cli import display
 from aurora_cli.bridge import Bridge
 from aurora_cli.transfers import receive_file
 from aurora_cli.observations import observation_text
+from aurora_cli.terminal import target_label
 
 
 def _safe_target(root: Path, raw: str, for_write: bool = False) -> Path | None:
@@ -86,29 +83,17 @@ def run_mission(client: Bridge, request: str, workspace: str = "", permissions: 
         display.error(f"Erreur de démarrage: {e}")
         return False
 
-    from rich.panel import Panel
-
     actual_ws = workspace or os.getcwd()
-    
-    info_text = Text()
-    info_text.append("🚀 Mission : ", style="bold green")
-    
-    # Clean up request for display
-    display_req = request.replace('\n', ' ')
-    if len(display_req) > 55:
-        display_req = display_req[:55] + "..."
-        
-    info_text.append(f"{display_req}\n")
-    info_text.append("Réception des fichiers : ", style="bold blue")
-    info_text.append(f"{actual_ws}\n")
-    info_text.append("Exécution sur le serveur : ", style="bold magenta")
-    info_text.append(f"{server_workspace or 'espace de travail du pont'} - Permissions: {permissions}\n\n")
-    info_text.append("Analyse de la requête en cours...", style="dim italic")
-    
-    display.view.console.print(Panel(info_text, title="[bold cyan]✧ Initialisation du pont[/bold cyan]", border_style="cyan"))
+    display.header('MISSION DISTANTE', request)
+    display.print(display.view.key_value_table('CONNEXION', [
+        ('Cible', target_label(client.server_url)), ('Mission', mission_id),
+        ('Session', session_id or 'session du serveur'),
+        ('Permissions', permissions), ('Réception des fichiers', actual_ws),
+        ('Exécution', server_workspace or 'espace de travail du pont'),
+    ]))
+    display.info('Mission acceptée · attente du premier événement')
 
     current_step = ""
-    start_time = time.time()
     tokens_printed = False
 
     live_spinner = None
@@ -117,7 +102,7 @@ def run_mission(client: Bridge, request: str, workspace: str = "", permissions: 
     def _separate_from_tokens() -> None:
         nonlocal tokens_printed
         if tokens_printed:
-            display.view.console.print("\n")
+            display.view.stream("\n")
             tokens_printed = False
 
     try:
@@ -127,49 +112,51 @@ def run_mission(client: Bridge, request: str, workspace: str = "", permissions: 
             if etype == "step_start":
                 step_name = event.get("step", "")
                 current_step = step_name
-                if display.view.caps.animate and ("Réflexion" in step_name or "Exécution" in step_name):
-                    if live_spinner:
-                        live_spinner.stop()
-                    reflection_start = time.time()
-                    spin = Spinner("bouncingBar", text=Text(f"✧ Pont | {step_name}...", style="bold magenta"))
-                    live_spinner = Live(spin, refresh_per_second=10, console=display.view.console, transient=True)
-                    live_spinner.start()
-                else:
-                    display.hint(step_name)
-                
+                _separate_from_tokens()
+                display.info(step_name)
+                if live_spinner:
+                    live_spinner.__exit__(None, None, None)
+                    live_spinner = None
+                if display.view.caps.is_tty and display.view.caps.animate:
+                    reflection_start = time.monotonic()
+                    live_spinner = display.thinking(step_name, reflection_start)
+                    live_spinner.__enter__()
+
             elif etype == "step_end":
                 step_name = event.get("step", current_step)
                 if live_spinner and ("Réflexion" in step_name or "Exécution" in step_name):
-                    live_spinner.stop()
+                    live_spinner.__exit__(None, None, None)
                     live_spinner = None
-                    elapsed_step = int(time.time() - reflection_start)
-                    display.view.console.print(f"[bold magenta]✧ Pont[/bold magenta] [dim]| {step_name} ({elapsed_step}s)[/dim]")
+                    elapsed_step = int(time.monotonic() - reflection_start)
+                    display.hint(f"{step_name} · {elapsed_step}s")
                 elif "Action:" in step_name:
                     pass # Handled by the tokens usually, or we can ignore
                 
             elif etype == "heartbeat":
                 if live_spinner:
-                    elapsed = event.get("elapsed")
-                    try:
-                        elapsed_secs = int(elapsed) if elapsed is not None else 0
-                    except (TypeError, ValueError):
-                        elapsed_secs = 0
-                    mins = int(elapsed_secs) // 60
-                    secs = int(elapsed_secs) % 60
-                    spin = Spinner("bouncingBar", text=Text(f"✧ Pont | {current_step} [{mins:02d}:{secs:02d}]...", style="bold magenta"))
-                    live_spinner.update(spin)
-                    
+                    live_spinner.update()
+
+            elif etype == "tool_start":
+                _separate_from_tokens()
+                display.info('Outil en cours : '+str(event.get('tool', 'outil')))
+
+            elif etype in {'plan', 'plan_revision'}:
+                _separate_from_tokens()
+                display.header('Plan reçu' if etype == 'plan' else 'Plan révisé')
+                for index, step in enumerate(event.get('steps', []), 1):
+                    display.kv(str(index), step)
+
             elif etype == "token":
                 if live_spinner:
-                    live_spinner.stop()
+                    live_spinner.__exit__(None, None, None)
                     live_spinner = None
                 token = event.get("content", "")
                 # Custom formatting for Bash commands
                 if "[EXECUTION BASH]:" in token:
                     cmd = token.replace("[EXECUTION BASH]:", "").strip()
-                    display.view.console.print(f"\n[bold cyan]⚡[/bold cyan] [bold white]Système[/bold white] [dim]❯[/dim] [cyan]{cmd}[/cyan]")
+                    display.info(f"Commande annoncée par le serveur : {cmd}")
                 else:
-                    display.view.console.print(token, end="", markup=False, highlight=False, soft_wrap=True)
+                    display.view.stream(token)
                     tokens_printed = True
                 
             elif etype in {'environment_observation','tool_result','command_output','recovery_observation','completion_observation',
@@ -177,15 +164,16 @@ def run_mission(client: Bridge, request: str, workspace: str = "", permissions: 
                 detail = observation_text(event, 1200)
                 if detail:
                     if live_spinner:
-                        live_spinner.stop()
+                        live_spinner.__exit__(None, None, None)
                         live_spinner = None
                     _separate_from_tokens()
                     label = ('Outil · '+str(event.get('tool', ''))+' · '+('réussi' if event.get('ok') else 'échec')) if etype=='tool_result' else 'Observation'
-                    display.view.console.print(Text(label+'\n'+detail))
+                    display.header(label)
+                    display.print(display.view.text(detail))
 
             elif etype == "file_diff":
                 if live_spinner:
-                    live_spinner.stop()
+                    live_spinner.__exit__(None, None, None)
                     live_spinner = None
                 _separate_from_tokens()
                 filename = event.get("filename", "unknown")
@@ -194,7 +182,7 @@ def run_mission(client: Bridge, request: str, workspace: str = "", permissions: 
                 
             elif etype == "sudo_request":
                 if live_spinner:
-                    live_spinner.stop()
+                    live_spinner.__exit__(None, None, None)
                     live_spinner = None
                 _separate_from_tokens()
                 reason = event.get("reason", "Action nécessite des privilèges élevés")
@@ -207,7 +195,7 @@ def run_mission(client: Bridge, request: str, workspace: str = "", permissions: 
 
             elif etype == "file_transfer":
                 if live_spinner:
-                    live_spinner.stop()
+                    live_spinner.__exit__(None, None, None)
                     live_spinner = None
                 _separate_from_tokens()
                 root = Path(workspace or os.getcwd()).resolve()
@@ -217,7 +205,7 @@ def run_mission(client: Bridge, request: str, workspace: str = "", permissions: 
             elif etype == "remote_command":
                 cmd = event.get("command", "")
                 cwd = event.get("cwd", "")
-                display.view.console.print(f"\n[bold yellow]⚡ Exécution locale (client):[/bold yellow] [cyan]{cmd}[/cyan]")
+                display.info(f"Exécution locale (client) : {cmd}")
                 try:
                     root = Path(workspace or os.getcwd()).resolve()
                     safe_cwd = _safe_target(root, cwd) if cwd else root
@@ -246,7 +234,7 @@ def run_mission(client: Bridge, request: str, workspace: str = "", permissions: 
 
             elif etype == "remote_read_file":
                 path = event.get("path", "")
-                display.view.console.print(f"\n[bold yellow]📖 Lecture locale (client):[/bold yellow] [dim]{path}[/dim]")
+                display.info(f"Lecture locale (client) : {path}")
                 try:
                     root = Path(workspace or os.getcwd()).resolve()
                     safe_path = _safe_target(root, path)
@@ -262,7 +250,7 @@ def run_mission(client: Bridge, request: str, workspace: str = "", permissions: 
             elif etype == "remote_write_file":
                 path = event.get("path", "")
                 content = event.get("content", "")
-                display.view.console.print(f"\n[bold yellow]💾 Écriture locale (client):[/bold yellow] [dim]{path}[/dim]")
+                display.info(f"Écriture locale (client) : {path}")
                 try:
                     root = Path(workspace or os.getcwd()).resolve()
                     safe_path = _safe_target(root, path, for_write=True)
@@ -277,21 +265,32 @@ def run_mission(client: Bridge, request: str, workspace: str = "", permissions: 
                 client.post(f"/api/cli/mission/{mission_id}/input", data={"input_type": "remote_write_result", "value": out})
 
             elif etype == "reconnecting":
-                display.info(f"Connexion interrompue, reprise du flux (tentative {event['attempt']}/3)...")
+                if live_spinner:
+                    live_spinner.__exit__(None, None, None)
+                    live_spinner = None
+                _separate_from_tokens()
+                display.warning(f"Connexion interrompue · reprise du flux {event.get('attempt', '?')}/3 · mission {mission_id}")
+                display.hint('Le serveur conserve la mission ; aucune nouvelle demande envoyée.')
 
             elif etype in ("error", "mission_interrupted"):
                 if live_spinner:
-                    live_spinner.stop()
+                    live_spinner.__exit__(None, None, None)
                     live_spinner = None
                 display.error(event.get("message") or event.get("error", "Une erreur est survenue."))
                 return False
                 
             elif etype == "mission_complete":
                 if live_spinner:
-                    live_spinner.stop()
+                    live_spinner.__exit__(None, None, None)
                     live_spinner = None
                 _separate_from_tokens()
-                display.mission_summary(event)
+                completed = event.get('status', 'completed') == 'completed' and not event.get('stopped')
+                if completed:
+                    display.mission_summary(event)
+                else:
+                    display.warning('Mission '+str(event.get('status', 'arrêtée'))+' · travail conservé')
+                    if event.get('result'):
+                        display.print(display.view.markdown(str(event['result']), title='Résultat reçu'))
                 if isinstance(retained, dict) and event.get('status','completed') == 'completed' and not event.get('stopped'):
                     retained['last_completed_mission_id'] = mission_id
                     retained.pop('active_mission_id', None)
@@ -303,7 +302,7 @@ def run_mission(client: Bridge, request: str, workspace: str = "", permissions: 
         return False
                 
     except KeyboardInterrupt:
-        display.view.console.print("\n")
+        display.view.stream("\n")
         display.info("Interruption demandée, arrêt de la mission sur le serveur...")
         try:
             result = client.mission_stop(mission_id)
@@ -319,20 +318,20 @@ def run_mission(client: Bridge, request: str, workspace: str = "", permissions: 
         return False
     finally:
         if live_spinner:
-            live_spinner.stop()
+            live_spinner.__exit__(None, None, None)
 
 
 def handle_temporary_agents(client: Bridge, agents: list[dict]) -> None:
     """Prompt user to save or delete temporary agents created during the mission."""
-    display.view.console.print(f"\n[bold]Agents temporaires créés : {len(agents)}[/bold]")
+    display.header(f"Agents temporaires créés : {len(agents)}")
     for a in agents:
-        display.view.console.print(f"  • {a.get('name')} [dim]({a.get('role', 'Agent')})[/dim]")
+        display.kv(a.get("name", "Agent"), a.get("role", "Agent"))
     
-    display.view.console.print("\n  [S] Tout sauvegarder")
-    display.view.console.print("  [s] Tout supprimer")
-    display.view.console.print("  [c] Choisir individuellement")
+    display.hint("[S] Tout sauvegarder")
+    display.hint("[s] Tout supprimer")
+    display.hint("[c] Choisir individuellement")
     
-    choice = input("\nChoix (S/s/c) [s]: ").strip()
+    choice = display.view.console.input(display.mark("accent", "Choix (S/s/c) [s] : ")).strip()
     
     if choice == 'S':
         for a in agents:
@@ -340,8 +339,8 @@ def handle_temporary_agents(client: Bridge, agents: list[dict]) -> None:
         display.success(f"{len(agents)} agents sauvegardés de façon permanente.")
     elif choice == 'c':
         for a in agents:
-            keep = input(f"Sauvegarder '{a.get('name')}' ? (o/N): ").strip().lower()
-            if keep == 'o':
+            keep = display.confirm(f"Sauvegarder {a.get('name')} ?", default=False)
+            if keep:
                 client.agent_dynamic_save(a['id'])
                 display.success(f"Sauvegardé : {a.get('name')}")
             else:

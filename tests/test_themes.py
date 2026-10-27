@@ -22,9 +22,9 @@ def color16(monkeypatch):
     return capabilities.detect()
 
 
-def test_default_theme_is_jobia():
-    assert themes.DEFAULT_THEME_ID == "jobia"
-    assert themes.default().id == "jobia"
+def test_default_theme_is_otter():
+    assert themes.DEFAULT_THEME_ID == "otter"
+    assert themes.default().id == "otter"
 
 
 def test_otter_is_selectable():
@@ -33,7 +33,7 @@ def test_otter_is_selectable():
 
 
 @pytest.mark.parametrize("alias,expected", [
-    ("default", "jobia"),
+    ("default", "otter"),
     ("nexus", "jobia"),   # pre-rename id must keep resolving
     ("cyber", "jobia"),
     ("loutre", "otter"),

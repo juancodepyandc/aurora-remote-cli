@@ -12,6 +12,7 @@ interactive layers did not have to be rewritten to use the theme system.
 from __future__ import annotations
 
 import dataclasses
+import re
 import time
 from typing import Any, Iterable, Sequence
 from rich import box as rich_box
@@ -21,10 +22,15 @@ from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
+from rich.segment import Segment
+from rich.markup import escape
 
 from aurora_cli import brand, themes
 from aurora_cli.core import animation, capabilities
 from aurora_cli.core.providers import ModelInfo, ProviderInfo, human_size
+from aurora_cli.core.capabilities import Capabilities
+from aurora_cli.themes.base import Theme
+from aurora_cli.terminal import safe_text, ascii_text
 
 #: Boxes available to themes, resolved from a theme's short name.
 BOXES: dict[str, Any] = {
@@ -77,7 +83,15 @@ class Display:
 
     def mark(self, slot: str, text: str, **flags) -> str:
         """Wrap text in Rich markup using an adapted palette slot."""
-        return self.theme.markup(slot, self.caps, text, **flags)
+        return self.theme.markup(slot, self.caps, escape(self.text(text)), **flags)
+
+    def text(self, value: Any) -> str:
+        return safe_text(value, unicode=self.caps.unicode)
+
+    def stream(self, chunk: str) -> None:
+        """Append once; never replay the growing response or emit cursor controls."""
+        self.console.file.write(self.text(chunk))
+        self.console.file.flush()
 
     def glyph(self, name: str) -> str:
         return self.theme.glyph(name, self.caps)
@@ -86,22 +100,27 @@ class Display:
         return BOXES.get(self.theme.box_for(self.caps), rich_box.ROUNDED)
 
     def panel(self, renderable: RenderableType, *, title: str = "",
-              slot: str = "border", padding: tuple[int, int] = (0, 1),
+              slot: str = "border", padding: tuple[int, int] | None = None,
               title_align: str | None = None) -> Panel:
         return Panel(
             renderable,
-            title=f"[{self.style('primary')}]{title}[/]" if title else None,
+            title=Text(self.text(title), style=self.style('primary', bold=True)) if title else None,
             title_align=title_align or self.theme.title_align,
             border_style=self.style(slot),
             box=self.box(),
-            padding=padding,
+            padding=padding if padding is not None else (self.theme.spacing.panel_y, self.theme.spacing.panel_x),
         )
 
     def print(self, renderable: RenderableType = "", **kwargs) -> None:
+        if isinstance(renderable, str):
+            renderable = self.text(renderable)
+            kwargs.setdefault('markup', False)
+            kwargs.setdefault('highlight', False)
         self.console.print(renderable, **kwargs)
 
     def clear(self) -> None:
-        self.console.clear()
+        if self.caps.is_tty:
+            self.console.clear()
 
     def rule(self, title: str = "") -> None:
         self.console.rule(f"[{self.style('muted')}]{title}[/]" if title else "")
@@ -109,24 +128,30 @@ class Display:
     # --- status messages -------------------------------------------------
 
     def success(self, msg: str) -> None:
-        self.console.print(f"{self.mark('success', self.glyph('ok'), bold=True)} {msg}")
+        self._notice('success', 'ok', 'OK', msg)
 
     def error(self, msg: str) -> None:
-        self.console.print(f"{self.mark('error', self.glyph('fail'), bold=True)} {msg}")
+        self._notice('error', 'fail', 'ERREUR', msg)
 
     def warning(self, msg: str) -> None:
-        self.console.print(f"{self.mark('warning', self.glyph('warn'), bold=True)} {msg}")
+        self._notice('warning', 'warn', 'ATTENTION', msg)
 
     def info(self, msg: str) -> None:
-        self.console.print(f"{self.mark('info', self.glyph('info'), bold=True)} {msg}")
+        self._notice('info', 'info', 'INFO', msg)
 
     def hint(self, msg: str) -> None:
-        self.console.print(f"[{self.style('muted', italic=True)}]{msg}[/]")
+        self.console.print(Text(self.text(msg), style=self.style('muted')))
+
+    def _notice(self, slot: str, glyph: str, label: str, msg: str) -> None:
+        self.console.print(Text.assemble(
+            (f'{self.glyph(glyph)} {label}  ', self.style(slot, bold=True)),
+            (self.text(msg), self.style('text')),
+        ))
 
     def kv(self, key: str, value: str, *, slot: str = "text") -> None:
-        self.console.print(
-            f"  [{self.style('muted')}]{key}[/]  [{self.style(slot)}]{value}[/]"
-        )
+        self.console.print(Text.assemble(
+            (' ' * self.theme.spacing.gutter + self.text(key) + '  ', self.style('muted')),
+            (self.text(value), self.style(slot))))
 
     # --- banner ----------------------------------------------------------
 
@@ -145,7 +170,10 @@ class Display:
                                                    caption=brand.APP_TAGLINE))
         animator = (self.animator if target is self.theme
                     else animation.Animator(self.console, self.caps, target))
-        if animate:
+        # Startup is immediate. Motion is an explicit preview, never a tax on commands.
+        if not self.caps.is_tty:
+            self.console.print(Text(f'AURORA / {target.label}', style=self.style('primary', bold=True)))
+        elif animate and theme is not None:
             animator.play_banner()
         else:
             self.console.print(animator.render_banner())
@@ -180,24 +208,24 @@ class Display:
     def table(self, title: str, columns: Sequence[tuple[str, str]], rows: Iterable[Sequence[Any]],
               *, expand: bool = True) -> Table:
         """Build a themed table. ``columns`` is ``[(header, style_slot)]``."""
-        grid = Table(title=f"[{self.style('primary')}]{title}[/]" if title else None,
+        grid = Table(title=Text(self.text(title), style=self.style('primary', bold=True)) if title else None,
                      box=self.box(), expand=expand, show_header=True,
                      header_style=self.style("primary", bold=True),
                      border_style=self.style("border"), title_style=self.style("accent", bold=True))
         for header, slot in columns:
             grid.add_column(header, style=self.style(slot))
         for row in rows:
-            grid.add_row(*["" if cell is None else str(cell) for cell in row])
+            grid.add_row(*[Text('' if cell is None else self.text(cell)) if not isinstance(cell, Text) else cell for cell in row])
         return grid
 
     def key_value_table(self, title: str, pairs: Iterable[tuple[str, Any]]) -> Table:
-        grid = Table(title=f"[{self.style('primary')}]{title}[/]" if title else None,
+        grid = Table(title=Text(self.text(title), style=self.style('primary', bold=True)) if title else None,
                      box=self.box(), show_header=False, expand=True,
                      border_style=self.style("border"), title_style=self.style("accent", bold=True))
         grid.add_column(style=self.style("muted"), justify="right", no_wrap=True)
         grid.add_column(style=self.style("text"))
         for key, value in pairs:
-            grid.add_row(str(key), "" if value is None else str(value))
+            grid.add_row(Text(self.text(key)), Text('' if value is None else self.text(value)))
         return grid
 
     # --- model and provider listings ------------------------------------
@@ -279,8 +307,8 @@ class Display:
             return
         rows = []
         for provider in providers:
-            icon = (self.mark("success", self.glyph("ok")) if provider.healthy
-                    else self.mark("muted", self.glyph("fail")))
+            icon = (self.glyph("ok") if provider.healthy
+                    else self.glyph("fail"))
             detail = provider.base_url or provider.binary_path or provider.detail
             rows.append((
                 provider.label,
@@ -304,7 +332,7 @@ class Display:
             else:
                 enabled = []
             active = name == current
-            label = self.mark("success", name, bold=True) if active else name
+            label = name
             if active:
                 label += " " + self.glyph("arrow")
             rows.append((label, ", ".join(enabled[:6]) or "—",
@@ -353,22 +381,21 @@ class Display:
             f"\n[{self.style('primary', bold=True)}]Agents officiels "
             f"({len(official)})[/]")
         for agent in official:
-            icon = (self.mark("success", self.glyph("ok")) if agent.get("enabled", True)
+            icon = (self.glyph("ok") if agent.get("enabled", True)
                     else self.mark("error", self.glyph("fail")))
-            self.console.print(
-                f"  {icon} [{self.style('text', bold=True)}]{agent.get('name', '?')}[/]"
-                f"  [{self.style('muted')}]{agent.get('description', '')}[/]"
-            )
+            self.console.print(Text.assemble(
+                ('  '+self.glyph('ok' if agent.get('enabled', True) else 'fail')+' ', self.style('primary')),
+                (self.text(agent.get('name', '?')), self.style('text', bold=True)),
+                ('  '+self.text(agent.get('description', '')), self.style('muted'))))
         if dynamic:
             self.console.print(
                 f"\n[{self.style('secondary', bold=True)}]Agents dynamiques "
                 f"({len(dynamic)})[/]")
             for agent in dynamic:
-                self.console.print(
-                    f"  [{self.style('secondary')}]{self.glyph('bullet')}[/]"
-                    f" [{self.style('text', bold=True)}]{agent.get('name', '?')}[/]"
-                    f"  [{self.style('muted')}]{agent.get('role', '')}[/]"
-                )
+                self.console.print(Text.assemble(
+                    ('  '+self.glyph('bullet')+' ', self.style('secondary')),
+                    (self.text(agent.get('name', '?')), self.style('text', bold=True)),
+                    ('  '+self.text(agent.get('role', '')), self.style('muted'))))
         self.console.print()
 
     def connections_table(self, connections: Sequence[dict]) -> None:
@@ -377,7 +404,7 @@ class Display:
             return
         rows = [
             (c.get("name") or c.get("service", ""),
-             self.mark("success", "actif") if c.get("active") else self.mark("muted", "inactif"),
+             "actif" if c.get("active") else "inactif",
              ", ".join(c.get("capabilities") or []) or "—")
             for c in connections
         ]
@@ -403,59 +430,61 @@ class Display:
                 state = "ok" if check.get("ok") else "error"
             slot, glyph_key = self._CHECK_STATES.get(state, ("muted", "info"))
             detail = check.get("detail") or check.get("error") or check.get("message") or ""
-            self.console.print(
-                f"  {self.mark(slot, self.glyph(glyph_key))} "
-                f"[{self.style('text')}]{check.get('name', '?')}[/]"
-                + (f"  [{self.style('muted')}]{detail}[/]" if detail else "")
-            )
+            self.console.print(Text.assemble(
+                ('  '+self.glyph(glyph_key)+' ', self.style(slot)),
+                (self.text(check.get('name', '?')), self.style('text')),
+                ('  '+self.text(detail) if detail else '', self.style('muted'))))
         self.console.print()
 
     # --- content ---------------------------------------------------------
 
     def markdown(self, text: str, *, title: str = "", slot: str = "primary") -> Panel:
         return self.panel(
-            Markdown(text, justify="left", code_theme=self.theme.scan_style),
+            Markdown(self.text(text), justify="left", code_theme=self.theme.scan_style),
             title=title, slot=slot, padding=(1, 2),
         )
 
     def mission_summary(self, event: dict) -> None:
-        result = str(event.get("result", ""))
+        result = self.text(event.get("result", ""))
+        status = event.get('status', 'completed')
+        complete = status == 'completed'
+        slot = 'success' if complete else 'warning'
+        label = 'Mission terminée' if complete else 'Mission · ' + self.text(status)
         self.console.print(self.panel(
-            Text(result, style=self.style("success")),
-            title=f"{self.glyph('ok')} Mission terminée", slot="success", padding=(1, 2),
+            Text(result, style=self.style('text')),
+            title=f"{self.glyph('ok' if complete else 'warn')} {label}", slot=slot,
         ))
 
     def code_diff(self, filename: str, diff_lines: Sequence[str]) -> None:
         """Render a unified diff with line numbers and per-sign colouring."""
-        self.console.print()
-        self.console.print(
-            f"[{self.style('secondary', bold=True)}]{self.glyph('bullet')} "
-            f"{filename}[/]"
-        )
+        self.console.print(Text(self.text(filename), style=self.style('secondary', bold=True)))
         grid = Table(box=None, show_header=False, padding=(0, 1), pad_edge=False)
-        grid.add_column(justify="right", style=self.style("muted"), width=4)
+        grid.add_column(style=self.style('muted'), justify='right')
+        grid.add_column(style=self.style('muted'), justify='right')
         grid.add_column()
-        line_number = 0
+        old, new = 0, 0
         for raw in diff_lines:
-            line = raw.rstrip("\n")
-            if line.startswith("@@"):
-                line_number = 0
-                grid.add_row("", f"[{self.style('info')}]{line}[/]")
+            line = self.text(raw.rstrip('\n'))
+            hunk = re.match(r'@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@', line)
+            if hunk:
+                old, new = map(int, hunk.groups())
+                grid.add_row('', '', Text(line, style=self.style('info')))
                 continue
             marker = line[:1]
-            body = line[1:] if marker in ("+", "-", " ") else line
-            line_number += 1
-            if marker == "+":
-                grid.add_row(str(line_number),
-                             f"[{self.style('success')}]{self.theme.diff_added} {body}[/]")
-            elif marker == "-":
-                grid.add_row(str(line_number),
-                             f"[{self.style('error')}]{self.theme.diff_removed} {body}[/]")
+            if line.startswith(('--- ', '+++ ')):
+                grid.add_row('', '', Text(line, style=self.style('muted')))
+                continue
+            if marker == '+':
+                grid.add_row('', str(new), Text(line, style=self.style('success')))
+                new += 1
+            elif marker == '-':
+                grid.add_row(str(old), '', Text(line, style=self.style('error')))
+                old += 1
             else:
-                grid.add_row(str(line_number),
-                             f"[{self.style('muted')}] {body}[/]")
-        self.console.print(self.panel(grid, slot="secondary"))
-        self.console.print()
+                grid.add_row(str(old), str(new), Text(line, style=self.style('text')))
+                old += 1
+                new += 1
+        self.console.print(self.panel(grid, slot='secondary'))
 
     def files_received(self, entries: Sequence[dict]) -> None:
         """Table of artifacts downloaded to this machine."""
@@ -479,8 +508,9 @@ class Display:
     def thinking(self, label: str, started: float) -> Live:
         """A live panel that breathes while work is in flight."""
         if not self.caps.animate:
+            self.info(label)
             return _NullLive()
-        frames = self.animator.frames_for("dots")
+        frames = self.animator.frames_for(self.theme.components.spinner)
         return _ThinkingLive(self, label, frames, started)
 
     def typing_effect(self, text: str, *, title: str = "", speed: float = 0.012) -> None:
@@ -505,9 +535,8 @@ class Display:
         from rich.prompt import Prompt
 
         self.console.print()
-        self.console.print(
-            f"[{self.style('warning', bold=True)}]🔒 {prompt}[/]")
-        return Prompt.ask(f"[{self.style('primary')}]{prompt}[/]", password=True)
+        self.warning('Autorisation requise · saisie masquée')
+        return Prompt.ask(self.mark('primary', prompt), password=True, console=self.console)
 
 
 # --- Live helpers ---------------------------------------------------------
@@ -545,7 +574,7 @@ class _ThinkingLive:
 
     def _renderable(self) -> RenderableType:
         spinner = self.frames[self._frame % len(self.frames)]
-        elapsed = int(time.time() - self.started)
+        elapsed = max(0, int(time.monotonic() - self.started))
         clock = f"{elapsed // 60:02d}:{elapsed % 60:02d}"
         text = Text.assemble(
             (f"{spinner} ", self.view.style("primary", bold=True)),
@@ -578,13 +607,28 @@ class _ThinkingLive:
 
 # --- Module-level facade --------------------------------------------------
 
+class TerminalConsole(Console):
+    """Last-mile ASCII conversion also covers nested Rich tables/markdown."""
+
+    def __init__(self, *args, unicode=True, **kwargs):
+        self.unicode = unicode
+        super().__init__(*args, **kwargs)
+
+    def render(self, renderable, options=None):
+        for segment in super().render(renderable, options):
+            if self.unicode or segment.control:
+                yield segment
+            else:
+                yield Segment(ascii_text(segment.text), segment.style, segment.control)
+
+
 def _default_console(caps: Capabilities) -> "Console":
     """Apply the selected output policy when the renderer is bound."""
     systems = {"ansi": "standard", "color8": "standard",
                "color256": "256", "truecolor": "truecolor"}
-    return Console(force_terminal=caps.color,
+    return TerminalConsole(force_terminal=caps.color, unicode=caps.unicode, highlight=False,
                    color_system=systems.get(caps.color_depth),
-                   no_color=not caps.color, width=caps.width)
+                   no_color=not caps.color)
 
 
 view = Display()
@@ -775,6 +819,12 @@ def typing_effect(text: str, *, title: str = "", speed: float = 0.012) -> None:
 
 def thinking(label: str, started: float):
     return view.thinking(label, started)
+
+
+def confirm(prompt: str, default: bool = False, **kwargs) -> bool:
+    import click
+    view.warning('Confirmation requise')
+    return click.confirm(view.text(prompt), default=default, **kwargs)
 
 
 def model_rows(models: Iterable[ModelInfo]) -> list[dict[str, str]]:

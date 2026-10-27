@@ -1,0 +1,32 @@
+  JOBIA · Mission  ◈  Prêt
+  remote · modele-observe · thème:jobia · vue:conversation · / commandes & modul
+ ◈ VUES │ [◉ 1·DIALOGUE]  ○2·MODULES  ○3·AGENTS  ○4·AVANT/APRÈS  ○5·JOURNAL  ○6·
+ ◈ FLOTTE │ ⚡ORCH 💬CHAT[◉] 💻CODE 🎨IMAGE 🧊3D 🛡CYBER 📈BIZ 🔬ACAD 🎙VOIX │ 🧠
+ ▃▃▄▄▅▅▆▆▆▆▆▆▅▅▅▅▅▅▅▅▅▅▅▅▄▄▄▃▃▂▂▂▂▂▂▃▃▄▄▄▄▄▄▄▄▄▄▄▄▄▅▅▅▅▅▅▅▅▄▄▃▃▃▂▂▂▂▃▃▃▃▄▄▄▄▄▄▄
+╭─⟦ ⌘ Mission · DIALOGUE & RAISONNEMENT ──────────────────────────────────────╮
+│                                                                            ^│
+│                                                                             │
+│                                                                             │
+│                                                                             │
+│                                                                             │
+│                                                                             │
+│                                                                             │
+│                                                                             │
+│                                                                             │
+│                                                                             │
+│                                                                             │
+│                                                                             │
+│                                                                             │
+│                                                                             │
+│                                                                             │
+│                                                                             │
+│                                                                             │
+│                                                                            v│
+╰─────────────────────────────────────────────────────────────────────────────╯
+╭─⟦ Demande · Entrée envoyer · / Command───────────────────────────────────────╮
+│                                                                              │
+│                                                                              │
+│                                                                              │
+╰──────────────────────────────────────────────────────────────────────────────╯
+  / Palette Commandes  │  F2 Thème  │  F3 Modèle  │  F4 / Alt+1..5 Vues (Chat/Mo
+  Diagnostic de démonstration

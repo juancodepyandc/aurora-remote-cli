@@ -1,0 +1,32 @@
+AURORA   ◌   REMOTE STUDIO                                                                                              
+Machine demo.local · Session spike · Latence non mesurée                                                                
+                                                                                                                        
+                                                                                                                        
+┌──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│160  Aurora > Vérification du projet, observation reçue.                                                              │
+│161  Aurora > Vérification du projet, observation reçue.                                                              │
+│162  Aurora > Vérification du projet, observation reçue.                                                              │
+│163  Aurora > Vérification du projet, observation reçue.                                                              │
+│164  Aurora > Vérification du projet, observation reçue.                                                              │
+│165  Aurora > Vérification du projet, observation reçue.                                                              │
+│166  Aurora > Vérification du projet, observation reçue.                                                              │
+│167  Aurora > Vérification du projet, observation reçue.                                                              │
+│168  Aurora > Vérification du projet, observation reçue.                                                              │
+│169  Aurora > Vérification du projet, observation reçue.                                                              │
+│170  Aurora > Vérification du projet, observation reçue.                                                              │
+│171  Aurora > Vérification du projet, observation reçue.                                                              │
+│172  Aurora > Vérification du projet, observation reçue.                                                              │
+│173  Aurora > Vérification du projet, observation reçue.                                                              │
+│174  Aurora > Vérification du projet, observation reçue.                                                              │
+│175  Aurora > Vérification du projet, observation reçue.                                                              │
+│176  Aurora > Vérification du projet, observation reçue.                                                              │
+│177  Aurora > Vérification du projet, observation reçue.                                                              │
+│178  Aurora > Vérification du projet, observation reçue.                                                              │
+│179  Aurora > Vérification du projet, observation reçue.                                                              │
+│                                                                                                                      │
+│                                                                                                                      │
+└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│  Inspecte ce projet                                                                                                  │
+└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+FRAME 0180   Entrée : envoyer · Ctrl+Q : quitter                                                                        

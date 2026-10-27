@@ -64,7 +64,13 @@ def _supports_unicode() -> bool:
 
 
 def _detect_color_depth(stream) -> ColorDepth:
+    # An explicit policy is more specific than automatic environment detection.
+    if os.environ.get('JOBIA_COLOR') == 'always':
+        return 'truecolor'
+    if "NO_COLOR" in os.environ:
+        return "none"
     forced = os.environ.get("JOBIA_COLOR")
+    forced = {'16': 'ansi', '256': 'color256', '24bit': 'truecolor'}.get(forced, forced)
     if forced == "never":
         return "none"
     if forced == "always":
@@ -95,6 +101,8 @@ def _detect_color_depth(stream) -> ColorDepth:
 
 def _detect_animation(color_depth: ColorDepth, is_tty: bool, slow: bool) -> AnimLevel:
     """Map terminal capabilities onto an animation budget level."""
+    if not is_tty or color_depth == 'none':
+        return 'none'
     forced = os.environ.get("JOBIA_ANIM")
     if forced in ("none", "static", "reduced", "full"):
         return forced  # type: ignore[return-value]
@@ -123,6 +131,7 @@ class Capabilities:
     ansi_styles: bool
     slow: bool
     env_overrides: dict[str, str] = field(default_factory=dict)
+    image_protocol: str = 'none'
 
     # --- Derived helpers -------------------------------------------------
 
@@ -160,7 +169,7 @@ class Capabilities:
         if override and override > 0:
             return 1.0 / min(override, 60)
         if self.animation == "full":
-            return 1.0 / 24.0
+            return 1.0 / 60.0
         if self.animation == "reduced":
             return 1.0 / 8.0
         return 1.0 / 4.0
@@ -172,7 +181,7 @@ def detect(stream=None, *, force_animation: AnimLevel | None = None) -> Capabili
     is_tty = bool(getattr(stream, "isatty", lambda: False)())
     color_depth = _detect_color_depth(stream)
     unicode_ok = _supports_unicode()
-    slow = bool(_env_flag("JOBIA_SLOW")) or _is_ci()
+    slow = bool(_env_flag("JOBIA_SLOW")) or _is_ci() or bool(os.environ.get('SSH_TTY'))
     animation = force_animation or _detect_animation(color_depth, is_tty, slow)
     if force_animation is not None:
         animation = force_animation
@@ -184,7 +193,7 @@ def detect(stream=None, *, force_animation: AnimLevel | None = None) -> Capabili
     env_overrides = {
         key: value
         for key, value in os.environ.items()
-        if key.startswith("JOBIA_")
+        if key in {'JOBIA_COLOR', 'JOBIA_ANIM', 'JOBIA_UNICODE', 'JOBIA_FPS', 'JOBIA_SLOW', 'JOBIA_IMAGES', 'JOBIA_THEME'}
     }
     return Capabilities(
         os_name=_os_name(),
@@ -197,7 +206,24 @@ def detect(stream=None, *, force_animation: AnimLevel | None = None) -> Capabili
         ansi_styles=color_depth != "none",
         slow=slow,
         env_overrides=env_overrides,
+        image_protocol=_image_protocol(is_tty, color_depth),
     )
+
+
+def _image_protocol(is_tty: bool, color_depth: ColorDepth) -> str:
+    """Conservative detection without blocking device-attribute queries."""
+    if not is_tty or color_depth == 'none' or os.environ.get('TMUX'):
+        return 'none'
+    selected = os.environ.get('JOBIA_IMAGES', 'auto')
+    if selected in {'none', 'kitty', 'iterm2', 'sixel'}:
+        return selected
+    if os.environ.get('KITTY_WINDOW_ID') or os.environ.get('TERM') == 'xterm-kitty':
+        return 'kitty'
+    if os.environ.get('TERM_PROGRAM') == 'iTerm.app':
+        return 'iterm2'
+    if 'sixel' in os.environ.get('TERM', '').lower():
+        return 'sixel'
+    return 'none'
 
 
 def _os_name() -> str:

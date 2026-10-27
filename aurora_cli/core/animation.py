@@ -478,7 +478,8 @@ class Animator:
                 live.refresh()
                 if progress >= 1.0 or elapsed * 1000 >= budget:
                     break
-                time.sleep(interval)
+                deadline = started + (index + 1) * interval
+                time.sleep(max(0.0, deadline - time.monotonic()))
 
     def _frame_count(self, budget_ms: int) -> int:
         if budget_ms <= 0:
@@ -491,7 +492,7 @@ class Animator:
         art_width = max((len(line) for line in art.split("\n")), default=0)
         if spec.caption:
             art_width = max(art_width, len(spec.caption))
-        return min(art_width, max(40, self.caps.clamp_width()))
+        return min(art_width, max(1, self.console.width))
 
     def _art_height(self, art: str, spec: BannerSpec) -> int:
         rows = len(art.split("\n"))

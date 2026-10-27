@@ -1,0 +1,32 @@
+  ▰ Aurora                                                Connexion : connecté  
+  Cible pc-maitre.example                                          Diag. 24 ms  
+  Session demo-42                                               Mission aucune  
+  Prêt                                                               synthwave  
+   [1 Conversation]   F4 : changer de vue                                       
+  ╭ Espace de travail ───────────────────────────────────────────────────────╮  
+  │                   Minuit FM                                              │  
+  │   ▀▀▀▀▀▀▀▀▀▀                                                             │  
+  │ ▀▀▀▀▀▀▀▀▀▀▀▀▀▀    Un horizon ouvert.                                     │  
+  │ ▀▀▀▀▀▀▀▀▀▀▀▀▀▀                                                           │  
+  │  ▀▀▀▀▀▀▀▀▀▀▀▀     Décrivez le résultat que vous voulez obtenir.          │  
+  │    ▀▀▀▀▀▀▀▀       Le plan, les outils et les preuves apparaîtront pendant│  
+  │▀              ▀   la mission.                                            │  
+  │ ▀▀▀▀▀▀▀▀▀▀▀▀▀▀                                                           │  
+  │   ▀▀▀▀▀▀▀▀▀▀      /modules explorer les parcours   /missions reprendre un│  
+  │                   travail                                                │  
+  │                                                                          │  
+  │                   /theme choisir votre univers   /help toutes les        │  
+  │                   commandes                                              │  
+  │                                                                          │  
+  │                   La cible et la session restent visibles en haut de     │  
+  │                   l’écran.                                               │  
+  │                                                                          │  
+  │                                                                          │  
+  ╰──────────────────────────────────────────────────────────────────────────╯  
+  idle · Prêt                                                                   
+   0 observations · 0 fichiers · 0 caractères reçus                             
+   Le plan et les outils apparaîtront ici.                                      
+  ╭ Votre demande · Entrée envoyer · Alt+Entrée ligne ───────────────────────╮  
+  │                                                                          │  
+  ╰──────────────────────────────────────────────────────────────────────────╯  
+  F2 thèmes · F3 modèles · F4 vues · F5 état · ^C arrêt · ^Q sortie             

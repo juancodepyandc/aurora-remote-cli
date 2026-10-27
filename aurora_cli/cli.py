@@ -69,6 +69,7 @@ import click  # noqa: E402,F811  (re-imported after the resolver shim on purpose
 from aurora_cli import __version__, brand, config, display, themes  # noqa: E402
 from aurora_cli.core import capabilities, locations  # noqa: E402
 from aurora_cli.core.providers import human_size  # noqa: E402
+from aurora_cli.click_ui import AuroraGroup, ThemeGroup  # noqa: E402
 
 
 def _excepthook(exc_type, exc, tb):
@@ -119,7 +120,7 @@ def _apply_overrides(ctx) -> None:
     }
 
 
-@click.group(invoke_without_command=True, context_settings={"help_option_names": ["-h", "--help"]})
+@click.group(cls=AuroraGroup, invoke_without_command=True, context_settings={"help_option_names": ["-h", "--help"]})
 @click.option("--theme", "theme_opt", default="", help="Force a theme for this run only.")
 @click.option(
     "--color",
@@ -343,15 +344,17 @@ def clear_command(all_projects):
         count, backup = clear_archives(all_projects=all_projects)
     except OSError as exc:
         raise click.ClickException(f'Nettoyage impossible : {exc}') from exc
-    click.echo(f'{count} conversation(s) locale(s) effacée(s).')
+    display.success(f'{count} conversation(s) locale(s) effacée(s).')
     if backup:
-        click.echo(f'Sauvegarde : {backup}')
-    click.echo('Les missions distantes et leurs fichiers sont conservés.')
+        display.kv('Sauvegarde', backup)
+    display.hint('Les missions distantes et leurs fichiers sont conservés.')
 
 
 @main.command(name="ui")
 @click.option("--text", "text_mode", is_flag=True, help="Use the linear terminal interface.")
-def ui_command(text_mode):
+@click.option("--renderer", type=click.Choice(['auto','native','python']), default=None,
+              help="Renderer plein écran. Auto utilise Rust si le binaire est installé.")
+def ui_command(text_mode, renderer):
     """Open the full-screen workspace, or the linear interface with --text."""
     if text_mode:
         from .workspace import run_text_workspace
@@ -360,7 +363,7 @@ def ui_command(text_mode):
         run_text_workspace()
     else:
         from .ui import run_ui
-        run_ui()
+        run_ui(renderer=renderer)
 
 
 @main.group(name="missions")
@@ -376,6 +379,8 @@ def missions_list_command(as_json):
     if as_json:
         click.echo(json.dumps(result, ensure_ascii=False))
     else:
+        if not result.get('missions'):
+            display.hint('Aucune mission distante enregistrée.')
         for item in result.get('missions', []):
             display.kv(item['id'], item['status']+' · '+item['request'][:100])
 
@@ -424,6 +429,8 @@ def missions_status_command(mission_id, as_json):
         display.warning(f"Erreur : {mission_data['error']}")
     elif mission_data.get("result"):
         display.print(str(mission_data["result"])[:500])
+        if len(str(mission_data["result"])) > 500:
+            display.hint("Aperçu limité à 500 caractères · --json conserve le résultat complet.")
 
 
 @missions_command.command(name="stop")
@@ -457,34 +464,52 @@ def missions_local_command(as_json):
 
 # --- Local commands -------------------------------------------------------
 
-@main.command(name="theme")
-@click.argument("name", required=False)
-def theme_cmd(name):
-    """List themes, preview one, or make it the default."""
+@main.group(name="theme", cls=ThemeGroup, invoke_without_command=True)
+@click.pass_context
+def theme_cmd(ctx):
+    """Lister, prévisualiser et choisir une identité du terminal."""
+    if ctx.invoked_subcommand is None:
+        ctx.invoke(theme_list)
+
+
+@theme_cmd.command(name='list')
+def theme_list():
+    """Afficher les thèmes disponibles et le thème actif."""
     ctx = click.get_current_context().find_root()
-    caps = ctx.obj["caps"]
+    rows = [(candidate.id, candidate.label,
+             candidate.description + (' (défaut)' if candidate.id == themes.DEFAULT_THEME_ID else ''))
+            for candidate in themes.all_themes()]
+    display.print(display.view.table('THÈMES', [('Nom', 'primary'), ('Identité', 'text'), ('Direction', 'muted')], rows))
+    display.kv('Actuel', f"{ctx.obj['theme'].id} ({ctx.obj['theme_source']})")
+    display.hint('theme preview NOM pour essayer · theme set NOM pour enregistrer')
 
-    if not name:
-        display.header("Thèmes disponibles")
-        for candidate in themes.all_themes():
-            marker = " (défaut)" if candidate.id == themes.DEFAULT_THEME_ID else ""
-            display.kv(candidate.id, f"{candidate.label} — {candidate.description}{marker}")
-        display.hint("")
-        display.kv("Actuel", f"{ctx.obj['theme'].id} ({ctx.obj['theme_source']})")
-        return
 
+def _known_theme(name):
     if not themes.is_known(name):
-        display.error(f"Thème inconnu : {name}")
-        display.hint(f"Disponibles : {', '.join(themes.theme_ids())}")
-        raise SystemExit(2)
-    resolved, source = themes.resolve(name, caps)
+        raise click.BadParameter(f"Thème inconnu : {name}. Disponibles : {', '.join(themes.theme_ids())}")
+    return themes.get(name)
 
-    display.banner(theme=resolved)
-    if click.confirm(f"Définir « {resolved.id} » comme thème par défaut ?", default=True):
-        config.set("theme", resolved.id)
-        display.success(f"Thème enregistré : {resolved.id} (dans {locations.config_file()})")
-    else:
-        display.hint(f"Thème prévisualisé uniquement ({source})")
+
+@theme_cmd.command(name='set')
+@click.argument('name')
+def theme_set(name):
+    """Enregistrer un thème pour les prochaines sessions."""
+    chosen = _known_theme(name)
+    config.set('theme', chosen.id)
+    display.view.use_theme(chosen.id)
+    display.banner(theme=chosen, animate=False)
+    display.success(f'Thème enregistré : {chosen.id}')
+
+
+@theme_cmd.command(name='preview')
+@click.argument('name')
+def theme_preview(name):
+    """Prévisualiser un thème sans changer la configuration."""
+    chosen = _known_theme(name)
+    from . import graphics
+    display.header(chosen.label, chosen.description)
+    graphics.preview(display.view, chosen)
+    display.hint('Aperçu uniquement · theme set '+chosen.id+' pour le conserver')
 
 
 @main.command()
@@ -887,7 +912,7 @@ def provision_install(agent_id, tier, agent_job, yes, dry_run, verbose, strategy
         display.hint(f"Attente {max(0, wait)} s… (Ctrl-C pour arrêter)")
 
         def _update(free_gb, remaining):
-            click.echo(f"  {free_gb:.1f} Go libres, encore {int(remaining)}s")
+            display.hint(f"{free_gb:.1f} Go libres, encore {int(remaining)}s")
 
         if not governor.wait_until(agent, decision.tier, machine=prof,
                                    seconds=wait, on_update=_update):
@@ -950,7 +975,7 @@ def provision_install(agent_id, tier, agent_job, yes, dry_run, verbose, strategy
             f"{prof.free_ram_gb:.0f} Go de RAM libres. Télécharger maintenant "
             f"risque l'OOM pendant l'exécution.")
 
-    if not yes and not click.confirm(
+    if not yes and not display.confirm(
             f"Installer {agent.label} — {artifact.label} "
             f"(~{human_size(artifact.bytes or 0)}) ?",
             default=False):
@@ -1002,7 +1027,7 @@ def provision_clean(yes):
         display.print(f"  • {label} — {prov.human(size)} ({when})")
     display.hint(f"Espace récupérable : {prov.human(total)}")
 
-    if not yes and not click.confirm("Supprimer ces modèles ?", default=False):
+    if not yes and not display.confirm("Supprimer ces modèles ?", default=False):
         display.hint("Annulé. Rien n'a été supprimé.")
         return
 
@@ -1358,7 +1383,7 @@ def engine_clean(name, all_idle, force, yes):
             display.print(f"  • {eng.name} [{eng.capability}]")
             display.hint(f"    Chemin : {eng.install_path}")
 
-    if not yes and not click.confirm("Confirmer la suppression de ces moteurs ?", default=False):
+    if not yes and not display.confirm("Confirmer la suppression de ces moteurs ?", default=False):
         display.hint("Annulé. Rien n'a été supprimé.")
         return
 
@@ -1472,13 +1497,7 @@ def env_cmd():
 @click.argument("name", required=True)
 def preview(name):
     """Play the banner of a theme without saving it."""
-    if not themes.is_known(name):
-        display.error(f"Thème inconnu : {name}")
-        display.hint(f"Disponibles : {', '.join(themes.theme_ids())}")
-        raise SystemExit(2)
-    caps = capabilities.detect()
-    resolved, _ = themes.resolve(name, caps)
-    display.bind(theme=resolved, caps=caps).banner(caption=True)
+    click.get_current_context().invoke(theme_preview, name=name)
 
 
 # --- Remote surface kept from the original CLI ----------------------------
@@ -1625,6 +1644,8 @@ def mcp_tools_cmd(workspace, as_json):
     if as_json:
         click.echo(json.dumps(result, ensure_ascii=False, indent=2))
         return
+    if not result.get("tools"):
+        display.hint("Aucun outil MCP disponible.")
     for tool in result.get("tools", []):
         display.kv(f"{tool.get('server', '?')}:{tool.get('name', '?')}", tool.get("description", ""))
     for err in result.get("errors", []):
@@ -1690,7 +1711,10 @@ def skills_read_cmd(name, workspace):
         result = _require_remote_ok(client.skills_read(name, workspace=workspace))
     finally:
         client.close()
-    click.echo(result.get("content", ""))
+    if display.view.caps.is_tty:
+        display.print(display.view.markdown(result.get('content', ''), title=name))
+    else:
+        display.view.stream(result.get('content', '')+'\n')
 
 
 @skills.command(name="create")
@@ -1758,7 +1782,7 @@ def source_cmd(path):
         target = fetch_source(path)
     except Exception as exc:
         raise click.ClickException(str(exc)) from exc
-    click.echo(str(target))
+    display.success(f'Fichier reçu : {target}')
 
 
 @main.command(name="apps")

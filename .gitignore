@@ -16,6 +16,9 @@ dist/
 !ARCHITECTURE_ADAPTATIVE.md
 !AGENTS.md
 !README.md
+!docs/
+!docs/**/*.md
+.ruff_cache/
 
 # Machine-local generation evidence and installation receipts
 /application/output/

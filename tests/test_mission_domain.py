@@ -5,15 +5,15 @@ def test_3d_domain_is_distinct_from_dialogue_tab():
     assert domain_label('préparer une figurine STL')=='3D'
     assert domain_label('une représentation politique')=='Mission'
 
-def test_cockpit_lights_3d_from_the_goal_during_generic_tool_phases():
+def test_workspace_identifies_3d_without_inventing_engine_activity():
     from prompt_toolkit.input import create_pipe_input
     from prompt_toolkit.output import DummyOutput
-    from aurora_cli.ui import WorkspaceApp,CyberHoloHUD
+    from aurora_cli.ui import WorkspaceApp
     with create_pipe_input() as pipe:
         app=WorkspaceApp(input=pipe,output=DummyOutput())
         app.state.goal='Une figurine 3D';app.state.status='running';app.state.phase='inspect_tool'
-        assert '3D' in app.page_title()
-        active=[text for style,text in CyberHoloHUD(app).get_text() if style=='class:warning' and 'ACTIF' in text]
-        assert any('3D' in text for text in active)
-        assert not any('CONVERSATION' in text for text in active)
-        assert 'allocation non mesurée' in app.agents_matrix_text()
+        assert 'Une figurine 3D' in app.sidebar_text()
+        activity = ''.join(text for _,text in app.activity_text())
+        assert 'inspect_tool' in activity
+        assert 'CONVERSATION' not in activity
+        assert 'Aucune action observée' in app.agents_matrix_text()

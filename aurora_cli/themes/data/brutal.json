@@ -1,0 +1,110 @@
+{
+  "schema": 1,
+  "title": "Aurora",
+  "prompt": "vous > ",
+  "prompt_suffix": "› ",
+  "subtitle": "Votre espace de travail distant",
+  "box": "heavy",
+  "id": "brutal",
+  "label": "BLOC",
+  "description": "Haut contraste, grandes masses et signal jaune.",
+  "palette": {
+    "primary": "#ffe66b",
+    "secondary": "#ffffff",
+    "accent": "#ffe66b",
+    "success": "#97edb2",
+    "warning": "#ffe19b",
+    "error": "#ffacb5",
+    "info": "#ffe66b",
+    "text": "#f2f5f7",
+    "muted": "#dddddd",
+    "border": "#dddddd",
+    "banner": "#ffe66b",
+    "banner_alt": "#ffe66b",
+    "surface": "#000000",
+    "raised": "#141414"
+  },
+  "glyphs": {
+    "ok": [
+      "■",
+      "+"
+    ],
+    "fail": [
+      "×",
+      "x"
+    ],
+    "warn": [
+      "!",
+      "!"
+    ],
+    "info": [
+      "►",
+      ">"
+    ],
+    "bullet": [
+      "▪",
+      "-"
+    ],
+    "arrow": [
+      "›",
+      ">"
+    ]
+  },
+  "spacing": {
+    "gutter": 1,
+    "panel_x": 1,
+    "panel_y": 0,
+    "section": 1,
+    "prompt_rows": 2,
+    "sidebar_width": 34
+  },
+  "components": {
+    "header": "block",
+    "separator": "━",
+    "rail": "┃",
+    "tab_open": "[",
+    "tab_close": "]",
+    "spinner": "pulse",
+    "pixel_art": [
+      "1111000000001111",
+      "1111000000001111",
+      "1111000000001111",
+      "1111000000001111",
+      "1111222222221111",
+      "1111222222221111",
+      "1111222222221111",
+      "1111000000001111",
+      "1111000000001111",
+      "1111000000001111",
+      "1111000000001111",
+      "1111000000001111",
+      "0000000000000000",
+      "4444444444444444",
+      "4444444444444444",
+      "0000000000000000"
+    ],
+    "pixel_palette": [
+      "#000000",
+      "#ffe66b",
+      "#ffffff",
+      "#ffe66b",
+      "#f2f5f7"
+    ]
+  },
+  "banner": {
+    "art": " ███  AURORA\n ███  FAIRE.\n ━━━━━━━━━━━━━━━━━━━",
+    "art_ascii": " ###  AURORA\n ###  FAIRE.\n ===================",
+    "effect": "glitch",
+    "gradient": true,
+    "total_ms": 420,
+    "caption": "BLOC",
+    "decorations": []
+  },
+  "motion": {
+    "banner_ms": 420,
+    "shimmer": false,
+    "panel_pulse": false,
+    "typewriter_help": false,
+    "scanline": false
+  }
+}
