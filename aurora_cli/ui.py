@@ -711,10 +711,14 @@ class WorkspaceApp:
                     # Doctor checks several services; its response can take
                     # longer than the former five-second read budget.
                     with self.bridge_factory(timeout=30) as client:
+                        initial_url = getattr(client, 'server_url', '')
                         started = time.monotonic()
                         doctor = client.doctor()
                         latency = (time.monotonic()-started)*1000
+                        t_models = time.monotonic()
                         models = client.models()
+                        if getattr(client, 'server_url', '') != initial_url:
+                            latency = (time.monotonic()-t_models)*1000
                     return doctor,models,latency
                 doctor,models,self.latency_ms = await asyncio.to_thread(remote)
                 ready = doctor.get('ok') and doctor.get('ready', True)

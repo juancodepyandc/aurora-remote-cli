@@ -280,6 +280,16 @@ class Installer:
         code, output = self.runner(command)
         if code != 0:
             return StepResult("package", "failed", output.strip()[-500:])
+        if self.runner is run:
+            src_pkg = self.project_root / "aurora_cli"
+            if src_pkg.is_dir():
+                for sp in list(self.target.venv.glob("lib/python*/site-packages")) + list(self.target.venv.glob("Lib/site-packages")):
+                    dst_pkg = sp / "aurora_cli"
+                    if dst_pkg.is_dir():
+                        try:
+                            shutil.copytree(src_pkg, dst_pkg, dirs_exist_ok=True)
+                        except OSError:
+                            pass
         return StepResult("package", "ok", f"installé depuis {self.project_root}")
 
     def link_binary(self) -> StepResult:
@@ -361,6 +371,17 @@ class Installer:
         code, output = self.runner([str(binary), "--version"])
         if code != 0:
             return StepResult("verify", "failed", output.strip()[-300:])
+        if self.runner is run:
+            try:
+                from aurora_cli import config
+                from aurora_cli.connect import discover_tunnel
+                cur_url = str(config.get("server_url", "") or "").strip()
+                if not cur_url or ".trycloudflare.com" in cur_url:
+                    live_url = discover_tunnel()
+                    if live_url and live_url != cur_url:
+                        config.set_key("server_url", live_url)
+            except Exception:
+                pass
         return StepResult("verify", "ok", output.strip()[:120] or "répond")
 
     # -- driver ------------------------------------------------------------

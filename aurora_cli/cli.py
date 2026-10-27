@@ -120,6 +120,119 @@ def _apply_overrides(ctx) -> None:
     }
 
 
+def _normalize_tunnel_url(raw_url: str) -> str:
+    url = (raw_url or "").strip().rstrip("/")
+    if not url:
+        return ""
+    if not url.startswith(("http://", "https://")):
+        if url.startswith(("127.0.0.1", "localhost")):
+            url = f"http://{url}"
+        else:
+            url = f"https://{url}"
+    return url.rstrip("/")
+
+
+def _probe_and_configure_tunnel(raw_url: str, *, check_only: bool = False) -> bool:
+    """Configure and/or verify a tunnel or bridge URL (`jobia --config "<url>" [-check]`)."""
+    import time as _time
+    import httpx
+    from aurora_cli.connect import _valid_url, discover_tunnel
+
+    target_raw = (raw_url or "").strip()
+    discovered_from_live = False
+    if target_raw.lower() in ("auto", "discover", "live") or (not target_raw and check_only):
+        if target_raw.lower() in ("auto", "discover", "live") or not config.resolve_server_url():
+            try:
+                target_raw = discover_tunnel()
+                discovered_from_live = True
+                display.info(f"Tunnel actif découvert sur aurora-live : {target_raw}")
+            except Exception as exc:
+                if not config.resolve_server_url():
+                    display.error(f"Impossible de découvrir le tunnel depuis aurora-live : {exc}")
+                    return False
+                target_raw = config.resolve_server_url()
+        else:
+            target_raw = config.resolve_server_url()
+
+    url = _normalize_tunnel_url(target_raw)
+    try:
+        _valid_url(url)
+    except ValueError as exc:
+        display.error(f"URL invalide ({url}) : {exc}")
+        return False
+
+    if not check_only:
+        config.set_key("server_url", url)
+        display.success(f"URL du pont enregistrée : {url}")
+        display.hint(f"Fichier de configuration : {locations.config_file()}")
+
+    # Probe /api/health and measure exact round-trip latency in ms
+    t0 = _time.perf_counter()
+    health_ok = False
+    status_code = 0
+    err_detail = ""
+    try:
+        resp = httpx.get(f"{url}/api/health", timeout=8.0, follow_redirects=True)
+        latency_ms = (_time.perf_counter() - t0) * 1000.0
+        status_code = resp.status_code
+        payload = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else {}
+        health_ok = (
+            status_code == 200
+            and isinstance(payload, dict)
+            and (payload.get("ok") is True or payload.get("status") == "ok")
+            and payload.get("service") == "aurora-bridge"
+        )
+        if not health_ok:
+            err_detail = f"HTTP {status_code} (service={payload.get('service', 'inconnu')})"
+    except Exception as exc:
+        latency_ms = (_time.perf_counter() - t0) * 1000.0
+        err_detail = f"{type(exc).__name__}: {exc}"
+
+    if not health_ok and check_only and not discovered_from_live:
+        display.error(f"Échec du test sur {url} ({latency_ms:.0f} ms) — {err_detail or 'pont injoignable'}")
+        try:
+            live_url = discover_tunnel()
+            if live_url and live_url != url:
+                display.hint(f"Astuce : le tunnel publié actuellement sur aurora-live est : {live_url}")
+                display.hint(f'Lance : jobia --config "{live_url}" -check')
+        except Exception:
+            pass
+        return False
+
+    if not health_ok:
+        display.warning(f"Attention : {url} a été enregistré mais ne répond pas actuellement ({err_detail}).")
+        return False
+
+    quality = (
+        "EXCELLENTE" if latency_ms < 350
+        else ("BONNE (Tunnel Cloudflare)" if latency_ms < 1000 else "LENTE / DÉGRADÉE")
+    )
+    if check_only:
+        config.set_key("server_url", url)
+    display.success(f"Connexion tunnel validée : {url} · HTTP 200 · {latency_ms:.0f} ms ({quality})")
+
+    api_key = config.get("api_key", "")
+    if api_key:
+        try:
+            with _client(server_url=url, api_key=api_key, timeout=10.0) as client:
+                doc = client.doctor()
+            if doc.get("ok") and doc.get("ready", True):
+                hw = doc.get("hardware") or {}
+                vram = hw.get("vram_total_gb", "?")
+                ram = hw.get("ram_gb", "?")
+                mod = doc.get("default_model") or "auto"
+                display.success(f"Pont prêt pour les missions · GPU VRAM : {vram} Go · RAM : {ram} Go · Modèle : {mod}")
+            elif doc.get("http_status") == 401:
+                display.hint("Tunnel actif (authentification requise : lance `jobia connect` pour appairer cet appareil).")
+            else:
+                failed = [c.get("name", "?") for c in doc.get("checks", []) if c.get("ok") is False]
+                if failed:
+                    display.warning(f"Sous-systèmes signalés par doctor : {', '.join(failed)}")
+        except Exception:
+            pass
+    return True
+
+
 @click.group(cls=AuroraGroup, invoke_without_command=True, context_settings={"help_option_names": ["-h", "--help"]})
 @click.option("--theme", "theme_opt", default="", help="Force a theme for this run only.")
 @click.option(
@@ -135,9 +248,21 @@ def _apply_overrides(ctx) -> None:
     default="auto",
     help="Animation budget.",
 )
+@click.option(
+    "--config",
+    "config_url_opt",
+    default="",
+    help="Modifier l'URL du tunnel distant (ex: jobia --config \"https://...\" [-check] ou 'auto').",
+)
+@click.option(
+    "--check",
+    "check_tunnel_opt",
+    is_flag=True,
+    help="Tester la validité, la latence (ms) et l'état du tunnel (ex: jobia --config \"https://...\" -check).",
+)
 @click.version_option(__version__, prog_name=brand.APP_NAME.lower())
 @click.pass_context
-def main(ctx, theme_opt, color, anim_opt):
+def main(ctx, theme_opt, color, anim_opt, config_url_opt, check_tunnel_opt):
     """Control a local model or a remote bridge from one terminal."""
     ctx.ensure_object(dict)
     overrides = {"theme": theme_opt}
@@ -147,6 +272,12 @@ def main(ctx, theme_opt, color, anim_opt):
         overrides["animation"] = anim_opt
     ctx.obj.update(overrides)
     _apply_overrides(ctx)
+
+    if config_url_opt or check_tunnel_opt:
+        ok = _probe_and_configure_tunnel(config_url_opt, check_only=check_tunnel_opt)
+        if not ok:
+            raise click.exceptions.Exit(1)
+        return
 
     if ctx.invoked_subcommand is None:
         import sys
@@ -1440,12 +1571,28 @@ def scan_cmd():
         display.models_table(result.loose_models)
 
 
-@main.command()
+@main.command(name="config")
 @click.argument("key", required=False)
 @click.argument("value", required=False)
-def config_cmd(key, value):
-    """Show the configuration, or set one key."""
+@click.option("--check", "check_tunnel", is_flag=True, help="Tester l'URL du tunnel avant de l'enregistrer.")
+def config_cmd(key, value, check_tunnel):
+    """Show the configuration, set one key, or update/check the tunnel URL."""
     path = locations.config_file()
+    if key and (
+        key.startswith(("http://", "https://"))
+        or ".trycloudflare.com" in key
+        or key.lower() in ("auto", "discover", "live")
+    ) and value is None:
+        ok = _probe_and_configure_tunnel(key, check_only=check_tunnel)
+        if not ok:
+            raise click.exceptions.Exit(1)
+        return
+    if check_tunnel and key in (None, "server_url"):
+        target = value if key == "server_url" and value else (key if key and key != "server_url" else "")
+        ok = _probe_and_configure_tunnel(target, check_only=True)
+        if not ok:
+            raise click.exceptions.Exit(1)
+        return
     if not key:
         data = config.load()
         for name in sorted(data):
@@ -1461,6 +1608,11 @@ def config_cmd(key, value):
         else:
             shown = "********" if config.is_secret(key) else current
             display.kv(key, shown)
+        return
+    if key == "server_url" and check_tunnel:
+        ok = _probe_and_configure_tunnel(value, check_only=True)
+        if not ok:
+            raise click.exceptions.Exit(1)
         return
     config.set(key, value)
     if config.is_secret(key):

@@ -91,7 +91,30 @@ def _error(exc):
                            style=view.style('muted')))
 
 
+def _normalize_cli_flags(args):
+    """Allow single-dash `-check` and `-config` flags without `-h` inside `-check`
+    triggering Click's short `-h` help option."""
+    normalized = []
+    args_list = list(args)
+    for idx, arg in enumerate(args_list):
+        if arg in ("-check", "--check-url", "-check-url"):
+            normalized.append("--check")
+        elif arg == "-config":
+            normalized.append("--config")
+        elif arg in ("--config", "-config") and (
+            idx + 1 >= len(args_list) or args_list[idx + 1] in ("-check", "--check")
+        ):
+            normalized.extend(["--config", "auto"])
+        else:
+            normalized.append(arg)
+    return normalized
+
+
 class AuroraCommand(click.Command):
+    def parse_args(self, ctx, args):
+        args[:] = _normalize_cli_flags(args)
+        return super().parse_args(ctx, args)
+
     def get_help(self, ctx):
         ctx.color = display.view.caps.color
         return _help(self, ctx)
@@ -102,6 +125,7 @@ class AuroraGroup(click.Group, AuroraCommand):
     group_class = type
 
     def make_context(self, info_name, args, parent=None, **extra):
+        args[:] = _normalize_cli_flags(args)
         if parent is None:
             _prepare_help(args)
             extra.setdefault('color', display.view.caps.color)
