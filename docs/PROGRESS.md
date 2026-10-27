@@ -41,3 +41,7 @@ Ratatui raccordé au backend Python par JSONL v1 borné. Saisie Unicode, lignes 
 ## Lot preuves visuelles — 27 octobre
 
 Validation locale Phase 1 terminée : 1212 tests Python réussis, 18 ignorés (modules optionnels), 5 sous-tests ; 14 tests Rust réussis ; Ruff, fmt, clippy -D warnings, wheel et sdist réussis. 80 captures par renderer, huit thèmes et quatre largeurs ; textes, états et PNG natifs dans docs/snapshots. Non-TTY/JSON, NO_COLOR/ASCII, resize, coupure HTTP et reprise testés. Auto-critique et limites dans DESIGN.md. PR GitHub #4 ouverte en brouillon, CI multiplateforme en cours ; aucune fusion tant que ses résultats ne sont pas vérifiés.
+
+## Correctif de validation CI — 27 octobre
+
+La CI native Linux/Windows et les suites Python macOS/Linux passent ; les builds propres ont révélé setuptools absent avec --no-isolation. Ajout à dev de setuptools et wheel (outils de build, aucune dépendance de production). Un test Windows observait le rendu après 80 ms fixes : attente bornée du texte réellement visible. Ces défauts ne sont pas masqués par une exclusion. États de snapshot stockés en une ligne JSONL par fichier pour réduire la répétition du diff. Nouvelle CI exigée avant fusion.

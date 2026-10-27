@@ -101,7 +101,7 @@ async def capture(theme, width, height, scenario, output, *, ascii_only=False, n
         rasterize(cells,output/(name+'.png'),width,height,getattr(theme.palette,'surface','#0b111b'))
         try:
             from aurora_cli.render_server import snapshot
-            (output/(name+'.json')).write_text(json.dumps(snapshot(app),ensure_ascii=False,indent=2)+'\n')
+            (output/(name+'.json')).write_text(json.dumps(snapshot(app),ensure_ascii=False,separators=(',',':'))+'\n')
         except ImportError:
             pass
         app.app.exit()

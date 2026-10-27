@@ -42,7 +42,7 @@ test = [
     "scipy",
     "sympy",
 ]
-dev = ["build>=1.2", "ruff>=0.9"]
+dev = ["build>=1.2", "ruff>=0.9", "setuptools>=68", "wheel"]
 
 [project.urls]
 Homepage = "https://github.com/juancodepyandc/aurora-remote-cli"
