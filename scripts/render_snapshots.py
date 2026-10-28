@@ -119,13 +119,14 @@ async def main(args):
             await capture(theme,width,32,'streaming',args.output)
         for scenario in ['welcome','offline','error','permission','complete']:
             await capture(theme,80,32,scenario,args.output)
+        await capture(theme,60,24,'welcome',args.output)
         await capture(theme,60,24,'streaming',args.output,ascii_only=True,no_color=True)
     if args.native:
         native_output = args.output/'native'
         native_output.mkdir(exist_ok=True)
         for source in sorted(args.output.glob('*.json')):
             width = int(source.stem.split('-')[1])
-            height = 24 if '-ascii' in source.stem else 32
+            height = 24 if '-ascii' in source.stem or '-60-welcome' in source.stem else 32
             cells_path = native_output/(source.stem+'.cells.json')
             captured = subprocess.run([str(args.native.resolve()),'--snapshot',str(source),
                                        str(width),str(height),'--cells',str(cells_path)],

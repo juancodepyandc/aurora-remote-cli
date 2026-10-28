@@ -348,6 +348,7 @@ def status():
 def doctor(remote, as_json):
     """Check the terminal, the configuration and the local runtimes."""
     from aurora_cli.core.discovery import scan
+    from aurora_cli.renderer import native_binary
 
     ctx = click.get_current_context().find_root()
     caps = ctx.obj["caps"]
@@ -363,6 +364,10 @@ def doctor(remote, as_json):
         {"name": "Thème", "status": "ok", "detail": f"{ctx.obj['theme'].id} ({ctx.obj['theme_source']})"},
         {"name": "Configuration", "status": "ok" if path.exists() else "warn", "detail": str(path)},
     ]
+    native = native_binary()
+    checks.append({"name":"Renderer", "status":"ok" if native else "warn",
+                   "detail":"Natif disponible : "+native if native else
+                   "Interface Python ; binaire natif absent. Voir docs/CLI.md pour installer Ratatui."})
     remote_data = None
     if remote:
         client = _client()

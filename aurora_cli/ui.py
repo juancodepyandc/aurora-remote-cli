@@ -241,6 +241,16 @@ class HorizonFrame:
 GlassFrame = HorizonFrame
 
 
+INTERACTIVE_COMMANDS = frozenset({'/help', '/theme', '/view', '/modules',
+                                  '/avant-apres', '/gains', '/doctor', '/missions'})
+
+
+def presentation_command(raw):
+    """UI-only commands may run beside a mission, never replace its task."""
+    parts = raw.split(maxsplit=1)
+    return bool(parts and parts[0].lower() in INTERACTIVE_COMMANDS)
+
+
 class WorkspaceApp:
     PAGES = ['conversation', 'modules', 'agents', 'avant_apres', 'journal', 'fichiers']
 
@@ -265,6 +275,9 @@ class WorkspaceApp:
         self.partial = ''
         self._refresh_handle = None
         self._memory_warning = ''
+        self._last_connection_warning = ''
+        self._recovery_notices_shown = False
+        self.draft_restore = None
         self.transcript = ''.join(f"\n### {'VOUS' if m['role']=='user' else 'AURORA'}\n\n{plain(m['content'])}\n" for m in self.history)[-200000:]
         self.loop = None
         self.body_lexer = RenderedLexer()
@@ -282,9 +295,12 @@ class WorkspaceApp:
         @bindings.add('enter',filter=has_focus(self.prompt))
         def submit(event):
             raw = self.prompt.text.strip()
-            if raw and not self.busy:
+            was_busy = self.busy
+            if raw and (not was_busy or presentation_command(raw)):
                 self.prompt.text = ''
-                self.task = event.app.create_background_task(self.submit(raw))
+                task = event.app.create_background_task(self.submit(raw))
+                if not was_busy:
+                    self.task = task
             elif raw:
                 self.note('Une mission est active. Ctrl+C demande son arrêt ; ton brouillon est conservé.')
         @bindings.add('escape','enter',filter=has_focus(self.prompt))
@@ -407,11 +423,11 @@ class WorkspaceApp:
 
     def welcome_text(self):
         return ('# Un horizon ouvert.\n\n'
-                'Décrivez le résultat que vous voulez obtenir.\n'
-                'Le plan, les outils et les preuves apparaîtront pendant la mission.\n\n'
-                '**/modules** explorer les parcours   **/missions** reprendre un travail\n\n'
-                '**/theme** choisir votre univers   **/help** toutes les commandes\n\n'
-                'La cible et la session restent visibles en haut de l’écran.')
+                'Décrivez le résultat attendu.\n\n'
+                '**/modules** Explorer  \n'
+                '**/missions** Reprendre  \n'
+                '**/theme** Changer d’univers  \n'
+                '**/help** Commandes')
 
     def prompt_title(self):
         prefix = f'{self.active_module} · ' if self.active_module else ''
@@ -768,6 +784,13 @@ class WorkspaceApp:
             self.connection = 'hors ligne'
             self.latency_ms = None
             self.health = 'Diagnostic : '+plain(exc)
+        if self.connection in {'dégradé','hors ligne'}:
+            if self.health != self._last_connection_warning:
+                self.note('### Connexion à rétablir\n\n'+self.health+
+                          '\n\nF5 réessayer · `jobia connect` pour vérifier l’appairage.')
+                self._last_connection_warning = self.health
+        else:
+            self._last_connection_warning = ''
         self.app.invalidate()
 
     async def choose_theme(self):
@@ -903,9 +926,11 @@ class WorkspaceApp:
                 request = pending if isinstance(pending, str) else pending.get('request') if isinstance(pending, dict) else None
                 if isinstance(request, str) and request.strip():
                     self.prompt.text = request
+                    self.draft_restore = {'revision':(self.draft_restore or {}).get('revision',0)+1,
+                                          'text':request}
                 self.note('Reprise enregistrée incomplète : impossible de garantir une relance sans doublon. '
                           'Archive conservée, aucune mission lancée. Vérifie /missions et utilise /attach ID si elle existe. '
-                          + ('La demande est remise en saisie ; Entrée créera une nouvelle mission.'
+                          + ('La demande est récupérée ; Entrée créera une nouvelle mission.\n\n'+request
                              if isinstance(request, str) and request.strip() else 'Retape ta demande si elle doit être créée à nouveau.'))
                 return
             raw = pending['request']
@@ -1159,8 +1184,11 @@ class WorkspaceApp:
         else:
             self.note('Demande en cours d’acceptation ; attends son identifiant avant de demander l’arrêt.')
 
-    async def run(self):
-        self.loop = asyncio.get_running_loop()
+    def show_recovery_notices(self):
+        """Shared startup contract for both renderers; never dispatch work."""
+        if self._recovery_notices_shown:
+            return
+        self._recovery_notices_shown = True
         active = getattr(self.history,'state',{}).get('active_mission_id')
         if active:
             self.note('Mission conservée : '+active+' · /attach '+active+' pour suivre son état.')
@@ -1169,6 +1197,10 @@ class WorkspaceApp:
                 self.note('Une demande a une acceptation incertaine. /retry conserve sa clé pour éviter une double exécution.')
             else:
                 self.note('Une demande conservée a un format de reprise incomplet. /retry permet de la récupérer sans la lancer.')
+
+    async def run(self):
+        self.loop = asyncio.get_running_loop()
+        self.show_recovery_notices()
         def start():
             self.app.create_background_task(self.discover())
             self.ensure_clock()

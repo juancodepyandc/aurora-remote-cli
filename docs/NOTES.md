@@ -4,6 +4,8 @@ Ces constats sont des preuves de code ou de tests ciblés, pas une évaluation d
 
 Le plan issu de ces constats est désormais disponible dans [PLAN.md](PLAN.md), avec ses limites de preuve et sans implémentation des recommandations.
 
+Contre-vérification du 29 octobre : la suite verte initiale omettait des parcours utilisateur. Corrigés dans le CLI : Ctrl+C masqué par les sélecteurs Rust ; commandes visuelles bloquées pendant une mission ; avis de reprise absents côté natif ; absence de retour au modèle automatique ; brouillon perdu par ↑↓ et demande récupérée non transmise au renderer ; diagnostic hors ligne absent de la conversation ; aide coupée à 60×24. Le contraste et les snapshots ne suffisent pas à qualifier l'identité de « waouh » : les compositions restent trop similaires. Le plan moteur de Phase 2 demeure sans implémentation.
+
 | Domaine | Constat et preuve | Suite |
 |---|---|---|
 | Synchronisation | HEAD PC = GitHub, mais CLI 8 fichiers modifiés ; AuroraIA nombreuses modifications/suppressions et nouveaux fichiers non suivis | Ne pas publier les brouillons du PC ni modifier deux copies |

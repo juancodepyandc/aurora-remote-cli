@@ -27,8 +27,13 @@ Le deuxième exemple est abrégé. `snapshot()` dans `render_server.py` définit
 | model, models, commands, picker | Dernier inventaire reçu, catalogue de commandes, sélecteur actif |
 | unicode, color_depth, animation, animate | Capacités du terminal parent, transmises explicitement malgré les pipes du backend |
 | prompt | Brouillon pour snapshots ; la saisie native est conservée localement pendant les mises à jour |
+| health | Cause lisible du dernier diagnostic, affichée sans masquer une erreur de connexion derrière un accueil vide |
+| interactive_commands | Commandes de présentation autorisées pendant une mission ; elles ne remplacent jamais sa tâche ni ses permissions |
+| draft_restore | Facultatif : revision croissante et text Unicode d'une demande récupérée ; appliqué une seule fois, sans écraser une saisie déjà commencée |
 
 Commandes acceptées : `submit`, `theme_preview|theme_commit|theme_cancel`, `model|model_next`, `page|view|view_next`, `picker_cancel|model_cancel`, `doctor`, `stop`, `new`, `quit`. Une version/enveloppe/commande inconnue produit une erreur, jamais une action supposée. Les sélecteurs ne persistent qu'à validation. Une mission active interdit changement de modèle/nouvelle conversation/sortie normale ; Ctrl+C demande l'arrêt.
+
+Depuis la vérification du 29 octobre, Ctrl+C reste disponible dans les sélecteurs. Les commandes `/theme`, `/help`, `/view`, `/modules`, `/avant-apres`, `/gains`, `/doctor` et `/missions` restent utilisables pendant une mission. Elles conservent sa tâche active. Les champs supplémentaires restent compatibles avec l'enveloppe v1 ; recompiler le renderer pour bénéficier des interactions et de la restitution du brouillon corrigées.
 
 Bornes : commande ≤ 256 Kio ; état natif ≤ 4 Mio ; aperçu de document 64 000 caractères, queue de streaming 16 000, historique de saisie natif 200 entrées ; queues de transport 64 messages. Un message trop grand ferme la liaison sans interpréter ses fragments. Coalescence des états Python à 40 ms et du document à 100 ms ; dessin natif différentiel et bloquant au repos. Les effets de thème durent au plus 800 ms, à 60 Hz en mode complet, 8 Hz en mode réduit.
 

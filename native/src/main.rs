@@ -168,6 +168,9 @@ fn key(ui: &mut Ui, event: Event) -> (Option<String>, bool) {
             if ctrl && k.code == KeyCode::Char('q') {
                 return (Some(command("quit", "")), true);
             }
+            if ctrl && k.code == KeyCode::Char('c') {
+                return (Some(command("stop", "")), true);
+            }
             if ui.modal.is_some() {
                 return match k.code {
                     KeyCode::Up | KeyCode::Left => (ui.move_modal(-1), true),
@@ -179,7 +182,6 @@ fn key(ui: &mut Ui, event: Event) -> (Option<String>, bool) {
             }
             if ctrl {
                 return match k.code {
-                    KeyCode::Char('c') => (Some(command("stop", "")), true),
                     KeyCode::Char('n') => (Some(command("new", "")), true),
                     KeyCode::Char('u') => {
                         ui.input.clear();
@@ -476,5 +478,28 @@ fn main() {
     if let Err(err) = result {
         eprintln!("Aurora : {err}");
         std::process::exit(2);
+    }
+}
+
+#[cfg(test)]
+mod interaction_tests {
+    use super::*;
+    use crossterm::event::KeyEvent;
+
+    #[test]
+    fn stop_remains_available_inside_each_picker() {
+        for kind in [ModalKind::Theme, ModalKind::Model] {
+            let mut ui = Ui::default();
+            ui.update(json!({"busy":true,"themes":[{"id":"otter"}],"models":["observed"]}));
+            ui.open_modal(kind);
+            assert!(ui.modal.is_some());
+            let (sent, _) = key(
+                &mut ui,
+                Event::Key(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL)),
+            );
+            let sent: Value =
+                serde_json::from_str(&sent.expect("Ctrl+C must reach the engine")).unwrap();
+            assert_eq!(sent["command"], "stop");
+        }
     }
 }

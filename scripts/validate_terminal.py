@@ -29,8 +29,9 @@ import pyte
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def scenario(renderer, depth, output):
+def scenario(renderer, depth, output, *, extended=False):
     requests, cursors = [], []
+    stopped = threading.Event()
     class Handler(BaseHTTPRequestHandler):
         protocol_version = 'HTTP/1.1'
         def log_message(self,*args):
@@ -45,11 +46,26 @@ def scenario(renderer, depth, output):
         def do_POST(self):
             payload = json.loads(self.rfile.read(int(self.headers.get('Content-Length',0))) or '{}')
             requests.append((self.path,payload))
+            if self.path.endswith('/stop'):
+                stopped.set()
+                return self.reply({'ok':True})
             self.reply({'ok':True,'mission_id':'mis_pty','cursor':0})
         def do_GET(self):
             if self.path.endswith('/stream'):
                 cursor = self.headers.get('Last-Event-ID')
                 cursors.append(cursor)
+                if extended and len([p for p,_ in requests if p.endswith('/start')])>1:
+                    self.send_response(200)
+                    self.send_header('Content-Type','text/event-stream')
+                    self.send_header('Connection','close')
+                    self.end_headers()
+                    self.wfile.write(b'id: 1\ndata: {"type":"token","content":"MISSION EN ATTENTE"}\n\n')
+                    self.wfile.flush()
+                    if stopped.wait(12):
+                        self.wfile.write(b'id: 2\ndata: {"type":"mission_complete","status":"stopped","result":"ARRET CONFIRME"}\n\n')
+                        self.wfile.flush()
+                    self.close_connection = True
+                    return
                 events = [(1,{'type':'token','content':'Partie reçue'}),
                           (2,{'type':'mission_complete','status':'completed','result':'CONTROLE TERMINE'})]
                 data = ''.join(f'id: {i}\ndata: '+json.dumps(e)+'\n\n' for i,e in events
@@ -149,6 +165,20 @@ def scenario(renderer, depth, output):
             until(lambda:'CONTROLE TERMINE' in visible(),timeout=8)
             assert len(requests)==1 and requests[0][1]['request']=='Vérifie le contrat'
             assert cursors==['0','1'],cursors
+            if extended:
+                # Busy presentation commands must preserve the original mission.
+                send('Garde cette mission ouverte\r'.encode())
+                until(lambda:'MISSION EN ATTENTE' in visible())
+                send(b'/theme brutal\r')
+                until(lambda:json.loads((cfg/'config.json').read_text())['theme']=='brutal')
+                send(b'\x1bOQ')
+                until(lambda:'imm' in visible())
+                send(b'\x03')
+                until(stopped.is_set)
+                send(b'\x1b')
+                until(lambda:'ARRET CONFIRME' in visible())
+                assert len([p for p,_ in requests if p.endswith('/start')])==2
+                assert len([p for p,_ in requests if p.endswith('/stop')])==1
             text = visible()
             assert 'Session' in text and 'Mission mis_pty' in text
             if depth=='none':
@@ -163,7 +193,9 @@ def scenario(renderer, depth, output):
             result = dict(renderer=renderer,depth=depth,first_frame_ms=round(first or 0,3),
                           idle_cpu_percent=round(idle_cpu,3),idle_output_bytes=idle_bytes,
                           peak_tree_rss_mib=round(rss_peak/1048576,3),exit=proc.returncode,
-                          sse_cursors=cursors,mission_posts=len(requests),resize=True,theme_preview=True)
+                          sse_cursors=cursors,mission_posts=sum(p.endswith('/start') for p,_ in requests),
+                          stop_posts=sum(p.endswith('/stop') for p,_ in requests),
+                          resize=True,theme_preview=True,busy_controls=extended)
             output.mkdir(parents=True,exist_ok=True)
             name=f'{renderer}-{depth}'
             (output/(name+'.json')).write_text(json.dumps(result,indent=2)+'\n')
@@ -183,5 +215,6 @@ if __name__=='__main__':
     parser.add_argument('--renderer',default='native',choices=['native','python'])
     parser.add_argument('--depth',default='truecolor',choices=['truecolor','color256','ansi','none'])
     parser.add_argument('--output',type=Path,default=ROOT/'docs/validation/terminal')
+    parser.add_argument('--extended',action='store_true',help='Also verify theme command and Ctrl+C inside a picker during a mission.')
     args=parser.parse_args()
-    print(json.dumps(scenario(args.renderer,args.depth,args.output),ensure_ascii=False))
+    print(json.dumps(scenario(args.renderer,args.depth,args.output,extended=args.extended),ensure_ascii=False))

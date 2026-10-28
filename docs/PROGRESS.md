@@ -1,8 +1,18 @@
 # Progression — refonte du CLI
 
-Mise à jour : 27 octobre 2026. Branche de travail : `redesign/cli-ui`.
+Mise à jour : 29 octobre 2026. Branche de vérification : `fix/cli-interaction-quality`.
 
 ## État actuel
+
+La refonte initiale a été fusionnée par PR #4 (`bf93aa5`), puis GitHub et la copie CLI du PC sont passés à `f893b6f` (1.5.0). Nouvelle vérification demandée après retour utilisateur sur une finition insuffisante. La qualification esthétique « waouh » n'est pas considérée acquise. La copie serveur reste modifiée ; aucune écriture ni exécution de moteur sur celle-ci.
+
+Baseline réellement rejouée sur 1.5.0 : 1213 tests Python réussis, 18 ignorés, 5 sous-tests ; 14 tests Rust réussis. Des tests supplémentaires ont ensuite reproduit les défauts de Ctrl+C dans les sélecteurs, commandes de présentation bloquées en mission, reprise silencieuse au démarrage, sélection automatique du modèle et restitution/perte de brouillons. Les tests historiques verts ne couvraient pas ces usages.
+
+Correctifs validés localement : contrôles actifs sans remplacer la mission, reprise visible et sans envoi automatique, brouillons conservés, diagnostic d'authentification visible, accueil 60×24 raccourci et panneau de mission vide masqué à l'accueil natif. 1216 tests Python réussis, 18 ignorés, 5 sous-tests ; 19 tests Rust ; Ruff/fmt/clippy, build release, wheel et sdist réussis. 176 captures régénérées, dont les huit accueils en 60×24 pour les deux renderers : les quatre commandes d'accueil restent visibles. Le vrai PTY étendu a passé les deux renderers : deux missions explicitement soumises, une demande d'arrêt depuis le sélecteur et reprise au curseur 1 après coupure. Aucun effet simulé n'est attribué au moteur IA. CI multiplateforme exigée sur le commit publié avant fusion.
+
+Contrôle léger du PC : `/api/health` répond HTTP 200/ok, `/api/cli/doctor` sans identité répond 401. La liaison authentifiée du Mac n'est donc pas validée par cette observation ; aucune clé/configuration réelle n'a été lue ou modifiée pour ce contrôle. Pas d'accès au Mac physique. Résultats de la contre-vérification dans `docs/validation/recheck-2026-10-29/`.
+
+## Validation précédente — historique du 27 octobre
 
 Phase 1 validée localement et en CI au commit `34cfd012e4be0d4e44cc66d82462ab3d4bfa6b6c` : les **9 jobs** du [run GitHub 40524176404](https://github.com/juancodepyandc/aurora-remote-cli/actions/runs/40524176404) sont réussis. Python 3.10/3.13 sur Linux/macOS/Windows : tests, lint, wheel et sdist ; Rust sur les trois OS : tests, fmt, clippy et release. Les PTY Linux/macOS couvrent les quatre profondeurs de couleur et le repli Python. Windows valide le binaire et les tests, pas un PTY interactif.
 

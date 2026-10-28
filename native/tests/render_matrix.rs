@@ -174,3 +174,77 @@ fn long_wrapped_output_follows_the_last_line_after_resize() {
         assert!(text.contains("LAST VISIBLE LINE"), "width {width}");
     }
 }
+
+#[test]
+fn active_mission_accepts_only_declared_presentation_commands() {
+    let mut ui = Ui::default();
+    let mut state = fixture("otter");
+    state["busy"] = json!(true);
+    state["interactive_commands"] = json!(["/theme", "/help", "/view"]);
+    ui.update(state);
+    ui.input.text = "/theme glacier".chars().collect();
+    assert!(ui.submit().unwrap().contains("/theme glacier"));
+    ui.input.text = "Une autre mission".chars().collect();
+    assert!(ui.submit().is_none());
+    assert_eq!(ui.input.value(), "Une autre mission");
+}
+
+#[test]
+fn model_picker_can_restore_server_automatic_selection() {
+    let mut ui = Ui::default();
+    let mut state = fixture("otter");
+    state["models"] = json!(["observed"]);
+    state["model"] = json!("observed");
+    ui.update(state);
+    ui.open_modal(ModalKind::Model);
+    ui.move_modal(-1);
+    let sent: Value = serde_json::from_str(&ui.close_modal(true).unwrap()).unwrap();
+    assert_eq!(sent["command"], "model");
+    assert_eq!(sent["value"], "");
+}
+
+#[test]
+fn offline_welcome_explains_the_failure_in_unicode_and_ascii() {
+    for unicode in [true, false] {
+        let mut ui = Ui::default();
+        let mut state = fixture("otter");
+        state["unicode"] = json!(unicode);
+        state["connection"] = json!("hors ligne");
+        state["health"] = json!("Accès refusé : appareil à reconnecter");
+        ui.update(state);
+        let (text, _) = render(&mut ui, 60);
+        assert!(text.contains("refus"));
+        assert!(text.contains("F5"));
+        if !unicode {
+            assert!(text.is_ascii());
+        }
+    }
+}
+
+#[test]
+fn recalled_history_and_backend_recovery_preserve_drafts() {
+    let mut ui = Ui::default();
+    let state = fixture("otter");
+    ui.update(state.clone());
+    ui.input.text = "Ancienne demande".chars().collect();
+    ui.submit();
+    ui.input.text = "Brouillon en cours".chars().collect();
+    ui.recall(true);
+    ui.recall(false);
+    assert_eq!(ui.input.value(), "Brouillon en cours");
+    let mut recovered = state;
+    recovered["draft_restore"] = json!({"revision":1,"text":"Vérifie le reçu 猫"});
+    ui.update(recovered.clone());
+    assert_eq!(
+        ui.input.value(),
+        "Brouillon en cours",
+        "Never overwrite ongoing typing"
+    );
+    ui.input.clear();
+    recovered["draft_restore"]["revision"] = json!(2);
+    ui.update(recovered.clone());
+    assert_eq!(ui.input.value(), "Vérifie le reçu 猫");
+    ui.input.insert('!');
+    ui.update(recovered);
+    assert_eq!(ui.input.value(), "Vérifie le reçu 猫!");
+}

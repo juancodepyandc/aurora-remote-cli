@@ -106,3 +106,61 @@ def test_oversized_line_closes_without_executing_a_following_fragment(monkeypatc
     asyncio.run(serve(stream,output))
     submit.assert_not_awaited()
     assert json.loads(output.getvalue().splitlines()[-1])['type']=='error'
+
+
+def test_native_startup_exposes_retained_mission_without_dispatch(monkeypatch):
+    from aurora_cli.core.conversation import Conversation
+    from aurora_cli.render_server import serve
+    class History(list):
+        session_id = 'retained-session'
+        state = {'active_mission_id':'retained-mission',
+                 'pending_request':{'request':'Retrouver mon travail'}}
+    monkeypatch.setattr(Conversation,'open',lambda:History())
+    monkeypatch.setattr(ui.WorkspaceApp,'discover',AsyncMock())
+    submit = AsyncMock()
+    monkeypatch.setattr(ui.WorkspaceApp,'submit',submit)
+    output = StringIO()
+    asyncio.run(serve(StringIO(json.dumps(command('quit'))+'\n'),output))
+    first = json.loads(output.getvalue().splitlines()[0])['state']
+    assert '/attach retained-mission' in first['body']
+    assert 'format de reprise incomplet' in first['body']
+    submit.assert_not_awaited()
+
+
+def test_presentation_commands_keep_running_mission_and_block_new_work():
+    async def scenario():
+        with create_pipe_input() as pipe:
+            app = ui.WorkspaceApp(history=[],input=pipe,output=DummyOutput())
+            server = RenderServer(app,StringIO())
+            mission = asyncio.create_task(asyncio.sleep(60))
+            app.task = mission
+            try:
+                await server.handle(command('submit','/view journal'))
+                await asyncio.sleep(.01)
+                assert app.page == 'journal'
+                assert app.task is mission and not mission.done()
+                await server.handle(command('submit','Une autre mission'))
+                assert app.task is mission and app.busy
+                assert 'Une mission est active' in app.transcript
+                app.health = 'Accès refusé : appareil à reconnecter'
+                assert snapshot(app)['state']['health'] == app.health
+            finally:
+                mission.cancel()
+                await asyncio.gather(mission,return_exceptions=True)
+                server.close()
+    asyncio.run(scenario())
+
+
+def test_invalid_retry_restores_an_exact_draft_without_dispatch():
+    class History(list):
+        state = {'pending_request':{'request':'Vérifie le reçu 猫'}}
+    async def scenario():
+        with create_pipe_input() as pipe:
+            app = ui.WorkspaceApp(history=History(),input=pipe,output=DummyOutput())
+            app._remote = lambda *a,**k: (_ for _ in ()).throw(AssertionError('No dispatch'))
+            await app.submit('/retry')
+            draft = snapshot(app)['state']['draft_restore']
+            assert draft == {'revision':1,'text':'Vérifie le reçu 猫'}
+            assert 'Vérifie le reçu 猫' in app.transcript
+            assert 'pending_request' in app.history.state
+    asyncio.run(scenario())
