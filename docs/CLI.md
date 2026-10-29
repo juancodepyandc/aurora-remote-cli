@@ -40,7 +40,11 @@ cargo fmt --manifest-path native/Cargo.toml --check
 cargo clippy --manifest-path native/Cargo.toml --locked --all-targets -- -D warnings
 cargo test --manifest-path native/Cargo.toml --locked
 .venv/bin/python scripts/validate_terminal.py
+.venv/bin/python scripts/validate_terminal.py --extended
+.venv/bin/python scripts/validate_terminal.py --renderer python --depth none --extended
 .venv/bin/python scripts/render_snapshots.py --native native/target/release/aurora-native
 ```
 
 La validation PTY lance uniquement un faux serveur loopback et une configuration temporaire ; elle coupe réellement le flux HTTP puis vérifie la reprise sans nouveau POST. Elle ne consomme aucun calcul AuroraIA. Les PNG sont des rasterisations des cellules du renderer : pas des captures du Mac physique. Les paramètres du terminal réel restent à vérifier sur Terminal.app, iTerm2, tmux et SSH.
+
+`--extended` soumet ensuite une deuxième mission distincte dans le scénario, change le thème pendant son exécution et demande son arrêt depuis le sélecteur : exactement deux créations et un arrêt doivent être observés. `jobia doctor` indique désormais si le renderer natif est trouvé : une installation Python seule n'installe pas le binaire Rust. Recompiler le renderer après une mise à jour de ses sources ; un ancien binaire ne reçoit pas automatiquement les correctifs clavier.

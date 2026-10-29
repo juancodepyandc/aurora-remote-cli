@@ -1,0 +1,24 @@
+  ≈ Aurora                            Connexion : connecté  
+  Cible pc-maitre.example                      Diag. 24 ms  
+  Session demo-42                           Mission aucune  
+  Prêt                                               otter  
+   [1 Conversation]   F4 : changer de vue                   
+  ╭ Espace de travail ───────────────────────────────────╮  
+  │                   Marée · Loutre                     │  
+  │  ▀▀▀▀    ▀▀▀▀                                        │  
+  │ ▀▀▀▀▀▀▀▀▀▀▀▀▀▀    Un horizon ouvert.                 │  
+  │ ▀▀▀▀▀▀▀▀▀▀▀▀▀▀                                       │  
+  │  ▀▀▀▀▀▀▀▀▀▀▀▀     Décrivez le résultat attendu.      │  
+  │   ▀▀▀▀▀▀▀▀▀▀                                         │  
+  │  ▀▀▀▀▀▀▀▀▀▀▀▀     /modules Explorer                  │  
+  │  ▀▀▀▀▀▀▀▀▀▀▀▀     /missions Reprendre                │  
+  │    ▀▀▀▀▀▀▀▀       /theme Changer d’univers           │  
+  │                   /help Commandes                    │  
+  │                                                      │  
+  ╰──────────────────────────────────────────────────────╯  
+  idle · Prêt                                               
+   Le plan et les outils apparaîtront ici.                  
+  ╭ Votre demande · Entrée envoyer · Alt+Entrée ligne ───╮  
+  │                                                      │  
+  ╰──────────────────────────────────────────────────────╯  
+  F2 thème · F3 modèle · F4 vue · ^C arrêt · ^Q sortie      

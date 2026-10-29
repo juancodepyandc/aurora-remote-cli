@@ -229,6 +229,8 @@ pub struct Ui {
     pub frame: usize,
     pub history: Vec<String>,
     pub history_index: Option<usize>,
+    history_draft: Option<String>,
+    restored_draft_revision: u64,
     pub motion_started: Option<Instant>,
     pub completion_index: usize,
 }
@@ -245,6 +247,8 @@ impl Default for Ui {
             frame: 0,
             history: Vec::new(),
             history_index: None,
+            history_draft: None,
+            restored_draft_revision: 0,
             motion_started: None,
             completion_index: 0,
         }
@@ -253,6 +257,24 @@ impl Default for Ui {
 
 impl Ui {
     pub fn update(&mut self, state: Value) {
+        let revision = state
+            .pointer("/draft_restore/revision")
+            .and_then(Value::as_u64)
+            .unwrap_or(0);
+        if revision > self.restored_draft_revision {
+            self.restored_draft_revision = revision;
+            if self.input.text.is_empty() {
+                let draft = state
+                    .pointer("/draft_restore/text")
+                    .and_then(Value::as_str)
+                    .unwrap_or("");
+                self.input.text = clean(draft, true).chars().collect();
+                self.input.cursor = self.input.text.len();
+            } else {
+                self.notice =
+                    "Demande récupérée dans la conversation ; votre brouillon reste intact".into();
+            }
+        }
         let changed = state.pointer("/theme/id") != self.state.pointer("/theme/id");
         self.state = state;
         if changed {
@@ -387,7 +409,13 @@ impl Ui {
         } else {
             "models"
         };
-        let items = list(&self.state, key);
+        let mut items = list(&self.state, key);
+        if kind == ModalKind::Model {
+            items.insert(
+                0,
+                json!({"id":"", "label":"Automatique · choix du serveur"}),
+            );
+        }
         if items.is_empty() {
             self.notice = if kind == ModalKind::Theme {
                 "Catalogue des thèmes indisponible"
@@ -452,12 +480,17 @@ impl Ui {
     }
     pub fn submit(&mut self) -> Option<String> {
         let text = self.input.value();
+        let command_name = text.split_whitespace().next().unwrap_or("").to_lowercase();
+        let presentation = list(&self.state, "interactive_commands")
+            .iter()
+            .any(|item| item.as_str() == Some(command_name.as_str()));
         if self
             .state
             .get("busy")
             .and_then(Value::as_bool)
             .unwrap_or(false)
             && text.trim() != "/quit"
+            && !presentation
         {
             self.notice = "Mission active : Ctrl+C demande son arrêt ; brouillon conservé".into();
             return None;
@@ -470,6 +503,7 @@ impl Ui {
             self.history.remove(0);
         }
         self.history_index = None;
+        self.history_draft = None;
         self.input.clear();
         self.follow = true;
         self.notice.clear();
@@ -479,15 +513,26 @@ impl Ui {
         if self.history.is_empty() {
             return;
         }
+        if self.history_index.is_none() {
+            self.history_draft = Some(self.input.value());
+        }
         let index = self.history_index.unwrap_or(self.history.len());
         let next = if back {
             index.saturating_sub(1)
         } else {
             (index + 1).min(self.history.len())
         };
-        self.history_index = Some(next);
+        self.history_index = if next == self.history.len() {
+            None
+        } else {
+            Some(next)
+        };
         self.input.text = if next == self.history.len() {
-            Vec::new()
+            self.history_draft
+                .take()
+                .unwrap_or_default()
+                .chars()
+                .collect()
         } else {
             self.history[next].chars().collect()
         };
@@ -532,7 +577,12 @@ impl Ui {
         .split(inner);
         self.draw_header(f, parts[0]);
         self.draw_tabs(f, parts[1]);
-        let wide = area.width >= 112 && !list(&self.state, "sidebar").is_empty();
+        let welcome = self
+            .state
+            .get("welcome")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        let wide = area.width >= 112 && !welcome && !list(&self.state, "sidebar").is_empty();
         let sidebar_width = self
             .state
             .pointer("/theme/spacing/sidebar_width")
@@ -919,6 +969,20 @@ impl Ui {
             ),
             Line::default(),
         ];
+        if matches!(
+            self.text("connection").as_str(),
+            "dégradé" | "degrade" | "hors ligne"
+        ) {
+            lines.push(Line::styled(self.text("health"), self.style("warning")));
+            lines.push(Line::styled(
+                clean(
+                    "F5 réessayer · jobia connect pour l’appairage",
+                    self.unicode(),
+                ),
+                self.style("secondary"),
+            ));
+            lines.push(Line::default());
+        }
         lines.extend(markdown(&self.text("body"), self, parts[1].width as usize));
         f.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), parts[1]);
     }

@@ -21,7 +21,7 @@ from prompt_toolkit.output import DummyOutput
 
 from . import config, display, themes
 from .terminal import safe_text
-from .ui import PAGE_LABELS, SLASH_COMMANDS_CATALOG, WorkspaceApp
+from .ui import INTERACTIVE_COMMANDS, PAGE_LABELS, SLASH_COMMANDS_CATALOG, WorkspaceApp, presentation_command
 
 VERSION = 1
 MAX_COMMAND_BYTES = 262144
@@ -43,6 +43,7 @@ def snapshot(app, *, picker=''):
         'title': 'Aurora', 'target': clean(app.target()),
         'latency': f'{app.latency_ms:.0f} ms' if app.latency_ms is not None else 'n/d',
         'latency_kind': 'diagnostic HTTP', 'connection': clean(app.connection),
+        'health': clean(app.health), 'interactive_commands': sorted(INTERACTIVE_COMMANDS),
         'session': app.session(), 'mission': clean(app.state.id),
         'phase': clean(app.state.phase), 'status': app.state.status, 'busy': app.busy,
         'page': app.page, 'tabs': [{'id': page, 'label': label} for page,label in PAGE_LABELS.items()],
@@ -52,6 +53,8 @@ def snapshot(app, *, picker=''):
         'sidebar': app.sidebar_text().splitlines(),
         'footer': clean('F2 Thèmes · F3 Modèles · F4 Vues · F5 Diagnostic · Ctrl+C Arrêt · Ctrl+Q Sortie'),
         'prompt': clean(app.prompt.text), 'model': clean(config.get('default_model','')),
+        'draft_restore': ({'revision':app.draft_restore['revision'],
+                           'text':safe_text(app.draft_restore['text'])} if app.draft_restore else None),
         'theme': theme_record(display.view.theme), 'themes': [theme_record(t) for t in themes.all_themes()],
         'models': list(app.models), 'picker': picker, 'unicode': caps.unicode,
         'color_depth': caps.color_depth, 'animation': caps.animation, 'animate': caps.animate,
@@ -129,10 +132,11 @@ class RenderServer:
                     else:
                         self.app.note(parts[0]+' '+(' | '.join(choices))+'\nRéglage actuel : '+config.get(field,choices[0]))
                     return
-            if self.app.busy:
+            was_busy = self.app.busy
+            if was_busy and not presentation_command(raw):
                 self.app.note('Une mission est active. Ctrl+C demande son arrêt ; le brouillon est conservé.')
                 return
-            self.spawn(self.app.submit(raw),mission=True)
+            self.spawn(self.app.submit(raw),mission=not was_busy)
         elif command in {'theme_preview','theme_commit','theme_cancel'}:
             if command == 'theme_cancel':
                 if self._preview_original:
@@ -225,6 +229,7 @@ async def serve(input_stream, output_stream):
         app = WorkspaceApp(input=terminal_input,output=DummyOutput())
         app.loop = loop
         server = RenderServer(app,output_stream)
+        app.show_recovery_notices()
         server.emit()
         server.spawn(app.discover())
         threading.Thread(target=read_commands,name='aurora-render-input',daemon=True).start()
