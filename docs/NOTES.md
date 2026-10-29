@@ -30,3 +30,5 @@ Contre-vérification du 29 octobre : la suite verte initiale omettait des parcou
 | Test de thème à chaud | Attente fixe de 80 ms fragile sur Windows | Corrigé : attente bornée de l'état et de sa représentation ; aucune exclusion de test |
 | Validation physique | PTY macOS/Linux et tests Windows réussis ; images et terminaux du Mac utilisateur non observés | Ne pas transformer un résultat CI en validation physique de Terminal.app/iTerm2/SSH |
 | Chemin du renderer installé | Une wheel ne partage pas le chemin source du checkout ; compiler Rust seul ne le rend pas détectable depuis site-packages | Commandes Mac et erreur corrigées avec JOBIA_NATIVE_BIN ; scénario PTY validé depuis la wheel extraite hors checkout |
+
+| Géométrie des accueils | Le même petit sprite latéral diluait les huit identités ; huit compositions déclaratives livrées, 240 captures et resize réel testés | Géométrie Rust/Python à maintenir ensemble ; tokens communs et matrices sur les mêmes seuils |

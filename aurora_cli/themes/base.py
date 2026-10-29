@@ -195,6 +195,12 @@ class Components:
     spinner: str = "dots"
     pixel_art: tuple[str, ...] = ()
     pixel_palette: tuple[str, ...] = ()
+    # Independent geometry and typography, interpreted by both renderers.
+    composition: str = "split"
+    headline: str = "Un horizon ouvert."
+    eyebrow: str = "ESPACE DISTANT"
+    wordmark: tuple[str, ...] = ()
+    ornament: tuple[str, ...] = ()
 
 
 # --- Theme ----------------------------------------------------------------

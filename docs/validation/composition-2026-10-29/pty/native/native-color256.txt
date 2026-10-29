@@ -1,0 +1,24 @@
+   ◇ Aurora                         Connexion : flux reçu   
+   Cible 127.0.0.1:40361                       Diag. 2 ms   
+   Session e9b4387d                       Mission mis_pty   
+   completed                                      glacier   
+    <1 Conversation>   F4 : changer de vue                  
+   ┌ conversation ──────────────────────────────────────┐   
+   │                                                    │   
+   │VOUS                                                │   
+   │                                                    │   
+   │Vérifie le contrat                                  │   
+   │                                                    │   
+   │Exécution sur le serveur · 127.0.0.1:40361          │   
+   │                                                    │   
+   │                                                    │   
+   │AURORA                                              │   
+   │                                                    │   
+   │CONTROLE TERMINE                                    │   
+   └────────────────────────────────────────────────────┘   
+   completed · completed                                    
+    00:01  Mission · completed                              
+   ┌ Votre demande · Entrée envoyer · Alt+Entrée ligne ─┐   
+   │                                                    │   
+   └────────────────────────────────────────────────────┘   
+   F2 thème · F3 modèle · F4 vue · ^C arrêt · ^Q sortie     

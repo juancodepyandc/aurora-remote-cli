@@ -140,3 +140,29 @@ def test_legacy_cycle_command_does_not_claim_or_run_a_remote_stop(monkeypatch):
             assert 'Aucun entraînement n’a été modifié' in app.transcript
             assert 'PROGRAMMÉ' not in app.transcript
     asyncio.run(scenario())
+
+
+@pytest.mark.parametrize('theme',themes.all_themes(),ids=lambda t:t.id)
+@pytest.mark.parametrize('degraded',[False,True])
+def test_welcome_actions_remain_visible_through_live_resize(theme,degraded,monkeypatch):
+    selected_caps=caps(color_depth='none' if degraded else 'truecolor',unicode=not degraded)
+    monkeypatch.setattr(display,'view',display.Display(theme=theme,caps=selected_caps))
+    async def scenario():
+        output=SizedOutput(80,32)
+        with create_pipe_input() as pipe:
+            app=ui.WorkspaceApp(history=[],input=pipe,output=output)
+            app.discover=AsyncMock()
+            running=asyncio.create_task(app.run())
+            try:
+                for width,height in [(80,32),(60,24),(120,32),(200,32)]:
+                    output.width,output.height=width,height
+                    app.app._on_resize()
+                    await wait_visible(app,'/help',lambda:app._body_key[1]==app.body_width())
+                    for action in ['/modules','/missions','/theme','/help']:
+                        assert action in grid(app),(theme.id,width,height,action,grid(app))
+                    assert app.body.window.horizontal_scroll==0
+                    if degraded:assert grid(app).isascii()
+            finally:
+                app.app.exit()
+                await running
+    asyncio.run(scenario())

@@ -1,0 +1,19 @@
+{
+  "renderer": "python",
+  "depth": "none",
+  "first_frame_ms": 117.466,
+  "idle_cpu_percent": 0.0,
+  "idle_output_bytes": 0,
+  "peak_tree_rss_mib": 49.074,
+  "exit": 0,
+  "sse_cursors": [
+    "0",
+    "1",
+    "0"
+  ],
+  "mission_posts": 2,
+  "stop_posts": 1,
+  "resize": true,
+  "theme_preview": true,
+  "busy_controls": true
+}

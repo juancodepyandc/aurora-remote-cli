@@ -31,8 +31,16 @@ def load_path(path: Path) -> Theme:
         raise ValueError(f'Invalid spacing: {path.name}')
     data['spacing'] = spacing
     components = data.get('components', {})
-    for key in ('pixel_art', 'pixel_palette'):
+    for key in ('pixel_art', 'pixel_palette', 'wordmark', 'ornament'):
         components[key] = tuple(components.get(key, []))
+    if components.get('composition', 'split') not in {
+            'split', 'reverse', 'center', 'horizon', 'editorial', 'console', 'poster', 'gallery'}:
+        raise ValueError(f'Invalid composition: {path.name}')
+    for key in ('wordmark', 'ornament'):
+        rows = components[key]
+        if len(rows) > 8 or any(not isinstance(row, str) or len(row) > 80 or
+                                any(ord(c) < 32 or ord(c) == 127 for c in row) for row in rows):
+            raise ValueError(f'Invalid {key}: {path.name}')
     data['components'] = Components(**components)
     return Theme(**data)
 

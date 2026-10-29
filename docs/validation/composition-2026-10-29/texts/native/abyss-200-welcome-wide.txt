@@ -1,0 +1,32 @@
+  ◉ Aurora                                                                                                                                                                        Connexion : connecté  
+  Cible pc-maitre.example                                                                                                                                                                  Diag. 24 ms  
+  Session demo-42                                                                                                                                                                       Mission aucune  
+  Prêt                                                                                                                                                                                           abyss  
+   [1 Conversation]  2 Modules  3 Agents  4 Bilans  5 Journal  6 Fichiers                                                                                                                               
+                                                                                              ▀         ▀                                                                                               
+                                                                                                ▀▀▀▀▀▀▀▀                                                                                                
+                                                                                              ▀▀   ▀▀   ▀▀                                                                                              
+                                    A U R O R A                                             ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀  ·      ⠈⠑⠢⣀       ⣀⠔⠊⠁      ·                                                             
+                                                                                            ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀      ·        ⠉⠉⠉        ·                                                                 
+                                                                                              ▀▀   ▀▀   ▀▀                                                                                              
+                                                                                                ▀▀▀▀▀▀▀▀                                                                                                
+                                                                                             ▀           ▀                                                                                              
+                                                                                                                                                                                                        
+                                                                               BATHYSPHÈRE / OBSERVATOIRE                                                                                               
+                                                                               Sous la surface.                                                                                                         
+                                                                                                                                                                                                        
+                                                                               Décrivez le résultat attendu.                                                                                            
+                                                                                                                                                                                                        
+                                                                               /modules Explorer                                                                                                        
+                                                                               /missions Reprendre                                                                                                      
+                                                                               /theme Changer d’univers                                                                                                 
+                                                                               /help Commandes                                                                                                          
+                                                                                                                                                                                                        
+                                                                                                                                                                                                        
+  idle · Prêt                                                                                                                                                                                           
+   0 observations · 0 fichiers · 0 caractères reçus                                                                                                                                                     
+   Le plan et les outils apparaîtront ici.                                                                                                                                                              
+  ╔ Votre demande · Entrée envoyer · Alt+Entrée ligne ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╗  
+  ║                                                                                                                                                                                                  ║  
+  ╚══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╝  
+  F2 thèmes · F3 modèles · F4 vues · F5 état · Pg↑↓ journal · Ctrl+N nouveau · Ctrl+C arrêt · Ctrl+Q sortie                                                                                             

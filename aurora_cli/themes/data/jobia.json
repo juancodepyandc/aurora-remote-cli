@@ -89,6 +89,18 @@
       "#b9a4ff",
       "#76dcf5",
       "#f2f5f7"
+    ],
+    "composition": "horizon",
+    "headline": "Ouvrez le champ.",
+    "eyebrow": "HORIZON / AURORE BORÉALE",
+    "wordmark": [
+      "▄▀█ █ █ █▀█ █▀█ █▀█ ▄▀█",
+      "█▀█ █▄█ █▀▄ █▄█ █▀▄ █▀█"
+    ],
+    "ornament": [
+      "       ╱╱╱       ╱╱╱╱╱      ╱╱╱",
+      "   ╱╱╱╱       ╱╱╱╱╱      ╱╱╱╱",
+      "╱╱╱        ╱╱╱╱╱      ╱╱╱╱"
     ]
   },
   "banner": {

@@ -1,0 +1,32 @@
+ ■ Aurora                                                 Connexion : flux reçu 
+ Cible pc-maitre.example                                            Diag. 24 ms 
+ Session demo-42                                               Mission mis_demo 
+ read_file                                                               brutal 
+  [1 Conversation]   F4 : changer de vue                                        
+ ┏ conversation ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓ 
+ ┃Vous                                                                        ┃ 
+ ┃Inspecte ce projet et vérifie les tests.                                    ┃ 
+ ┃                                                                            ┃ 
+ ┃Aurora                                                                      ┃ 
+ ┃Le plan est prêt. Je commence par le fichier d’entrée.                      ┃ 
+ ┃                                                                            ┃ 
+ ┃python                                                                      ┃ 
+ ┃  def ready():                                                              ┃ 
+ ┃      return True                                                           ┃ 
+ ┃                                                                            ┃ 
+ ┃                                                                            ┃ 
+ ┃                                                                            ┃ 
+ ┃SORTIE REÇUE · résultat non encore confirmé                                 ┃ 
+ ┃                                                                            ┃ 
+ ┃Lecture de la configuration en cours…                                       ┃ 
+ ┃                                                                            ┃ 
+ ┃                                                                            ┃ 
+ ┃                                                                            ┃ 
+ ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛ 
+ running · read_file                                                            
+  0 observations · 0 fichiers · 0 caractères reçus                              
+  00:00  Outil en cours · read_file                                             
+ ┏ Votre demande · Entrée envoyer · Alt+Entrée ligne ━━━━━━━━━━━━━━━━━━━━━━━━━┓ 
+ ┃Explique le résultat                                                        ┃ 
+ ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛ 
+ F2 thèmes · F3 modèles · F4 vues · F5 état · ^C arrêt · ^Q sortie              

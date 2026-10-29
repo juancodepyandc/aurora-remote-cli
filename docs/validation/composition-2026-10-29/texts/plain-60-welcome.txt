@@ -1,0 +1,24 @@
+  Aurora.  /  Édition
+  Cible pc-maitre.example · connecté · Diag 24 ms
+  Session demo-42 · Mission aucune
+ 1 [Con]  2 Mod  3 Age  4 Bil  5 Jou  6 Fic
+
+ ÉDITION / CORRESPONDANCE
+
+ L’espace des possibles.              ▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+                                      ▀ ▀▀▀▀▀▀    ▀▀▀▀
+ Décrivez le résultat attendu.        ▀ ▀▀▀▀▀▀▀▀▀▀▀▀ ▀
+                                      ▀ ▀▀▀▀▀▀▀▀▀▀▀▀ ▀
+ /modules   Explorer                  ▀ ▀▀▀▀▀▀▀      ▀
+ /missions  Reprendre                 ▀              ▀
+ /theme     Changer d’univers         ▀ ▀▀▀▀▀▀       ▀
+ /help      Commandes                 ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+
+
+ Activité observée · Prêt · aucun travail en cours
+ Le plan et les outils apparaîtront ici.
+ Demande · Entrée envoyer · Alt+Entrée ligne
+│
+│
+ F2 Thème  F3 Modèle  F4 Vue  F5 Diagnostic
+ Ctrl+C Arrêt · Ctrl+Q Sortie · Tab Défiler · / Aide

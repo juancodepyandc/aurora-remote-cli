@@ -34,6 +34,8 @@ Copier un fichier de `aurora_cli/themes/data/`, changer son nom et son `id`. Le 
 - `glyphs` : chaque signe sémantique est une paire `[unicode, ascii]`.
 - `spacing` : `gutter`, `panel_x`, `panel_y`, `section`, `prompt_rows`, `sidebar_width`, en cellules.
 - `box` : `minimal`, `rounded`, `square`, `heavy`, `double`, `ascii`.
+- `components.composition` : `split`, `reverse`, `center`, `horizon`, `editorial`, `console`, `poster`, `gallery`. La géométrie se compacte automatiquement lorsque la hauteur manque.
+- `components.headline`, `eyebrow`, `wordmark`, `ornament` : titre et surtitre, puis lignes de typographie et de décor (au plus 8 lignes × 80 caractères, sans contrôles terminal). Les renderers adaptent Unicode/ASCII.
 - `components` : variante d'en-tête, rail, séparateur, marqueurs d'onglets, spinner, grille pixel et palette pixel.
 - `banner` : art Unicode, art ASCII obligatoire, effet, décorations, durée maximale et légende.
 - `motion` : budget bref, préférences de mouvement. Pas de typewriter pour le contenu utile ni l'aide.

@@ -1,0 +1,32 @@
+   ◇ Aurora                          Connexion : connecté   
+   Cible pc-maitre.example                    Diag. 24 ms   
+   Session demo-42                         Mission aucune   
+   Prêt                                           glacier   
+    <1 Conversation>   F4 : changer de vue                  
+    ISOBARE / ATELIER POLAIRE                               
+                                                            
+                                                            
+    ▄▀█ █ █ █▀█ █▀█ █▀█ ▄▀█           ▀▀▀▀▀                 
+    █▀█ █▄█ █▀▄ █▄█ █▀▄ █▀█          ▀▀▀▀▀▀▀                
+                                   ▀▀▀▀▀▀▀▀▀▀▀    ▀▀        
+                                ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀     
+    Une idée. Un cap.           ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀    
+                                ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀    
+    Décrivez le résultat        ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀    
+    attendu.                    ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀    
+                                ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀    
+    /modules Explorer           ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀    
+    /missions Reprendre         ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀    
+    /theme Changer d’univers                                
+    /help Commandes                                         
+                                                            
+               ╱╲                                           
+         ╱╲   ╱  ╲     ╱╲                                   
+    ____╱  ╲_╱    ╲___╱  ╲__                                
+   idle · Prêt                                              
+    0 observations · 0 fichiers · 0 caractères reçus        
+    Le plan et les outils apparaîtront ici.                 
+   ┌ Votre demande · Entrée envoyer · Alt+Entrée ligne ─┐   
+   │                                                    │   
+   └────────────────────────────────────────────────────┘   
+   F2 thème · F3 modèle · F4 vue · ^C arrêt · ^Q sortie     

@@ -1,6 +1,6 @@
 # Progression — refonte du CLI
 
-Mise à jour : 29 octobre 2026. Branche de vérification : `fix/cli-interaction-quality`.
+Mise à jour : 29 octobre 2026. Branche de finition : `redesign/cli-composition`.
 
 ## État actuel
 
@@ -73,3 +73,15 @@ Inventaire : 2 222 sources canoniques, 675 déclarations statiques de routes, 11
 La relecture des commandes Mac a révélé que `install.sh` installe une wheel, tandis que la découverte du binaire à côté des sources ne couvre que le checkout éditable. README/CLI et le message d'erreur indiquent désormais `JOBIA_NATIVE_BIN` explicitement ; le lancement documenté utilise `.venv/bin/jobia`, indépendant du PATH de la session. Aucun changement de configuration de connexion.
 
 Wheel reconstruite et extraite dans un répertoire temporaire hors checkout, dépendances de test déjà installées : le scénario PTY complet passe avec le binaire explicitement désigné, resize, aperçu/annulation, saisie, socket coupée, reprise 0→1 et un seul POST. Résultats et méthode dans [validation/installed-wheel](validation/installed-wheel/README.md). Les 4 tests du lanceur, Ruff et build wheel/sdist passent après correction. La dernière CI doit porter sur ce commit final avant fusion.
+
+## Reprise et composition — 29 octobre
+
+PR #5 fusionnée en `a89c91c` après les neuf jobs réussis du run 40790789266 au commit `b9917ab`. Branche corrective supprimée. Nouveau lot : géométrie, typographie et ornement déclaratifs pour huit compositions ; aucun changement du moteur ou des configurations PC. Les tokens sont ajoutés avant la migration des renderers. La validation visuelle reste ouverte.
+
+Lot tokens : 67 tests design system/thèmes réussis ; aucun ajout de dépendance.
+
+Lot composition : les deux renderers consomment les variantes JSON ; la loutre possède une nouvelle silhouette avec museau rond, pattes et queue. Le panneau de mission vide disparaît aussi de l'accueil Python. Les effets natifs restent bornés et limités au dessin. Première validation : 1361 tests Python réussis, 18 ignorés, 5 sous-tests ; 20 tests Rust, lint/clippy/build réussis. Inspection des huit accueils et correction des limites de hauteur, du mot-symbole étroit et des cadres. Validation finale et CI à suivre.
+
+## Lot de preuves finales — compositions
+
+1377 tests Python réussis, 18 ignorés, 5 sous-tests ; 20 tests Rust. Les 16 nouveaux parcours de resize Python couvrent les huit thèmes en couleur et ASCII/NO_COLOR. Build, lint et clippy verts. 240 snapshots texte, 96 accueils dont les quatre actions sont visibles, 72 PNG et deux planches de revue sont enregistrés dans `docs/validation/composition-2026-10-29/`. PTY : quatre profondeurs natives et Python NO_COLOR ; scénarios étendus pour truecolor/Python. PR #6 ouverte ; la CI du dernier commit publié reste exigée avant fusion. Aucun changement des copies PC, aucune implémentation du plan moteur.
