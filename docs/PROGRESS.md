@@ -85,3 +85,7 @@ Lot composition : les deux renderers consomment les variantes JSON ; la loutre p
 ## Lot de preuves finales — compositions
 
 1377 tests Python réussis, 18 ignorés, 5 sous-tests ; 20 tests Rust. Les 16 nouveaux parcours de resize Python couvrent les huit thèmes en couleur et ASCII/NO_COLOR. Build, lint et clippy verts. 240 snapshots texte, 96 accueils dont les quatre actions sont visibles, 72 PNG et deux planches de revue sont enregistrés dans `docs/validation/composition-2026-10-29/`. PTY : quatre profondeurs natives et Python NO_COLOR ; scénarios étendus pour truecolor/Python. PR #6 ouverte ; la CI du dernier commit publié reste exigée avant fusion. Aucun changement des copies PC, aucune implémentation du plan moteur.
+
+## Régression Mac signalée — 30 octobre
+
+La PR #6 a été fusionnée en `812e9f9`. Le retour réel du Mac a ensuite révélé deux défauts que la CI verte ne couvrait pas : variable JOBIA_NATIVE_BIN invalide bloquant auto, et compteur `steps` du statut serveur utilisé comme liste. Sept tests ont reproduit les échecs avant correction ; 78 tests ciblés passent après correction. Le faux bridge PTY transmet désormais le format réel `steps: entier, plan: liste`. L'accueil d'un historique restauré et `/home` conservent les messages sans rejouer de demande ; les erreurs restent prioritaires sur le décor. Branche de réparation : `fix/macos-launch-and-mission-events`. Installation native sans Cargo en cours. Copie CLI PC toujours `f893b6f` propre ; serveur modifié préservé.

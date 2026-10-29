@@ -81,7 +81,9 @@ def scenario(renderer, depth, output, *, extended=False):
                     self.connection.close()
                 return
             if self.path.endswith('/status'):
-                return self.reply({'ok':True,'id':'mis_pty','status':'running','plan':[]})
+                return self.reply({'ok':True,'id':'mis_pty','status':'running','steps':2,
+                                   'plan':['Analyser la demande','Générer le modèle'],
+                                   'criteria':['Fichier livré'],'verified':[],'evidence':[]})
             self.reply({'ok':True,'ready':True,'models':[],'missions':[],'checks':[]})
     server = ThreadingHTTPServer(('127.0.0.1',0),Handler)
     threading.Thread(target=server.serve_forever,daemon=True).start()

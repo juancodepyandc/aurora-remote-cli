@@ -402,3 +402,43 @@ def test_slash_command_completer_and_module_views_and_agi_cockpit():
             assert 'sans événements ou fichiers vérifiés' in app.transcript
     asyncio.run(scenario())
 
+
+
+def test_real_server_snapshot_keeps_counter_separate_from_plan():
+    state=ui.MissionView()
+    state.consume({'type':'mission_snapshot','ok':True,'id':'mis_3d','status':'running',
+                   'steps':3,'plan':['Analyser la demande','Générer le modèle'],
+                   'criteria':['Fichier 3D livré'],'verified':[],
+                   'evidence':[{'id':'ev_mesh','tool':'generate_3d','ok':True}]})
+    assert state.plan==['Analyser la demande','Générer le modèle']
+    assert state.server_steps==3
+    state.consume({'type':'mission_snapshot','steps':4,'plan':None,'criteria':None,'evidence':None})
+    assert len(state.plan)==2 and len(state.evidence)==1
+    state.consume({'type':'mission_complete','status':'completed','verification':None})
+    assert state.status=='completed'
+
+
+@pytest.mark.parametrize('bad',[None,2,'3',{},True])
+def test_collection_shapes_cannot_break_the_event_loop(bad):
+    state=ui.MissionView(plan=['Plan conservé'],criteria=['Critère conservé'])
+    state.consume({'type':'plan_revision','steps':bad})
+    state.consume({'type':'mission_snapshot','steps':bad,'plan':bad,'criteria':bad,'evidence':bad,'verified':bad})
+    assert state.plan==['Plan conservé']
+    assert state.criteria==['Critère conservé']
+
+
+def test_restored_history_can_show_home_without_erasing_or_replaying_it():
+    async def scenario():
+        history=[{'role':'user','content':'Créer un modèle 3D'},{'role':'assistant','content':'Historique conservé'}]
+        with create_pipe_input() as pipe:
+            app=ui.WorkspaceApp(history=history,input=pipe,output=DummyOutput())
+            assert app.is_welcome()
+            await app.submit('/view conversation')
+            assert not app.is_welcome() and 'Historique conservé' in app.body_source()
+            await app.submit('/home')
+            assert app.is_welcome() and len(history)==2
+            app.note('Connexion indisponible : diagnostic à lire')
+            assert not app.is_welcome()
+            assert 'Connexion indisponible' in app.body_source()
+            assert len(history)==2
+    asyncio.run(scenario())

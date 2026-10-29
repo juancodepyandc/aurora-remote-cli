@@ -33,6 +33,7 @@ from .tui_design import RenderedLexer, TerminalInputProcessor, color_depth, fit,
 
 
 SLASH_COMMANDS_CATALOG: list[tuple[str, str, str, str]] = [
+    ("/home", ">", "ACCUEIL", "Revoir le thème sans effacer la conversation"),
     ("/help", "?", "AIDE", "Commandes et raccourcis"),
     ("/view", ">", "VUES", "Conversation, modules, agents, bilans, journal, fichiers"),
     ("/modules", ">", "MODULES", "Parcours disponibles ; moteurs à vérifier"),
@@ -110,6 +111,7 @@ class MissionView:
     status: str = 'idle'
     phase: str = 'Prêt'
     plan: list = field(default_factory=list)
+    server_steps: int | None = None
     criteria: list = field(default_factory=list)
     verified: list = field(default_factory=list)
     evidence: list = field(default_factory=list)
@@ -127,6 +129,11 @@ class MissionView:
         self.activity = self.activity[-5:]
 
     def consume(self, event):
+        def collection(value, previous, item_type=str):
+            # Snapshots use steps as a counter and plan as a list. Missing or
+            # malformed collections cannot erase previously observed details.
+            return [item for item in value if isinstance(item, item_type)] if isinstance(value, list) else previous
+
         kind = event.get('type')
         if kind != 'reconnecting':
             self.last_signal = time.monotonic()
@@ -139,10 +146,11 @@ class MissionView:
             self.phase = event.get('tool','Outil')
             self.record('Outil en cours · '+str(self.phase))
         elif kind == 'plan' and not event.get('worker'):
-            self.plan,self.criteria = event.get('steps',[]),event.get('criteria',[])
+            self.plan = collection(event.get('steps'), self.plan)
+            self.criteria = collection(event.get('criteria'), self.criteria)
             self.record(f'Plan reçu · {len(self.plan)} étapes')
         elif kind == 'plan_revision' and not event.get('worker'):
-            self.plan = event.get('steps',self.plan)
+            self.plan = collection(event.get('steps'), self.plan)
             self.record('Étapes adaptées · '+str(event.get('reason','Observations nouvelles')))
         elif kind == 'token':
             self.received_chars += len(event.get('content',''))
@@ -159,9 +167,14 @@ class MissionView:
                 self.record(detail, 'warning' if kind in {'stagnation_notice','recovery_rejected','review_result'} else 'activity')
         elif kind == 'mission_snapshot':
             self.id = event.get('id', self.id)
-            self.goal = event.get('request','')
-            self.plan,self.criteria = event.get('steps',event.get('plan',[])),event.get('criteria',[])
-            self.verified,self.evidence = event.get('verified',[]),event.get('evidence',[])
+            self.goal = event.get('request',self.goal)
+            steps = event.get('steps')
+            if type(steps) is int and steps >= 0:
+                self.server_steps = steps
+            self.plan = collection(event.get('plan'), collection(steps, self.plan))
+            self.criteria = collection(event.get('criteria'), self.criteria)
+            self.verified = collection(event.get('verified'), self.verified)
+            self.evidence = collection(event.get('evidence'), self.evidence, dict)
             if event.get('status'):
                 self.status = event['status']
                 self.phase = ('État local · ' if event.get('id','').startswith('loc_') else 'État distant · ')+str(event['status'])
@@ -179,7 +192,8 @@ class MissionView:
             self.record(event.get('message','Confirmation nécessaire sur le PC maître'), 'warning')
         elif kind == 'mission_complete':
             self.status = 'stopped' if event.get('stopped') else event.get('status','completed')
-            self.verified = event.get('verification',{}).get('verified',[])
+            verification = event.get('verification')
+            self.verified = collection(verification.get('verified') if isinstance(verification,dict) else None, self.verified)
             self.phase = self.status
             self.record('Mission · '+str(self.status), 'success' if self.status=='completed' else 'warning')
         elif kind in {'error','mission_interrupted'}:
@@ -261,6 +275,7 @@ class WorkspaceApp:
         from .core.conversation import Conversation
         self.bridge_factory = bridge_factory or Bridge
         self.history = history if history is not None else Conversation.open()
+        self.home_open = bool(self.history)
         self.state,self.page,self.task,self.local_process = MissionView(),'conversation',None,None
         self.active_module = ''
         self.models,self.health,self.journal = [],'Diagnostic en cours…',''
@@ -347,6 +362,7 @@ class WorkspaceApp:
             event.app.create_background_task(self.choose_model())
         @bindings.add('f4')
         def page(event):
+            self.home_open = False
             pages = self.PAGES
             cur = pages.index(self.page) if self.page in pages else 0
             self.page = pages[(cur + 1) % len(pages)]
@@ -354,6 +370,7 @@ class WorkspaceApp:
         for idx, p_name in enumerate(self.PAGES, start=1):
             def _make_jump(target_page):
                 def _jump(event):
+                    self.home_open = False
                     self.page = target_page
                     self.refresh_body()
                 return _jump
@@ -421,7 +438,7 @@ class WorkspaceApp:
             self.refresh_body(invalidate=False)
 
     def is_welcome(self):
-        return self.page == "conversation" and not self.transcript and not self.partial
+        return self.page == "conversation" and not self.partial and (self.home_open or not self.transcript)
 
     def body_width(self):
         width = self.app.output.get_size().columns
@@ -628,7 +645,7 @@ class WorkspaceApp:
 
     def body_source(self):
         if self.page == 'conversation':
-            text = self.transcript or self.welcome_text()
+            text = self.welcome_text() if self.is_welcome() else self.transcript
         elif self.page == 'modules':
             text = self.modules_cockpit_text()
         elif self.page == 'agents':
@@ -679,6 +696,7 @@ class WorkspaceApp:
                 self.refresh_body()
 
     def note(self,text):
+        self.home_open = False
         self.transcript = (self.transcript+'\n'+plain(text)+'\n')[-200000:]
         self.refresh_body()
 
@@ -716,10 +734,10 @@ class WorkspaceApp:
         elif kind=='file_received':
             self.note('Fichier reçu et vérifié : '+event['path'])
         elif kind=='plan' and not event.get('worker'):
-            self.note('### PLAN REÇU\n\n'+'\n'.join(f'{i+1}. {plain(step)}' for i,step in enumerate(event.get('steps',[]))))
+            self.note('### PLAN REÇU\n\n'+'\n'.join(f'{i+1}. {plain(step)}' for i,step in enumerate(self.state.plan)))
         elif kind=='plan_revision' and not event.get('worker'):
             self.note('ÉTAPES ADAPTÉES · '+plain(event.get('reason','Observations nouvelles'))+'\n'+
-                      '\n'.join(f'{i+1}. {plain(step)}' for i,step in enumerate(event.get('steps',[]))))
+                      '\n'.join(f'{i+1}. {plain(step)}' for i,step in enumerate(self.state.plan)))
         elif kind in {'environment_observation','tool_result','recovery_observation','completion_observation','stagnation_notice',
                       'recovery_start','recovery_proposal','recovery_rejected','review_result'}:
             detail = observation_text(event)
@@ -981,6 +999,10 @@ class WorkspaceApp:
                 else:
                     await self.choose_theme()
                 return
+            if cmd=='/home':
+                self.page, self.home_open = 'conversation', True
+                self.refresh_body()
+                return
             if cmd=='/models':
                 await self.choose_model()
                 return
@@ -1014,6 +1036,7 @@ class WorkspaceApp:
                 self.refresh_body()
                 return
             if cmd=='/view':
+                self.home_open = False
                 target = arg.lower()
                 alias_map = {
                     'chat': 'conversation', 'dialogue': 'conversation', '1': 'conversation',

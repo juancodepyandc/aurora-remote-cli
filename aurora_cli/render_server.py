@@ -47,7 +47,7 @@ def snapshot(app, *, picker=''):
         'session': app.session(), 'mission': clean(app.state.id),
         'phase': clean(app.state.phase), 'status': app.state.status, 'busy': app.busy,
         'page': app.page, 'tabs': [{'id': page, 'label': label} for page,label in PAGE_LABELS.items()],
-        'welcome':app.page=='conversation' and not app.transcript and not app.partial,
+        'welcome':app.is_welcome(),
         'commands':[{'name':command,'description':clean(description)} for command,_,_,description in SLASH_COMMANDS_CATALOG],
         'body': clean(app.body_source()), 'activity': activity,
         'sidebar': app.sidebar_text().splitlines(),
@@ -175,6 +175,7 @@ class RenderServer:
                 self.app.note('Vue inconnue : '+value)
                 return
             self.app.page = value
+            self.app.home_open = False
             self.app.refresh_body()
         elif command in {'picker_cancel','model_cancel'}:
             self.picker = ''

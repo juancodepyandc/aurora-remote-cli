@@ -33,7 +33,10 @@ def launch_native(mode=None):
         return False
     binary = native_binary()
     if binary is None:
-        if mode == 'auto' and not os.environ.get('JOBIA_NATIVE_BIN'):
+        if mode == 'auto':
+            if os.environ.get('JOBIA_NATIVE_BIN'):
+                display.warning('JOBIA_NATIVE_BIN ne désigne aucun exécutable. Interface Python activée ; '
+                                'jobia renderer install prépare le renderer natif.')
             return False
         raise click.ClickException(
             'Renderer natif absent. Depuis le dépôt : cargo build --release --locked '
