@@ -36,6 +36,12 @@ def policy():
     return load_policy()
 
 
+@pytest.fixture(autouse=True)
+def isolated_shell_profile(tmp_path, monkeypatch):
+    # PATH setup must never edit the developer's real shell startup file.
+    monkeypatch.setattr(Path, 'home', classmethod(lambda cls: tmp_path))
+
+
 @pytest.fixture
 def manifest(tmp_path):
     """Every test project declares a version; the installer's own tests need one."""
@@ -228,3 +234,10 @@ class TestUpdatePath:
 
     def test_version_is_part_of_the_step_order(self):
         assert "version" in Installer.STEPS
+
+
+def test_install_native_is_a_separate_nonfatal_step_without_cargo(target,policy):
+    runner=FakeRunner({'aurora_cli.renderer_install':(1,'distribution indisponible')})
+    result=make(target,policy,runner).install_renderer()
+    assert result.status=='skipped' and 'Interface Python' in result.detail
+    assert runner.calls==[[str(target.python),'-m','aurora_cli.renderer_install']]

@@ -16,7 +16,12 @@ def native_binary():
     explicit = os.environ.get('JOBIA_NATIVE_BIN')
     if explicit:
         path = Path(explicit).expanduser()
-        return str(path.resolve()) if path.is_file() and os.access(path, os.X_OK) else None
+        if path.is_file() and os.access(path, os.X_OK):
+            return str(path.resolve())
+    from .renderer_install import managed_binary
+    managed = managed_binary()
+    if managed.is_file() and os.access(managed, os.X_OK):
+        return str(managed)
     name = 'aurora-native.exe' if os.name == 'nt' else 'aurora-native'
     source = Path(__file__).resolve().parents[1]/'native'/'target'/'release'/name
     if source.is_file() and os.access(source, os.X_OK):
@@ -39,9 +44,10 @@ def launch_native(mode=None):
                                 'jobia renderer install prépare le renderer natif.')
             return False
         raise click.ClickException(
-            'Renderer natif absent. Depuis le dépôt : cargo build --release --locked '
+            'Renderer natif absent. Lancez jobia renderer install (sans Cargo), '
+            'ou utilisez jobia ui --renderer python. Compilation facultative : cargo build --release --locked '
             '--manifest-path native/Cargo.toml ; définissez JOBIA_NATIVE_BIN vers le binaire '
-            'compilé, ou utilisez jobia ui --renderer python.')
+            'compilé.')
     caps = display.view.caps
     env = os.environ.copy()
     env.update(JOBIA_THEME=display.view.theme.id, JOBIA_COLOR=caps.color_depth,

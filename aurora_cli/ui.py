@@ -584,7 +584,9 @@ class WorkspaceApp:
         if self.app.output.get_size().rows>=28:
             counts = f' {len(state.evidence)} observations · {len(state.files)} fichiers · {state.received_chars} caractères reçus'
             rows.append(('class:footer',fit(counts,width,display.view.caps.unicode)+'\n'))
-        if state.activity:
+        if self.is_welcome() and self.history:
+            rows.append(('class:footer',' Historique conservé · /view conversation pour le retrouver'))
+        elif state.activity:
             tone,text = state.activity[-1]
             rows.append(('class:'+tone,fit(' '+text,width,display.view.caps.unicode)))
         else:
@@ -681,7 +683,7 @@ class WorkspaceApp:
             else:
                 text,lines = render_document(source,width,display.view.theme,display.view.caps,journal=self.page=='journal')
             self.body_lexer.lines = lines
-            position = 0 if changed_page or (not self.transcript and not self.partial) else len(text) if follow else min(previous,len(text))
+            position = 0 if changed_page or self.is_welcome() else len(text) if follow else min(previous,len(text))
             self.body.buffer.set_document(Document(text,position),bypass_readonly=True)
             self._body_key,self._body_source,self._body_page = key,source,self.page
         if invalidate:

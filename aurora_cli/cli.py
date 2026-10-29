@@ -367,7 +367,7 @@ def doctor(remote, as_json):
     native = native_binary()
     checks.append({"name":"Renderer", "status":"ok" if native else "warn",
                    "detail":"Natif disponible : "+native if native else
-                   "Interface Python ; binaire natif absent. Voir docs/CLI.md pour installer Ratatui."})
+                   "Interface Python ; jobia renderer install installe le natif sans Cargo."})
     remote_data = None
     if remote:
         client = _client()
@@ -505,6 +505,24 @@ def ui_command(text_mode, renderer):
 @main.group(name="missions")
 def missions_command():
     """List durable missions and resume retained execution state."""
+
+
+@main.group(name="renderer")
+def renderer_command():
+    """Installer le renderer animé sans compilateur ni configuration distante."""
+
+
+@renderer_command.command(name="install")
+def renderer_install_command():
+    """Télécharger et vérifier le binaire correspondant à cette version du CLI."""
+    from .renderer_install import install_native
+    try:
+        path = install_native()
+    except (OSError, RuntimeError) as exc:
+        raise click.ClickException(str(exc)) from exc
+    display.success('Renderer natif installé et vérifié.')
+    display.kv('Binaire', str(path))
+    display.hint('Lancez jobia ; aucun export JOBIA_NATIVE_BIN nécessaire.')
 
 
 @missions_command.command(name="list")
