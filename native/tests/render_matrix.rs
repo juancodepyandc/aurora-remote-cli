@@ -248,3 +248,52 @@ fn recalled_history_and_backend_recovery_preserve_drafts() {
     ui.update(recovered);
     assert_eq!(ui.input.value(), "Vérifie le reçu 猫!");
 }
+
+#[test]
+fn every_welcome_keeps_actions_at_compact_and_full_heights() {
+    for id in [
+        "otter",
+        "jobia",
+        "abyss",
+        "plain",
+        "phosphor",
+        "brutal",
+        "glacier",
+        "synthwave",
+    ] {
+        for (width, height) in [(60, 24), (60, 32), (80, 32), (120, 32), (200, 32)] {
+            for unicode in [true, false] {
+                let mut state = fixture(id);
+                state["unicode"] = json!(unicode);
+                if !unicode {
+                    state["color_depth"] = json!("none");
+                }
+                state["body"] = json!(
+                    "# Un horizon ouvert.\n\nDécrivez le résultat attendu.\n\n**/modules** Explorer  \n**/missions** Reprendre  \n**/theme** Changer d’univers  \n**/help** Commandes"
+                );
+                let mut ui = Ui::default();
+                ui.update(state);
+                let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
+                terminal.draw(|f| ui.draw(f)).unwrap();
+                let buffer = terminal.backend().buffer();
+                let text = (0..height)
+                    .map(|y| {
+                        (0..width)
+                            .map(|x| buffer[(x, y)].symbol())
+                            .collect::<String>()
+                    })
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                for action in ["/modules", "/missions", "/theme", "/help"] {
+                    assert!(
+                        text.contains(action),
+                        "{id}/{width}/{height}: {action}\n{text}"
+                    );
+                }
+                if !unicode {
+                    assert!(text.is_ascii(), "{id}: {text}");
+                }
+            }
+        }
+    }
+}

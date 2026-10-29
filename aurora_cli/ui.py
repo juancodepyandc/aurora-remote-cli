@@ -381,7 +381,7 @@ class WorkspaceApp:
         header = Window(FormattedTextControl(self.header),height=3,style='class:header')
         sidebar = ConditionalContainer(
             HorizonFrame(self.sidebar,title='Mission · critères & preuves'),
-            Condition(lambda:self.app.output.get_size().columns>=110))
+            Condition(lambda:self.app.output.get_size().columns>=110 and not self.is_welcome()))
         slash_dock = ConditionalContainer(
             Window(FormattedTextControl(self.slash_dock_text), height=2, style='class:dock'),
             Condition(lambda:self.prompt.text.lstrip().startswith('/')))
@@ -412,12 +412,15 @@ class WorkspaceApp:
 
     def _before_render(self, app):
         width = self.body_width()
-        if self._body_key and self._body_key[1] != width:
+        if self._body_key and (self._body_key[1] != width or self._body_key[-1] != max(11,app.output.get_size().rows-14)):
             self.refresh_body(invalidate=False)
+
+    def is_welcome(self):
+        return self.page == "conversation" and not self.transcript and not self.partial
 
     def body_width(self):
         width = self.app.output.get_size().columns
-        if width >= 110:
+        if width >= 110 and not self.is_welcome():
             width -= display.view.theme.spacing.sidebar_width + display.view.theme.spacing.gutter + 4
         return max(20, width - 4)
 
@@ -643,17 +646,18 @@ class WorkspaceApp:
             self._refresh_handle.cancel()
             self._refresh_handle = None
         source = self.body_source()
-        if self.page=='conversation' and not self.transcript and not self.partial:
-            art = display.view.theme.banner.art_for(display.view.caps.unicode).strip('\n')
-            if art and self.app.output.get_size().rows>=28:
-                source = '```text\n'+art+'\n```\n\n'+source
         width = self.body_width()
-        key = (source,width,display.view.theme.id,display.view.caps.color_depth,display.view.caps.unicode,self.page)
+        height = max(11,self.app.output.get_size().rows-14)
+        key = (source,width,display.view.theme.id,display.view.caps.color_depth,display.view.caps.unicode,self.page,height)
         if key != self._body_key:
             changed_page = self._body_page != self.page
             previous = self.body.buffer.cursor_position
             follow = self.app.layout.has_focus(self.prompt)
-            text,lines = render_document(source,width,display.view.theme,display.view.caps,journal=self.page=='journal')
+            if self.is_welcome():
+                from .welcome import render_welcome
+                text,lines = render_welcome(width,height,display.view.theme,display.view.caps)
+            else:
+                text,lines = render_document(source,width,display.view.theme,display.view.caps,journal=self.page=='journal')
             self.body_lexer.lines = lines
             position = 0 if changed_page or (not self.transcript and not self.partial) else len(text) if follow else min(previous,len(text))
             self.body.buffer.set_document(Document(text,position),bypass_readonly=True)

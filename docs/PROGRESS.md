@@ -79,3 +79,5 @@ Wheel reconstruite et extraite dans un répertoire temporaire hors checkout, dé
 PR #5 fusionnée en `a89c91c` après les neuf jobs réussis du run 40790789266 au commit `b9917ab`. Branche corrective supprimée. Nouveau lot : géométrie, typographie et ornement déclaratifs pour huit compositions ; aucun changement du moteur ou des configurations PC. Les tokens sont ajoutés avant la migration des renderers. La validation visuelle reste ouverte.
 
 Lot tokens : 67 tests design system/thèmes réussis ; aucun ajout de dépendance.
+
+Lot composition : les deux renderers consomment les variantes JSON ; la loutre possède une nouvelle silhouette avec museau rond, pattes et queue. Le panneau de mission vide disparaît aussi de l'accueil Python. Les effets natifs restent bornés et limités au dessin. Première validation : 1361 tests Python réussis, 18 ignorés, 5 sous-tests ; 20 tests Rust, lint/clippy/build réussis. Inspection des huit accueils et correction des limites de hauteur, du mot-symbole étroit et des cadres. Validation finale et CI à suivre.

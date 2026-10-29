@@ -1,5 +1,6 @@
 //! Presentation only. Python remains the authority for missions and permissions.
 pub mod ansi16;
+pub mod welcome;
 use ratatui::{
     Frame,
     layout::{Constraint, Layout, Rect},
@@ -857,134 +858,7 @@ impl Ui {
         f.render_widget(Paragraph::new(lines), area);
     }
     fn draw_welcome(&self, f: &mut Frame, area: Rect) {
-        let block = self.block("Espace de travail");
-        let inner = block.inner(area);
-        f.render_widget(block, area);
-        let parts = Layout::horizontal([Constraint::Length(19), Constraint::Min(20)]).split(inner);
-        let art = self
-            .state
-            .pointer("/theme/components/pixel_art")
-            .and_then(Value::as_array)
-            .cloned()
-            .unwrap_or_default();
-        let palette = self
-            .state
-            .pointer("/theme/components/pixel_palette")
-            .and_then(Value::as_array)
-            .cloned()
-            .unwrap_or_default();
-        let effect = self
-            .state
-            .pointer("/theme/banner/effect")
-            .and_then(Value::as_str)
-            .unwrap_or("static");
-        let moving = self.motion_interval().is_some();
-        for y in 0..art.len().div_ceil(2).min(parts[0].height as usize) {
-            let upper = art[y * 2]
-                .as_str()
-                .unwrap_or("")
-                .chars()
-                .collect::<Vec<_>>();
-            let lower = art
-                .get(y * 2 + 1)
-                .and_then(Value::as_str)
-                .unwrap_or("")
-                .chars()
-                .collect::<Vec<_>>();
-            let offset = if moving
-                && ((effect == "wave" && (self.frame / 7 + y).is_multiple_of(5))
-                    || (effect == "glitch" && self.frame < 8 && (self.frame + y).is_multiple_of(3)))
-            {
-                1
-            } else {
-                0
-            };
-            for (x, ch) in upper
-                .iter()
-                .enumerate()
-                .take(parts[0].width.saturating_sub(2) as usize)
-            {
-                let a = ch.to_digit(10).unwrap_or(0) as usize;
-                let b = lower.get(x).and_then(|c| c.to_digit(10)).unwrap_or(0) as usize;
-                let visible = !moving
-                    || !matches!(effect, "reveal" | "typewriter")
-                    || (y * upper.len() + x) <= self.frame.saturating_mul(10);
-                if !visible || (a == 0 && b == 0) {
-                    continue;
-                }
-                let get = |index: usize| palette.get(index).and_then(Value::as_str).unwrap_or("");
-                let mut style = if self.depth() == "none" {
-                    Style::default()
-                } else {
-                    Style::default()
-                        .fg(token_color(get(a), &self.depth()))
-                        .bg(token_color(get(b), &self.depth()))
-                };
-                if moving && effect == "breathe" && self.depth() == "truecolor" {
-                    let gain = 0.82 + 0.18 * ((self.frame as f64 * 0.3).sin() + 1.0) / 2.0;
-                    let dim = |c| match c {
-                        Color::Rgb(r, g, b) => Color::Rgb(
-                            (r as f64 * gain) as u8,
-                            (g as f64 * gain) as u8,
-                            (b as f64 * gain) as u8,
-                        ),
-                        other => other,
-                    };
-                    style.fg = style.fg.map(dim);
-                    style.bg = style.bg.map(dim);
-                }
-                let glyph = if !self.unicode() {
-                    if a == b { "#" } else { "+" }
-                } else if self.depth() == "none" {
-                    if a != 0 && b != 0 {
-                        "█"
-                    } else if a != 0 {
-                        "▀"
-                    } else {
-                        "▄"
-                    }
-                } else {
-                    "▀"
-                };
-                let rect = Rect::new(
-                    parts[0].x + x as u16 + offset,
-                    parts[0].y + y as u16 + 1,
-                    1,
-                    1,
-                );
-                if rect.bottom() <= parts[0].bottom() {
-                    f.render_widget(Paragraph::new(glyph).style(style), rect);
-                }
-            }
-        }
-        let label = self
-            .state
-            .pointer("/theme/label")
-            .and_then(Value::as_str)
-            .unwrap_or("Aurora");
-        let mut lines = vec![
-            Line::styled(
-                clean(label, self.unicode()),
-                self.style("secondary").add_modifier(Modifier::BOLD),
-            ),
-            Line::default(),
-        ];
-        if matches!(
-            self.text("connection").as_str(),
-            "dégradé" | "degrade" | "hors ligne"
-        ) {
-            lines.push(Line::styled(self.text("health"), self.style("warning")));
-            lines.push(Line::styled(
-                clean(
-                    "F5 réessayer · jobia connect pour l’appairage",
-                    self.unicode(),
-                ),
-                self.style("secondary"),
-            ));
-            lines.push(Line::default());
-        }
-        lines.extend(markdown(&self.text("body"), self, parts[1].width as usize));
-        f.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), parts[1]);
+        welcome::draw(self, f, area);
     }
     fn draw_tabs(&self, f: &mut Frame, area: Rect) {
         let page = self.text("page");

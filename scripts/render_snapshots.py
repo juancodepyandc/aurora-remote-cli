@@ -33,7 +33,21 @@ def rasterize(cells, path, width, height, background='#0b111b'):
             bg = cell.get('bg') or background
             fg = cell.get('fg') or '#e5eef5'
             draw.rectangle((x, y, x+cell_width, y+cell_height), fill=bg)
-            draw.text((x, y), cell.get('char', ' '), fill=fg, font=font)
+            char = cell.get('char', ' ')
+            # Rasterize terminal primitives as cell coverage, not font outlines:
+            # half-blocks must touch, and braille is eight dots in a 2×4 grid.
+            if char in {'█','▀','▄'}:
+                top = y + (cell_height//2 if char == '▄' else 0)
+                bottom = y + (cell_height//2 if char == '▀' else cell_height)
+                draw.rectangle((x,top,x+cell_width-1,bottom-1),fill=fg)
+            elif len(char)==1 and 0x2800 <= ord(char) <= 0x28ff:
+                dots = ord(char)-0x2800
+                for bit,(dx,dy) in enumerate(((0,0),(0,1),(0,2),(1,0),(1,1),(1,2),(0,3),(1,3))):
+                    if dots & (1<<bit):
+                        px,py=x+2+dx*5,y+3+dy*5
+                        draw.ellipse((px,py,px+2,py+2),fill=fg)
+            else:
+                draw.text((x, y), char, fill=fg, font=font)
     image.save(path)
 
 
@@ -64,7 +78,7 @@ async def capture(theme, width, height, scenario, output, *, ascii_only=False, n
         app.discover = discover
         app._active_target = 'pc-maitre.example'
         app.connection, app.latency_ms, app.health = 'connecté', 24, 'Diagnostic de démonstration'
-        if scenario != 'welcome':
+        if not scenario.startswith('welcome'):
             app.state = ui.MissionView(id='mis_demo', goal='Inspecter le projet puis vérifier les tests', status='running', started=time.monotonic())
             app.event({'type':'plan','steps':['Inspecter le projet','Exécuter les tests'],'criteria':['Tests réussis']})
             app.event({'type':'tool_start','tool':'read_file'})
@@ -78,7 +92,7 @@ async def capture(theme, width, height, scenario, output, *, ascii_only=False, n
                 app.event({'type':'permission_request','message':'Écrire un fichier : confirmation explicite nécessaire.'})
             elif scenario == 'complete':
                 app.event({'type':'mission_complete','status':'completed','result':'## Vérification terminée\nLes tests demandés ont réussi.','verification':{'verified':['Tests réussis']}})
-        app.prompt.text = '' if scenario == 'welcome' else 'Explique le résultat'
+        app.prompt.text = '' if scenario.startswith('welcome') else 'Explique le résultat'
         app.refresh_body()
         running = asyncio.create_task(app.run())
         await asyncio.sleep(.075)
@@ -117,16 +131,19 @@ async def main(args):
     for theme in selected:
         for width in [60,80,120,200]:
             await capture(theme,width,32,'streaming',args.output)
+            if width != 80:
+                await capture(theme,width,32,'welcome-wide',args.output)
         for scenario in ['welcome','offline','error','permission','complete']:
             await capture(theme,80,32,scenario,args.output)
         await capture(theme,60,24,'welcome',args.output)
+        await capture(theme,60,24,'welcome',args.output,ascii_only=True,no_color=True)
         await capture(theme,60,24,'streaming',args.output,ascii_only=True,no_color=True)
     if args.native:
         native_output = args.output/'native'
         native_output.mkdir(exist_ok=True)
         for source in sorted(args.output.glob('*.json')):
             width = int(source.stem.split('-')[1])
-            height = 24 if '-ascii' in source.stem or '-60-welcome' in source.stem else 32
+            height = 24 if '-ascii' in source.stem or ('-60-welcome' in source.stem and '-welcome-wide' not in source.stem) else 32
             cells_path = native_output/(source.stem+'.cells.json')
             captured = subprocess.run([str(args.native.resolve()),'--snapshot',str(source),
                                        str(width),str(height),'--cells',str(cells_path)],
