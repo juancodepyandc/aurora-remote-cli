@@ -442,3 +442,33 @@ def test_restored_history_can_show_home_without_erasing_or_replaying_it():
             assert 'Connexion indisponible' in app.body_source()
             assert len(history)==2
     asyncio.run(scenario())
+
+
+def test_server_snapshot_callback_and_stream_do_not_raise_in_event_loop():
+    class RealStatus(FakeBridge):
+        def mission_status(self,mid):
+            return {'ok':True,'id':mid,'status':'running','steps':2,
+                    'plan':['Analyser la demande','Générer le modèle'],'criteria':[],
+                    'verified':[],'evidence':[]}
+    config.set('mode','remote')
+    async def scenario():
+        errors=[];observed=[]
+        loop=asyncio.get_running_loop()
+        previous=loop.get_exception_handler()
+        loop.set_exception_handler(lambda loop,context:errors.append(context))
+        try:
+            with create_pipe_input() as pipe:
+                app=ui.WorkspaceApp(bridge_factory=RealStatus,history=[],input=pipe,output=DummyOutput())
+                original=app.event
+                def event(message):
+                    original(message)
+                    if message['type']=='mission_snapshot':observed.append((app.state.server_steps,list(app.state.plan)))
+                app.event=event
+                await app.submit('/3d Une demande de test sans moteur réel')
+                await asyncio.sleep(.02)
+                assert observed==[(2,['Analyser la demande','Générer le modèle'])]
+                assert not errors
+                assert app.state.status=='completed'
+        finally:
+            loop.set_exception_handler(previous)
+    asyncio.run(scenario())

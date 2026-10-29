@@ -72,7 +72,8 @@ async def capture(theme, width, height, scenario, output, *, ascii_only=False, n
          patch.object(config, 'resolve_server_url', return_value=cfg['server_url']), \
          patch.object(config, 'is_configured', return_value=True), create_pipe_input() as pipe:
         display.bind(theme=theme, caps=caps)
-        app = ui.WorkspaceApp(history=History(), input=pipe, output=SizedOutput())
+        history = History([{'role':'user','content':'Demande précédente'},{'role':'assistant','content':'Résultat conservé'}] if scenario=='welcome-history' else [])
+        app = ui.WorkspaceApp(history=history, input=pipe, output=SizedOutput())
         async def discover():
             pass
         app.discover = discover
@@ -135,6 +136,7 @@ async def main(args):
                 await capture(theme,width,32,'welcome-wide',args.output)
         for scenario in ['welcome','offline','error','permission','complete']:
             await capture(theme,80,32,scenario,args.output)
+        await capture(theme,120,30,'welcome-history',args.output)
         await capture(theme,60,24,'welcome',args.output)
         await capture(theme,60,24,'welcome',args.output,ascii_only=True,no_color=True)
         await capture(theme,60,24,'streaming',args.output,ascii_only=True,no_color=True)
@@ -144,6 +146,8 @@ async def main(args):
         for source in sorted(args.output.glob('*.json')):
             width = int(source.stem.split('-')[1])
             height = 24 if '-ascii' in source.stem or ('-60-welcome' in source.stem and '-welcome-wide' not in source.stem) else 32
+            if '-welcome-history' in source.stem:
+                height = 30
             cells_path = native_output/(source.stem+'.cells.json')
             captured = subprocess.run([str(args.native.resolve()),'--snapshot',str(source),
                                        str(width),str(height),'--cells',str(cells_path)],

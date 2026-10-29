@@ -61,7 +61,7 @@ jobs:
       - uses: actions/setup-python@v7.0.0
         with:
           python-version: '3.13'
-      - run: python -m pip install .
+      - run: python -m pip install ".[test]" pyte
       - name: Download and probe the published binary without invoking Cargo
         working-directory: ${{ runner.temp }}
         env:
@@ -70,3 +70,8 @@ jobs:
           python -m aurora_cli.renderer_install
           python -c "from aurora_cli.renderer import native_binary; from aurora_cli.renderer_install import probe; path=native_binary(); assert path; probe(path); print(path)"
           jobia --version
+      - name: Exercise the installed wheel and downloaded renderer in a PTY
+        if: runner.os != 'Windows'
+        shell: bash
+        working-directory: ${{ runner.temp }}
+        run: python "$GITHUB_WORKSPACE/scripts/validate_terminal.py" --source "$RUNNER_TEMP/installed-blank" --depth truecolor --extended --output "$RUNNER_TEMP/installed-proof"

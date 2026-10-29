@@ -59,3 +59,7 @@ Authentification Bearer via le client Python. HTTPS doit être utilisé hors loo
 Le protocole distant actuel **ne possède pas de version de négociation explicite**. Il est conservé tel quel ; une évolution versionnée et ses tests de compatibilité appartiennent au plan Phase 2, pas à cette refonte. Le JSONL local est bien versionné.
 
 Validation : tests de contrats Python et Rust, plus `scripts/validate_terminal.py` : vrai socket loopback interrompu après l'événement 1, reprise au curseur 1, un seul POST, résultat terminal après l'événement 2. Aucun serveur de production ni modèle contacté.
+
+## Statut distant : compteur et plan
+
+`GET /api/cli/mission/<id>/status` retourne `steps` comme entier (nombre d'événements `step_start`) et `plan` comme liste de textes du checkpoint. Le CLI les conserve séparément. Les événements de flux `plan` et `plan_revision` utilisent en revanche `steps` comme liste. Les collections absentes/nulles/malformées ne remplacent pas les détails déjà observés. Ce contrat est vérifié dans les sources `application/mission_api.py::public` et `agi_core/mission_store.py::append` ; aucun changement serveur n'est nécessaire. Les fixtures de statut et les PTY doivent inclure ce compteur, pas seulement une liste `plan`.
