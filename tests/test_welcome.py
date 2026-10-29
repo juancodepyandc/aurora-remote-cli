@@ -23,8 +23,7 @@ def test_every_action_survives_compact_full_and_degraded_layouts(theme,width,hei
 
 def test_compositions_change_geometry_with_identical_text_and_palette():
     plans=[geometry(116,20,t.components.composition) for t in themes.all_themes()]
-    # Center/gallery share geometry but different art; other compositions vary.
-    assert len({repr(p) for p in plans})>=7
+    assert len({repr(p) for p in plans})==8
     theme=themes.get('otter')
     foreign=replace(theme,id='third-party',components=replace(theme.components,composition='editorial'))
     caps=Capabilities('linux',True,'none',False,'none',80,32,False,False)

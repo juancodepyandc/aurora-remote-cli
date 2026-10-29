@@ -1,0 +1,18 @@
+{
+  "renderer": "native",
+  "depth": "none",
+  "first_frame_ms": 133.662,
+  "idle_cpu_percent": 0.0,
+  "idle_output_bytes": 0,
+  "peak_tree_rss_mib": 48.535,
+  "exit": 0,
+  "sse_cursors": [
+    "0",
+    "1"
+  ],
+  "mission_posts": 1,
+  "stop_posts": 0,
+  "resize": true,
+  "theme_preview": true,
+  "busy_controls": false
+}

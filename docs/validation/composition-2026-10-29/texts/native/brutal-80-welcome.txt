@@ -1,0 +1,32 @@
+ ■ Aurora                                                  Connexion : connecté 
+ Cible pc-maitre.example                                            Diag. 24 ms 
+ Session demo-42                                                 Mission aucune 
+ Prêt                                                                    brutal 
+  [1 Conversation]   F4 : changer de vue                                        
+  BLOC / HAUT CONTRASTE                                                         
+                                                                                
+   ▄▀█ █ █ █▀█ █▀█ █▀█ ▄▀█                                                      
+   █▀█ █▄█ █▀▄ █▄█ █▀▄ █▀█                                                      
+                                                                                
+                                                                                
+  ██████████████████████████████                                                
+                                                                                
+   FAITES PLACE.                                     ▀▀▀▀▀▀           ▀▀▀▀▀     
+                                                     ▀▀▀▀▀▀           ▀▀▀▀▀     
+   Décrivez le résultat attendu.                     ▀▀▀▀▀▀           ▀▀▀▀▀     
+                                                     ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀     
+   /modules Explorer                                 ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀     
+   /missions Reprendre                               ▀▀▀▀▀▀           ▀▀▀▀▀     
+   /theme Changer d’univers                          ▀▀▀▀▀▀           ▀▀▀▀▀     
+   /help Commandes                                   ▀▀▀▀▀▀           ▀▀▀▀▀     
+                                                     ▀▀▀▀▀▀           ▀▀▀▀▀     
+                                                     ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀     
+                                                     ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀     
+                                                                                
+ idle · Prêt                                                                    
+  0 observations · 0 fichiers · 0 caractères reçus                              
+  Le plan et les outils apparaîtront ici.                                       
+ ┏ Votre demande · Entrée envoyer · Alt+Entrée ligne ━━━━━━━━━━━━━━━━━━━━━━━━━┓ 
+ ┃                                                                            ┃ 
+ ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛ 
+ F2 thèmes · F3 modèles · F4 vues · F5 état · ^C arrêt · ^Q sortie              

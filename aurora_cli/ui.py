@@ -27,6 +27,8 @@ from . import config, display, themes
 from .observations import observation_text, terminal_text
 from .mission_domain import domain_label
 from .terminal import safe_text, target_label
+from prompt_toolkit.layout.margins import ConditionalMargin
+
 from .tui_design import RenderedLexer, TerminalInputProcessor, color_depth, fit, render_document
 
 
@@ -283,6 +285,9 @@ class WorkspaceApp:
         self.body_lexer = RenderedLexer()
         self.body = TextArea(text='', lexer=self.body_lexer,
                              read_only=True,scrollbar=True,wrap_lines=True)
+        self.body.window.right_margins = [
+            ConditionalMargin(margin, filter=Condition(lambda: not self.is_welcome()))
+            for margin in self.body.window.right_margins]
         self.prompt = TextArea(height=lambda: display.view.theme.spacing.prompt_rows,
                                multiline=True,wrap_lines=True,
                                input_processors=[TerminalInputProcessor(lambda:display.view.caps.unicode)],

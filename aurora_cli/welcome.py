@@ -39,12 +39,18 @@ def geometry(width, height, mode):
         body.y,body.height = 7,height-7
         brand.height,ornament.height = 3,3
         ornament.y=height-3
-        if mode in {'center','gallery'}:
+        if mode=='center':
             art = rect((w-16)//2,0,16,8)
             eyebrow = rect((w-min(w,42))//2,9,min(w,42),1)
             body = rect((w-min(w,42))//2,10,min(w,42),height-10)
             brand = rect(2,3,(w-20)//2,3)
             ornament = rect((w+20)//2,3,(w-24)//2,4)
+        elif mode=='gallery':
+            art=rect(w-26,1,24,12)
+            brand=rect(2,2,w-30,3)
+            body=rect(2,7,w-30,height-7)
+            eyebrow=rect(1,0,w-2,1)
+            ornament=rect(w-26,height-4,24,4)
         elif mode=='horizon':
             brand = rect(2,2,max(w//2,24),3)
             ornament = rect(w//2+2,1,w//2-4,4)

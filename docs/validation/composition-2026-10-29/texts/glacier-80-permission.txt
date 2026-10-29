@@ -1,0 +1,32 @@
+  ◇ AURORA  /  Isobare
+  Cible pc-maitre.example · flux reçu · Diag 24 ms
+  Session demo-42 · Mission mis_demo
+ 1 <Conv>  2 Modu  3 Agen  4 Bila  5 Jour  6 Fich
+
+                                                                            ^
+Le plan est prêt. Je commence par le fichier d’entrée.
+
+
+ def ready():
+     return True
+
+
+Autorisation requise
+
+Écrire un fichier : confirmation explicite nécessaire.
+
+Ce pont ne propose pas de confirmation dans le CLI. Inspectez la demande sur
+
+le PC maître ; Ctrl+C demande l’arrêt.
+
+SORTIE REÇUE · résultat non encore confirmé
+
+Lecture de la configuration en cours…                                       v
+ Activité observée · Autorisation requise
+ 0 observations · 0 fichiers · 0 caractères reçus
+ 00:00  Écrire un fichier : confirmation explicite nécessaire.
+ Demande · Entrée envoyer · Alt+Entrée ligne
+│ Explique le résultat
+│
+ F2 Thème  F3 Modèle  F4 Vue  F5 Diagnostic
+ Ctrl+C Arrêt · Ctrl+Q Sortie · Tab Défiler · / Aide

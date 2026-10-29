@@ -1,0 +1,24 @@
+  [ AURORA ]  /  BLOC                                       
+  Cible 127.0.0.1:36071 . flux recu . Diag 1 ms             
+  Session 48316243 . Mission mis_pty                        
+ 1 [Con]  2 Mod  3 Age  4 Bil  5 Jou  6 Fic                 
+                                                            
+                                                          ^ 
+VOUS                                                        
+                                                            
+Garde cette mission ouverte                                 
+                                                            
+Execution sur le serveur . 127.0.0.1:36071                  
+                                                            
+AURORA                                                      
+                                                            
+ARRET CONFIRME                                              
+                                                            
+Arret demande au serveur.                                 v 
+ Activite observee . Mission arretee                        
+ 00:00  Mission . stopped                                   
+ Demande . Entree envoyer . Alt+Entree ligne                
+|                                                           
+|                                                           
+ F2 Theme  F3 Modele  F4 Vue  F5 Diagnostic                 
+ Ctrl+C Arret . Ctrl+Q Sortie . Tab Defiler . / Aide        

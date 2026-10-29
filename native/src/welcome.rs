@@ -64,12 +64,19 @@ pub fn geometry(area: Rect, mode: &str) -> Composition {
     p.ornament.height = 3;
     p.ornament.y = a.y + a.height - 3;
     match mode {
-        "center" | "gallery" => {
+        "center" => {
             p.art = rect((w - 16) / 2, 0, 16, 8);
             p.eyebrow = rect((w - w.min(42)) / 2, 9, w.min(42), 1);
             p.body = rect((w - w.min(42)) / 2, 10, w.min(42), a.height - 10);
             p.brand = rect(2, 3, (w - 20) / 2, 3);
             p.ornament = rect((w + 20) / 2, 3, (w - 24) / 2, 4);
+        }
+        "gallery" => {
+            p.art = rect(w - 26, 1, 24, 12);
+            p.brand = rect(2, 2, w - 30, 3);
+            p.body = rect(2, 7, w - 30, a.height - 7);
+            p.eyebrow = rect(1, 0, w - 2, 1);
+            p.ornament = rect(w - 26, a.height - 4, 24, 4);
         }
         "horizon" => {
             p.brand = rect(2, 2, (w / 2).max(24), 3);

@@ -1,0 +1,24 @@
+  ? A U R O R A  /  Minuit FM
+  Cible pc-maitre.example . flux recu . Diag 24 ms
+  Session demo-42 . Mission mis_demo
+ 1 [Con]  2 Mod  3 Age  4 Bil  5 Jou  6 Fic
+
+Aurora                                                   ^
+
+Le plan est pret. Je commence par le fichier d'entree.
+
+
+ def ready():
+     return True
+
+
+SORTIE RECUE . resultat non encore confirme
+
+Lecture de la configuration en cours...                  v
+ Activite observee . Mission acceptee . read_file
+ 00:00  Outil en cours . read_file
+ Demande . Entree envoyer . Alt+Entree ligne
+| Explique le resultat
+|
+ F2 Theme  F3 Modele  F4 Vue  F5 Diagnostic
+ Ctrl+C Arret . Ctrl+Q Sortie . Tab Defiler . / Aide

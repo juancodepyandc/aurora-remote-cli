@@ -80,3 +80,9 @@ Les images Kitty/iTerm2/Sixel sont proposées dans les aperçus, les cellules co
 ## Finition des compositions — décision du 29 octobre
 
 Le petit sprite placé à gauche dans tous les thèmes n'apporte pas une identité suffisante. Huit compositions déclaratives sont ajoutées : atelier latéral pour Marée, panorama pour Horizon, scène centrée pour Bathysphère, console P·31, page éditoriale, affiche BLOC, disposition inversée pour Isobare, galerie en perspective pour Minuit FM. Le dessin, le mot-symbole et l'ornement disposent de zones séparées du contenu utile. À faible hauteur, la typographie décorative se retire avant les actions. Aucun texte utile ne s'anime ; aucun minuteur n'est ajouté au repos. Cette décision sera jugée sur les captures des vrais renderers, pas sur une maquette.
+
+### Résultat inspecté
+
+Le lot de composition remplace le gabarit commun de l'accueil dans les deux renderers. La loutre a été redessinée en pixels déclaratifs, les scènes sont dimensionnées en cellules, le mot-symbole se simplifie au lieu d'être coupé. Les captures ont conduit à corriger le cadre P·31, le manque de hauteur des scènes centrées, le décor Isobare tronqué et la barre de défilement sans contenu. La galerie Minuit possède sa propre géométrie ; un test compare les huit dispositions indépendamment des palettes et des textes.
+
+Preuves et critique : [validation/composition-2026-10-29](validation/composition-2026-10-29/README.md). 240 snapshots, 1377 tests Python, 20 Rust. Aucun ajout de dépendance. La géométrie pure existe dans les deux langages pour permettre le resize immédiat sans échange réseau ; cette duplication limitée est une dette de synchronisation, couverte par les matrices compactes/pleines et les captures. Le fallback Python reste statique ; ne pas présenter les capacités du renderer natif comme celles de tous les renderers.

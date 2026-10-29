@@ -81,3 +81,7 @@ PR #5 fusionnée en `a89c91c` après les neuf jobs réussis du run 40790789266 a
 Lot tokens : 67 tests design system/thèmes réussis ; aucun ajout de dépendance.
 
 Lot composition : les deux renderers consomment les variantes JSON ; la loutre possède une nouvelle silhouette avec museau rond, pattes et queue. Le panneau de mission vide disparaît aussi de l'accueil Python. Les effets natifs restent bornés et limités au dessin. Première validation : 1361 tests Python réussis, 18 ignorés, 5 sous-tests ; 20 tests Rust, lint/clippy/build réussis. Inspection des huit accueils et correction des limites de hauteur, du mot-symbole étroit et des cadres. Validation finale et CI à suivre.
+
+## Lot de preuves finales — compositions
+
+1377 tests Python réussis, 18 ignorés, 5 sous-tests ; 20 tests Rust. Les 16 nouveaux parcours de resize Python couvrent les huit thèmes en couleur et ASCII/NO_COLOR. Build, lint et clippy verts. 240 snapshots texte, 96 accueils dont les quatre actions sont visibles, 72 PNG et deux planches de revue sont enregistrés dans `docs/validation/composition-2026-10-29/`. PTY : quatre profondeurs natives et Python NO_COLOR ; scénarios étendus pour truecolor/Python. PR #6 ouverte ; la CI du dernier commit publié reste exigée avant fusion. Aucun changement des copies PC, aucune implémentation du plan moteur.
