@@ -90,6 +90,17 @@
       "#e2bea2",
       "#2c2423",
       "#89dece"
+    ],
+    "composition": "split",
+    "headline": "À votre rythme.",
+    "eyebrow": "MARÉE / ATELIER DISTANT",
+    "wordmark": [
+      "▄▀█ █ █ █▀█ █▀█ █▀█ ▄▀█",
+      "█▀█ █▄█ █▀▄ █▄█ █▀▄ █▀█"
+    ],
+    "ornament": [
+      "   ⣀⣀⣀⡠⠤⠤⠤⠤⠔⠊⠁    ⣀⣀⣀",
+      "⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤"
     ]
   },
   "banner": {

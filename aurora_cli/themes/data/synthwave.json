@@ -89,6 +89,18 @@
       "#aab6ff",
       "#ffd49a",
       "#f2f5f7"
+    ],
+    "composition": "gallery",
+    "headline": "La nuit vous appartient.",
+    "eyebrow": "MINUIT FM / ESPACE DISTANT",
+    "wordmark": [
+      "▄▀█ █ █ █▀█ █▀█ █▀█ ▄▀█",
+      "█▀█ █▄█ █▀▄ █▄█ █▀▄ █▀█"
+    ],
+    "ornament": [
+      "╲   ╲      │      ╱   ╱",
+      " ╲   ╲     │     ╱   ╱",
+      "──╲───╲────┼────╱───╱──"
     ]
   },
   "banner": {

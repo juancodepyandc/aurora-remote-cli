@@ -89,6 +89,16 @@
       "#ffffff",
       "#ffe66b",
       "#f2f5f7"
+    ],
+    "composition": "poster",
+    "headline": "FAITES PLACE.",
+    "eyebrow": "BLOC / HAUT CONTRASTE",
+    "wordmark": [
+      "▄▀█ █ █ █▀█ █▀█ █▀█ ▄▀█",
+      "█▀█ █▄█ █▀▄ █▄█ █▀▄ █▀█"
+    ],
+    "ornament": [
+      "██████████████████████████████"
     ]
   },
   "banner": {
