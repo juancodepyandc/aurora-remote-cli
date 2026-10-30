@@ -41,8 +41,12 @@ def test_posix_replaces_launcher_without_retaining_an_extra_python(monkeypatch):
     assert execute.call_args.args[1]==['/fixture/aurora-native','--backend',sys.executable]
 
 
-def test_explicit_binary_is_never_silently_ignored(monkeypatch,tmp_path):
+def test_stale_binary_hint_does_not_disable_auto_fallback(monkeypatch,tmp_path):
     monkeypatch.setenv('JOBIA_NATIVE_BIN',str(tmp_path/'absent'))
-    assert renderer.native_binary() is None
+    monkeypatch.setattr(renderer,'native_binary',lambda:None)
+    warning=Mock()
+    monkeypatch.setattr(renderer.display,'warning',warning)
+    assert renderer.launch_native('auto') is False
+    assert warning.called
     with pytest.raises(click.ClickException):
-        renderer.launch_native('auto')
+        renderer.launch_native('native')

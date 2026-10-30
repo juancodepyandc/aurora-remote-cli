@@ -402,3 +402,73 @@ def test_slash_command_completer_and_module_views_and_agi_cockpit():
             assert 'sans événements ou fichiers vérifiés' in app.transcript
     asyncio.run(scenario())
 
+
+
+def test_real_server_snapshot_keeps_counter_separate_from_plan():
+    state=ui.MissionView()
+    state.consume({'type':'mission_snapshot','ok':True,'id':'mis_3d','status':'running',
+                   'steps':3,'plan':['Analyser la demande','Générer le modèle'],
+                   'criteria':['Fichier 3D livré'],'verified':[],
+                   'evidence':[{'id':'ev_mesh','tool':'generate_3d','ok':True}]})
+    assert state.plan==['Analyser la demande','Générer le modèle']
+    assert state.server_steps==3
+    state.consume({'type':'mission_snapshot','steps':4,'plan':None,'criteria':None,'evidence':None})
+    assert len(state.plan)==2 and len(state.evidence)==1
+    state.consume({'type':'mission_complete','status':'completed','verification':None})
+    assert state.status=='completed'
+
+
+@pytest.mark.parametrize('bad',[None,2,'3',{},True])
+def test_collection_shapes_cannot_break_the_event_loop(bad):
+    state=ui.MissionView(plan=['Plan conservé'],criteria=['Critère conservé'])
+    state.consume({'type':'plan_revision','steps':bad})
+    state.consume({'type':'mission_snapshot','steps':bad,'plan':bad,'criteria':bad,'evidence':bad,'verified':bad})
+    assert state.plan==['Plan conservé']
+    assert state.criteria==['Critère conservé']
+
+
+def test_restored_history_can_show_home_without_erasing_or_replaying_it():
+    async def scenario():
+        history=[{'role':'user','content':'Créer un modèle 3D'},{'role':'assistant','content':'Historique conservé'}]
+        with create_pipe_input() as pipe:
+            app=ui.WorkspaceApp(history=history,input=pipe,output=DummyOutput())
+            assert app.is_welcome()
+            await app.submit('/view conversation')
+            assert not app.is_welcome() and 'Historique conservé' in app.body_source()
+            await app.submit('/home')
+            assert app.is_welcome() and len(history)==2
+            app.note('Connexion indisponible : diagnostic à lire')
+            assert not app.is_welcome()
+            assert 'Connexion indisponible' in app.body_source()
+            assert len(history)==2
+    asyncio.run(scenario())
+
+
+def test_server_snapshot_callback_and_stream_do_not_raise_in_event_loop():
+    class RealStatus(FakeBridge):
+        def mission_status(self,mid):
+            return {'ok':True,'id':mid,'status':'running','steps':2,
+                    'plan':['Analyser la demande','Générer le modèle'],'criteria':[],
+                    'verified':[],'evidence':[]}
+    config.set('mode','remote')
+    async def scenario():
+        errors=[];observed=[]
+        loop=asyncio.get_running_loop()
+        previous=loop.get_exception_handler()
+        loop.set_exception_handler(lambda loop,context:errors.append(context))
+        try:
+            with create_pipe_input() as pipe:
+                app=ui.WorkspaceApp(bridge_factory=RealStatus,history=[],input=pipe,output=DummyOutput())
+                original=app.event
+                def event(message):
+                    original(message)
+                    if message['type']=='mission_snapshot':observed.append((app.state.server_steps,list(app.state.plan)))
+                app.event=event
+                await app.submit('/3d Une demande de test sans moteur réel')
+                await asyncio.sleep(.02)
+                assert observed==[(2,['Analyser la demande','Générer le modèle'])]
+                assert not errors
+                assert app.state.status=='completed'
+        finally:
+            loop.set_exception_handler(previous)
+    asyncio.run(scenario())

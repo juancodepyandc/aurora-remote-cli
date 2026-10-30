@@ -4,6 +4,7 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+  workflow_call:
 permissions:
   contents: read
 jobs:
@@ -33,7 +34,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        os: [ubuntu-22.04, windows-latest, macos-latest, macos-15-intel]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     steps:
@@ -57,3 +58,9 @@ jobs:
           python scripts/validate_terminal.py --depth ansi
           python scripts/validate_terminal.py --depth none
           python scripts/validate_terminal.py --renderer python --depth none --extended
+      - run: python scripts/package_native.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-${{ matrix.os }}
+          path: native/dist/*
+          if-no-files-found: error

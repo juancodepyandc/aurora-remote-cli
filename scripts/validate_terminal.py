@@ -81,7 +81,9 @@ def scenario(renderer, depth, output, *, extended=False):
                     self.connection.close()
                 return
             if self.path.endswith('/status'):
-                return self.reply({'ok':True,'id':'mis_pty','status':'running','plan':[]})
+                return self.reply({'ok':True,'id':'mis_pty','status':'running','steps':2,
+                                   'plan':['Analyser la demande','Générer le modèle'],
+                                   'criteria':['Fichier livré'],'verified':[],'evidence':[]})
             self.reply({'ok':True,'ready':True,'models':[],'missions':[],'checks':[]})
     server = ThreadingHTTPServer(('127.0.0.1',0),Handler)
     threading.Thread(target=server.serve_forever,daemon=True).start()
@@ -215,6 +217,9 @@ if __name__=='__main__':
     parser.add_argument('--renderer',default='native',choices=['native','python'])
     parser.add_argument('--depth',default='truecolor',choices=['truecolor','color256','ansi','none'])
     parser.add_argument('--output',type=Path,default=ROOT/'docs/validation/terminal')
+    parser.add_argument('--source',type=Path,default=ROOT,
+                        help='Import root; use an empty directory to exercise the installed wheel and managed binary.')
     parser.add_argument('--extended',action='store_true',help='Also verify theme command and Ctrl+C inside a picker during a mission.')
     args=parser.parse_args()
+    ROOT=args.source.resolve()
     print(json.dumps(scenario(args.renderer,args.depth,args.output,extended=args.extended),ensure_ascii=False))

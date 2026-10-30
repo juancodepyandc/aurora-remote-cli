@@ -1,0 +1,24 @@
+ ■ Aurora                             Connexion : flux reçu 
+ Cible 127.0.0.1:46139                           Diag. 2 ms 
+ Session eb5decd9                           Mission mis_pty 
+ stopped                                             brutal 
+  [1 Conversation]   F4 : changer de vue                    
+ ┏ conversation ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓ 
+ ┃                                                        ┃ 
+ ┃Garde cette mission ouverte                             ┃ 
+ ┃                                                        ┃ 
+ ┃Exécution sur le serveur · 127.0.0.1:46139              ┃ 
+ ┃                                                        ┃ 
+ ┃                                                        ┃ 
+ ┃AURORA                                                  ┃ 
+ ┃                                                        ┃ 
+ ┃ARRET CONFIRME                                          ┃ 
+ ┃                                                        ┃ 
+ ┃Arrêt demandé au serveur.                               ┃ 
+ ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛ 
+ stopped · stopped                                          
+  00:00  Mission · stopped                                  
+ ┏ Votre demande · Entrée envoyer · Alt+Entrée ligne ━━━━━┓ 
+ ┃                                                        ┃ 
+ ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛ 
+ F2 thème · F3 modèle · F4 vue · ^C arrêt · ^Q sortie       

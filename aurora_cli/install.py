@@ -292,6 +292,13 @@ class Installer:
                             pass
         return StepResult("package", "ok", f"installé depuis {self.project_root}")
 
+    def install_renderer(self) -> StepResult:
+        code, output = self.runner([str(self.target.python), '-m', 'aurora_cli.renderer_install'], timeout=120)
+        if code:
+            return StepResult('renderer', 'skipped', 'Interface Python disponible ; renderer natif non installé. '
+                              + output.strip()[-350:])
+        return StepResult('renderer', 'ok', 'Natif vérifié : '+output.strip()[-220:])
+
     def link_binary(self) -> StepResult:
         """Expose `jobia` where the shell will find it, per platform convention."""
         source = self.target.jobia_bin
@@ -392,6 +399,7 @@ class Installer:
         "version": "check_version",
         "venv": "create_venv",
         "package": "install_package",
+        "renderer": "install_renderer",
         "link": "link_binary",
         "path": "configure_path",
         "verify": "verify",

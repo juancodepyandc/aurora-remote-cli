@@ -1,0 +1,1026 @@
+[
+  {
+    "path": "abyss-120-streaming.txt",
+    "sha256": "50c8c94ed6510cdaf1fd459fd3b53a7104bc55644fb72f65ce5ad407f2f90217"
+  },
+  {
+    "path": "abyss-120-welcome-history.txt",
+    "sha256": "4acc06ca50acd1151bad530b74adac07b01c313de63dc00919df1847806966b0"
+  },
+  {
+    "path": "abyss-120-welcome-wide.txt",
+    "sha256": "db82cc33cbee31afd9f13115b9ce66bb1a99cabc7f58fffb2fa4f8183eaf3239"
+  },
+  {
+    "path": "abyss-200-streaming.txt",
+    "sha256": "f3f481d7a7c75c7f7863d4dae38a2ed7a57b7db13e81dfcd900e742b0147a251"
+  },
+  {
+    "path": "abyss-200-welcome-wide.txt",
+    "sha256": "731358cb2c1e740f03d7545792a539bf2ac3934e121b7a8d213928fc479cc9b9"
+  },
+  {
+    "path": "abyss-60-streaming-ascii-no-color.txt",
+    "sha256": "f24ddb078debb1c6a71fa9b40c2c30aa7cf52efc5474b59a2f92d8abd240bbe6"
+  },
+  {
+    "path": "abyss-60-streaming.txt",
+    "sha256": "1ac36eb27f4832c4c1d877369e8371c74ed4ab783e877ae8f4627643a0a3230b"
+  },
+  {
+    "path": "abyss-60-welcome-ascii-no-color.txt",
+    "sha256": "da6d8a6c5a6aef4a569c7d24a537ce009e1dddee88128ca8b9d3aa47df1451ae"
+  },
+  {
+    "path": "abyss-60-welcome-wide.txt",
+    "sha256": "a6e995f7677a117c47ec03b2e501c83e0b19e6a64ce3d2959f2c62eba82b18b2"
+  },
+  {
+    "path": "abyss-60-welcome.txt",
+    "sha256": "7fa091e794f81d51899c35c09e587f37a1447d78c2c98fe57605072d44a940ba"
+  },
+  {
+    "path": "abyss-80-complete.txt",
+    "sha256": "1311484c9ff55f544b2536a97195720e659b56a2387ce43bcc5d5820475c4d61"
+  },
+  {
+    "path": "abyss-80-error.txt",
+    "sha256": "85815ea8decab625ecd33bcc96d1c4750bb5b8a2c2a09a48becacbd77fd28f79"
+  },
+  {
+    "path": "abyss-80-offline.txt",
+    "sha256": "47655261c8bcf0fcebfc282a76075ad3eb97b8af29d9d588d036f612100eaf1e"
+  },
+  {
+    "path": "abyss-80-permission.txt",
+    "sha256": "1f597afc5f8093e3e00946eb333f2b3ef760001ded76e8fda7eae7ece7a6a7f3"
+  },
+  {
+    "path": "abyss-80-streaming.txt",
+    "sha256": "9aff8e627787f9c788f1dbd9d4c5f92a9cd0ebb1b71cd19692f0a72ec6fbbf3d"
+  },
+  {
+    "path": "abyss-80-welcome.txt",
+    "sha256": "1c0531e489f24ed0c7becb35a794109d9076600eb991388f0419d802ce39a885"
+  },
+  {
+    "path": "brutal-120-streaming.txt",
+    "sha256": "cffd34921bc89fe662fc63764d215d69a5efdaa0cf64055309fd53e69acd8566"
+  },
+  {
+    "path": "brutal-120-welcome-history.txt",
+    "sha256": "bbf51803a4b2f958beb2f66c9e1c525673988c6fc78cc2077a23a10912653d75"
+  },
+  {
+    "path": "brutal-120-welcome-wide.txt",
+    "sha256": "20a7a7fc01067000a97391754688f6d85f916c69fb9c9e655ed5aaf84993072f"
+  },
+  {
+    "path": "brutal-200-streaming.txt",
+    "sha256": "fea316d020eee68832af770a2032fc6ea4b9cf006012e30e01311c81915dcc97"
+  },
+  {
+    "path": "brutal-200-welcome-wide.txt",
+    "sha256": "bf7df8488a14376d06661e5e5d61c920de79f787ee5f90747dcff1c393dc2371"
+  },
+  {
+    "path": "brutal-60-streaming-ascii-no-color.txt",
+    "sha256": "f0c41185d215d4efe9c6ee3dc71fd0711a2e203c21444d3d65a4bed4c38f34af"
+  },
+  {
+    "path": "brutal-60-streaming.txt",
+    "sha256": "840972e5a5adba5f3b4faa918eab31f5a56a8653359f98d3d8c8e349419dc387"
+  },
+  {
+    "path": "brutal-60-welcome-ascii-no-color.txt",
+    "sha256": "c429f8c410e26e8d0bcc45eb8da053ddcedea4b827a6813a3744f2168a64cc91"
+  },
+  {
+    "path": "brutal-60-welcome-wide.txt",
+    "sha256": "91b2882c8d7e279429b7c9cde9f462e91e95b8308b8c6bd4d4886cb22f9c896d"
+  },
+  {
+    "path": "brutal-60-welcome.txt",
+    "sha256": "9eca5b0bbe2c876e067962117ae69c08ff367ba0dcc7a8982836f6cbd6cf9f64"
+  },
+  {
+    "path": "brutal-80-complete.txt",
+    "sha256": "edfaaa7e9ed98fa0a567903ed4f7d123b169eac91ec34ea52bb671a36c5d8f5e"
+  },
+  {
+    "path": "brutal-80-error.txt",
+    "sha256": "8a6140824811d290c253c7ec34cd923f410f54c550fbe7dace05bba46dddf8af"
+  },
+  {
+    "path": "brutal-80-offline.txt",
+    "sha256": "91add622bc69de39dbba331c7fadfb1b3dbb4fa32419227b0049109cbfb5363a"
+  },
+  {
+    "path": "brutal-80-permission.txt",
+    "sha256": "b3e7115f67ad51ef147561baa5ee2b401c9b7c4e51ee983847ed55afca954746"
+  },
+  {
+    "path": "brutal-80-streaming.txt",
+    "sha256": "88c5169b21b32acceac4d66b70584a45309aba5484298ddff49fd6d30394bd46"
+  },
+  {
+    "path": "brutal-80-welcome.txt",
+    "sha256": "e756698c1484f3953baa9aba9b07359f174ed893a5ed981be9abac162d78584d"
+  },
+  {
+    "path": "glacier-120-streaming.txt",
+    "sha256": "eeb1221745a1f4f7c60f2d6f885b66319ea22a1cb63c6307d14fcb3ee9fda1e6"
+  },
+  {
+    "path": "glacier-120-welcome-history.txt",
+    "sha256": "a115dfa6bbe4bd10e908d1cc8da9d5d22ee78fccfc6de2c192d420f96cdcc979"
+  },
+  {
+    "path": "glacier-120-welcome-wide.txt",
+    "sha256": "3aaf27fbb9141407beead224b3b2acdd8e0e6c00a8dc71e9a8aa5d4956eb8f9d"
+  },
+  {
+    "path": "glacier-200-streaming.txt",
+    "sha256": "d4a9d8e3e83f3d6a1cd36aa0be2c5c7820e3bf20678ce5875943292f3c8cc7fd"
+  },
+  {
+    "path": "glacier-200-welcome-wide.txt",
+    "sha256": "1fa33bf9acf005224a2e1a2e7ef9687714a31b62c265ce03db365854039e9fa2"
+  },
+  {
+    "path": "glacier-60-streaming-ascii-no-color.txt",
+    "sha256": "056d27fec1bc26acd177e177f22a8205a3427efa5d1e705890183d2941578544"
+  },
+  {
+    "path": "glacier-60-streaming.txt",
+    "sha256": "79b3116fa7a454a387a4c5a377e95d68cca5ab1e188d5d0fbe8ccde35242cd44"
+  },
+  {
+    "path": "glacier-60-welcome-ascii-no-color.txt",
+    "sha256": "7a617fe8aa7095f9564503b16fbefa279077289d271bded1e47e56d4da416887"
+  },
+  {
+    "path": "glacier-60-welcome-wide.txt",
+    "sha256": "32266518c6caa4cbe0be4b33c7d64a70265cc321d2305d580e0a15547c68fa27"
+  },
+  {
+    "path": "glacier-60-welcome.txt",
+    "sha256": "535c348b9abadfda6647053ccc1c7ace1ae2906d7e68644481af8711fbae86b3"
+  },
+  {
+    "path": "glacier-80-complete.txt",
+    "sha256": "8f62aac4946741728a44b302106e775deb5fa922752a8d04790fa82a8d2847fe"
+  },
+  {
+    "path": "glacier-80-error.txt",
+    "sha256": "b7d6ada6954e75734729b1e7e6fefa3c48afe36ee790cc318c3037e7082308d2"
+  },
+  {
+    "path": "glacier-80-offline.txt",
+    "sha256": "39ad6e4436f80e82b0dccdfe4e44a21873a01f17c3d9962abc7ef516f95435a9"
+  },
+  {
+    "path": "glacier-80-permission.txt",
+    "sha256": "e36c67745f4256375c492f68b4f6c6e54c669370b91256f673aea813ba56714a"
+  },
+  {
+    "path": "glacier-80-streaming.txt",
+    "sha256": "242d79706996a61820ba75ca9373ad5a803d3335f9628ba8c40eae02e6681876"
+  },
+  {
+    "path": "glacier-80-welcome.txt",
+    "sha256": "50ed0f49ecf847b0273a6c20fcf4329e32058da1f293718300dcb511dc920ed3"
+  },
+  {
+    "path": "jobia-120-streaming.txt",
+    "sha256": "5f1ca20adce76efd2b59a47431f05fcaa55010ba301e6b44ad16dcacd7a4b3ec"
+  },
+  {
+    "path": "jobia-120-welcome-history.txt",
+    "sha256": "a085589b82b7b3daf332b0ba2fc35df77adb57bec2b2f2e4590e52ab545858fb"
+  },
+  {
+    "path": "jobia-120-welcome-wide.txt",
+    "sha256": "e8d9674b1d220ac8774941308ed040fa128b918e0519fc50ac68235a58baa39a"
+  },
+  {
+    "path": "jobia-200-streaming.txt",
+    "sha256": "d3389327776a4c1fb1a910bd2313dfd5e21ebdfd93852022afa8737a52d7c538"
+  },
+  {
+    "path": "jobia-200-welcome-wide.txt",
+    "sha256": "6ccd31e151fbfcded3ab5b1499ed695205686888ff651f41bb00d391d9ae5d0a"
+  },
+  {
+    "path": "jobia-60-streaming-ascii-no-color.txt",
+    "sha256": "0a7da26c8a0cbd79ea4fb7024ed7c92daa519165f7415feddc144f0926800674"
+  },
+  {
+    "path": "jobia-60-streaming.txt",
+    "sha256": "cad03b76836c145c6d38158f93e43f02c2cf524d57fdbe8de4e74b20b89e228f"
+  },
+  {
+    "path": "jobia-60-welcome-ascii-no-color.txt",
+    "sha256": "17cfc2fa2f728e2a5d2a56a58c2c4065f9fd3d56ee6ad6310e90d54822813f44"
+  },
+  {
+    "path": "jobia-60-welcome-wide.txt",
+    "sha256": "77d544d64f6d6917a9837b2753da39405275d31ba66662f95d481a97c1058bf9"
+  },
+  {
+    "path": "jobia-60-welcome.txt",
+    "sha256": "48698b1703fe77ec736ecd36b80f168b4b98cfb151b7a05e5a296ca84bdcfc3d"
+  },
+  {
+    "path": "jobia-80-complete.txt",
+    "sha256": "5f41b302a03f98f86a8e4542b006cff43e38bbb5d64d8cb3665b86b8711f6417"
+  },
+  {
+    "path": "jobia-80-error.txt",
+    "sha256": "0f089be39a6d0568226d64772a14ee83077b333d46466edc31c7cdf00ec7f31d"
+  },
+  {
+    "path": "jobia-80-offline.txt",
+    "sha256": "78dd498b83ef33f09b817b1467e08def04f3459215f8dacda865f37a2e3ec078"
+  },
+  {
+    "path": "jobia-80-permission.txt",
+    "sha256": "a867de106168777556f38e9a61a73b0303fe69346a7646725a4b2e9b370ee192"
+  },
+  {
+    "path": "jobia-80-streaming.txt",
+    "sha256": "d7c5ac0741ac50fe346086f35684835a1675f2f363474a5a16d66a8edba0114c"
+  },
+  {
+    "path": "jobia-80-welcome.txt",
+    "sha256": "e4b0bf151743a59a14fe4464c2d71fa811b78053857eb84e60a1add5e2a8acd4"
+  },
+  {
+    "path": "native/abyss-120-streaming.txt",
+    "sha256": "84c50b8241aa18c598e56c849325bbe7759a4a09c77abd35ed09bb31a6a41e2c"
+  },
+  {
+    "path": "native/abyss-120-welcome-history.txt",
+    "sha256": "97c9e3bc03f6f5a75a82d9d845e75d695f49aea5631758a0318e55bf5dc55082"
+  },
+  {
+    "path": "native/abyss-120-welcome-wide.txt",
+    "sha256": "3f25fc618aa579b0fb986521880d05fa060ef310496c9a7b1517698af3e6bab4"
+  },
+  {
+    "path": "native/abyss-200-streaming.txt",
+    "sha256": "c8d95974159e8407b8a73ad9885262ef72ec78f5e20c31dc1b7b72391ae724ef"
+  },
+  {
+    "path": "native/abyss-200-welcome-wide.txt",
+    "sha256": "e5863951de59930ca04a3c30dcc032fbd8954878a796f01ee778e4317797d051"
+  },
+  {
+    "path": "native/abyss-60-streaming-ascii-no-color.txt",
+    "sha256": "00cbb78068fb946f1afa3c1a473ae198fe98d4fff6ad61fd13d1e274a429b14e"
+  },
+  {
+    "path": "native/abyss-60-streaming.txt",
+    "sha256": "a81e1e1d40d4b3bad856ddecf2fe4687cf9f4ce735cc396a225420d263769711"
+  },
+  {
+    "path": "native/abyss-60-welcome-ascii-no-color.txt",
+    "sha256": "919cf354c5d45633b12186350342dd4bc82545be7439c62cae2f77e3b9261fde"
+  },
+  {
+    "path": "native/abyss-60-welcome-wide.txt",
+    "sha256": "cfe598453b7c253ff8a624cbe7452fed6b58ac9d4226155473b777198ef2a831"
+  },
+  {
+    "path": "native/abyss-60-welcome.txt",
+    "sha256": "390b593a8a2d8e98adfeb178742ba3f2b93dd9ea98c89a3384670bde79ce398c"
+  },
+  {
+    "path": "native/abyss-80-complete.txt",
+    "sha256": "6d119af654fab2bde90cb76352c2d71d6a7b3a98eb75163b2db25030b80d87cc"
+  },
+  {
+    "path": "native/abyss-80-error.txt",
+    "sha256": "bc6804819eeb132db493ab4aba376469e3b63307b783b0ff3c0177a14a0533fc"
+  },
+  {
+    "path": "native/abyss-80-offline.txt",
+    "sha256": "c3ce25a8cbb2dd6f3ebeb721b28c9c2af1326268c71f90b85172d886dd7b221f"
+  },
+  {
+    "path": "native/abyss-80-permission.txt",
+    "sha256": "7890fe9cb0393c6ef76427aa9cef8ae3b6e3f33477b590846697933ce2a1093d"
+  },
+  {
+    "path": "native/abyss-80-streaming.txt",
+    "sha256": "95970bc89df20fcdd1215aca54eb88c36a6858a3b8b6985bba941d8f342fc7c7"
+  },
+  {
+    "path": "native/abyss-80-welcome.txt",
+    "sha256": "8f65163ce59716bc798bf4f283bc1d2d5652bbba3a17a5dcbecbc8e90ca3e338"
+  },
+  {
+    "path": "native/brutal-120-streaming.txt",
+    "sha256": "eeef10f9f613ffe83751284f5eae50e4e4753472be06630838482e73d58a22ff"
+  },
+  {
+    "path": "native/brutal-120-welcome-history.txt",
+    "sha256": "999cd78ebbb5e072d562bb0dd2939d80e4a0b9b5d0747774222663ddd4f4bfde"
+  },
+  {
+    "path": "native/brutal-120-welcome-wide.txt",
+    "sha256": "562c95d192eb9e82c8dccb3ed14967e02dcff11e21354c47d5f5fb1032881298"
+  },
+  {
+    "path": "native/brutal-200-streaming.txt",
+    "sha256": "00e7ef456f15e3919343bf6c0605d1669770ede392c34359fe836c86367a9ffd"
+  },
+  {
+    "path": "native/brutal-200-welcome-wide.txt",
+    "sha256": "e4099a04840cdc87df2cb67b42b04dfb3804d6d5f032280972204cb04c7ee042"
+  },
+  {
+    "path": "native/brutal-60-streaming-ascii-no-color.txt",
+    "sha256": "27685b484f2376045d862588879080c02ab1ff3c516981ff677719c5ef2ec6e7"
+  },
+  {
+    "path": "native/brutal-60-streaming.txt",
+    "sha256": "a39bdc0f626f7eec8f060faa17036b0c6efa30e852007797173234abe1bf63c2"
+  },
+  {
+    "path": "native/brutal-60-welcome-ascii-no-color.txt",
+    "sha256": "63bb269e913774cfa01daafdadfea553ad5ad864ee9e6803d6f2b7e0f067a8b1"
+  },
+  {
+    "path": "native/brutal-60-welcome-wide.txt",
+    "sha256": "c184a5f6fd9728610ac85a19c116d9cabbce9cad0bd23403e8698befcba4ac6d"
+  },
+  {
+    "path": "native/brutal-60-welcome.txt",
+    "sha256": "81857cd3d7291d8de70fb529a68085fcccd5879f7e25f3b488c02e1843632011"
+  },
+  {
+    "path": "native/brutal-80-complete.txt",
+    "sha256": "880fd425dcc40841bc689fd0199c5b3fd9524a89aeb4ef6c2d2b2a9811fa0823"
+  },
+  {
+    "path": "native/brutal-80-error.txt",
+    "sha256": "29e727eb964246fa761eef28b2eb7534dd038a1833be19bb7d476b7e0269ad47"
+  },
+  {
+    "path": "native/brutal-80-offline.txt",
+    "sha256": "53b278383b2ca2e6b7f84df50e0976077faf5be45b039e10f9c7914e4cf53035"
+  },
+  {
+    "path": "native/brutal-80-permission.txt",
+    "sha256": "9bdd51ceffa136d0f22c0c3d7652ce53a851e65485de0eb53249e02765e9a65d"
+  },
+  {
+    "path": "native/brutal-80-streaming.txt",
+    "sha256": "e473400600cc86fd6554cd5435304037d14a7a3e592376a93d306c3e0cfc5501"
+  },
+  {
+    "path": "native/brutal-80-welcome.txt",
+    "sha256": "d22411628ef6ff36a37bbe3c7d8552fcc7e80cb651deb0b58be514777d2d0656"
+  },
+  {
+    "path": "native/glacier-120-streaming.txt",
+    "sha256": "96c7924ddc36eaa4815fc5b9d7cb9f47af265e2af027ee8e91931d4472dbd8e5"
+  },
+  {
+    "path": "native/glacier-120-welcome-history.txt",
+    "sha256": "4984014c6a9fe42b2026bfcc1fe5082df00732cc492d33a3c1f89752c8f1f02e"
+  },
+  {
+    "path": "native/glacier-120-welcome-wide.txt",
+    "sha256": "b3a5a3fe127e7bce36256c051094812218d04a033c183de826e91272560cb726"
+  },
+  {
+    "path": "native/glacier-200-streaming.txt",
+    "sha256": "a15b4b540ddc88090f48ca5c0be54552f4149065fe43f319029b528c00a4eb61"
+  },
+  {
+    "path": "native/glacier-200-welcome-wide.txt",
+    "sha256": "ab78d5bf13b883bc1deb015c483a0077b164c17dab27b13312a591d47aa42a29"
+  },
+  {
+    "path": "native/glacier-60-streaming-ascii-no-color.txt",
+    "sha256": "048195d65baaa69030675b1ccde546733463b6eee03bd9e5fc1bec7d38d811e3"
+  },
+  {
+    "path": "native/glacier-60-streaming.txt",
+    "sha256": "506bc7e9eec1a08ebfa6656c76672440749b1a93d85943c821a8d756fd27aae9"
+  },
+  {
+    "path": "native/glacier-60-welcome-ascii-no-color.txt",
+    "sha256": "da44163886a5e1d74e477c90114ab43d1e152f1fa2935fbcbcbd18a723349f92"
+  },
+  {
+    "path": "native/glacier-60-welcome-wide.txt",
+    "sha256": "33ed98a5c0712b5b96c440113ad0b635987812043efb5f8db4cbeacc6a346b4a"
+  },
+  {
+    "path": "native/glacier-60-welcome.txt",
+    "sha256": "6376c1f33d79acf164aa659f96581d3420845e3008ddcb21a55ad180ddede9f4"
+  },
+  {
+    "path": "native/glacier-80-complete.txt",
+    "sha256": "22c3f80b25ce233837419c9baf27b55a7545cd2f7923e1cb1588015c7792b7df"
+  },
+  {
+    "path": "native/glacier-80-error.txt",
+    "sha256": "fbe035aca91ca0724f0e8afbe801379bee7f1b217c14bdabd5d2e3f1a4c05ecf"
+  },
+  {
+    "path": "native/glacier-80-offline.txt",
+    "sha256": "40fc22d04a9f752245d6f4a3826174b69b9dcef1a6bca1c6657023c457d71ca2"
+  },
+  {
+    "path": "native/glacier-80-permission.txt",
+    "sha256": "e09bb1121808e73e957fc77eb1c5fdd7c25518f2e4ffe59bd272cb8d610e2515"
+  },
+  {
+    "path": "native/glacier-80-streaming.txt",
+    "sha256": "9d07359d08b3a62ee5a8fc0271dc2940d5b2033b43177820e2f72d7486b8050b"
+  },
+  {
+    "path": "native/glacier-80-welcome.txt",
+    "sha256": "c766d13f408dd261095815b6c88408187e218f67548de0aeab4f9ed6a1e2c22e"
+  },
+  {
+    "path": "native/jobia-120-streaming.txt",
+    "sha256": "042cad79e14c595c2ca8799171400982768dcae53b732823471fff54b17b212b"
+  },
+  {
+    "path": "native/jobia-120-welcome-history.txt",
+    "sha256": "8359d3caaae0b2bf38a1804e51b2301ed8158e7b643220205ae8917d690d164c"
+  },
+  {
+    "path": "native/jobia-120-welcome-wide.txt",
+    "sha256": "ed902d7c8a8f8c0cff3e68157212e1384b748e5274fdffb20a6d6bcd6865909f"
+  },
+  {
+    "path": "native/jobia-200-streaming.txt",
+    "sha256": "419765a7b3fdbf0347cd400d516b8b778f841f1fd3bebbfb85d71b718909b7e8"
+  },
+  {
+    "path": "native/jobia-200-welcome-wide.txt",
+    "sha256": "884ed895aaa81b28ddf88a847afd431d1f9cc60d1d71de882542b7df6aac6e15"
+  },
+  {
+    "path": "native/jobia-60-streaming-ascii-no-color.txt",
+    "sha256": "b3cd9b93009f3e896bf879c8e068a6062874d7acfada3039134ed4be46466fe2"
+  },
+  {
+    "path": "native/jobia-60-streaming.txt",
+    "sha256": "9a094f473a4e3230f5db96142778eab1e7951fb388b4df7cc58f59f3614cd2e9"
+  },
+  {
+    "path": "native/jobia-60-welcome-ascii-no-color.txt",
+    "sha256": "1d7410308ce6f9a8583de5a69375c8e428daee78e8ecdca0dea03020330b9231"
+  },
+  {
+    "path": "native/jobia-60-welcome-wide.txt",
+    "sha256": "28a2d296f0cc6dc67e1cc563d7de194100aa245952e21743f0e0001d4d50eae3"
+  },
+  {
+    "path": "native/jobia-60-welcome.txt",
+    "sha256": "cb0b449009c271c2ee5bc7ce3b40c819a52e75efb7a32c8d9211a27dddae1204"
+  },
+  {
+    "path": "native/jobia-80-complete.txt",
+    "sha256": "5eb6a7410020ff188dfd39f830b4f80c1287f788e0b5fb7ca93f52ea99438880"
+  },
+  {
+    "path": "native/jobia-80-error.txt",
+    "sha256": "5d04ca967c710523463b0562127d8a111979cbaddaae174f4ef69500172ada1b"
+  },
+  {
+    "path": "native/jobia-80-offline.txt",
+    "sha256": "7f5f75adb2e0bad05e704ac1feef364d741352ae89a6c977fb4e803fc48903fe"
+  },
+  {
+    "path": "native/jobia-80-permission.txt",
+    "sha256": "ac03d57e38af342b41c4d450e89620609b6ac6a7ae3818a31d2debc2f6ac440d"
+  },
+  {
+    "path": "native/jobia-80-streaming.txt",
+    "sha256": "ebe531d9a8106a81b102b090a6a375cf56a86eaa59b1c3edc87425aef9759e24"
+  },
+  {
+    "path": "native/jobia-80-welcome.txt",
+    "sha256": "c7862ffd68b58c31e291c7f1b267edbc404eb787717ad20e2206852381349657"
+  },
+  {
+    "path": "native/otter-120-streaming.txt",
+    "sha256": "4438939485b02ecdaf85ca417d86d6fe9609b72c782debf15453564ea3d4ae83"
+  },
+  {
+    "path": "native/otter-120-welcome-history.txt",
+    "sha256": "1f4a3526a8af48c6c91f923646b3124d445263673099ce6e12ce585ec8f195e1"
+  },
+  {
+    "path": "native/otter-120-welcome-wide.txt",
+    "sha256": "4fc13ff001c32410f9adbbccaa8a0467bc9f33dc93b8cbd899668feab512efeb"
+  },
+  {
+    "path": "native/otter-200-streaming.txt",
+    "sha256": "2d56ab96388ac5f4c3ff9f12b94d12fba7176364cb2c00463c47823498ed3b8c"
+  },
+  {
+    "path": "native/otter-200-welcome-wide.txt",
+    "sha256": "503c1a3115a3d412137b0081cd57d5141e4539156a4f24311f2207b65bf86a31"
+  },
+  {
+    "path": "native/otter-60-streaming-ascii-no-color.txt",
+    "sha256": "3fcb976a699ab37fcaf3c073e035842d6ac515f52d14d2383147bd67224e8ab7"
+  },
+  {
+    "path": "native/otter-60-streaming.txt",
+    "sha256": "3930fdc53fe02cd01fb0771d46311ea09b63fb15e85974b1d8d21a5a8702c48f"
+  },
+  {
+    "path": "native/otter-60-welcome-ascii-no-color.txt",
+    "sha256": "97cdc21dbfce6377791676a7cab3e902764442a11e7dbfb2403156e34820045c"
+  },
+  {
+    "path": "native/otter-60-welcome-wide.txt",
+    "sha256": "eb9874b666e6f5f2d3fd7ce6b1aec6e4a1f5f43161677b10f96c88b71c430c19"
+  },
+  {
+    "path": "native/otter-60-welcome.txt",
+    "sha256": "dcc8f40c4f74282a3fb01c15ea2ec01443646b3c29225dbe6df9a52e86076fd3"
+  },
+  {
+    "path": "native/otter-80-complete.txt",
+    "sha256": "daba59916f21ddf91f80cd5193cf947312dfc6a2ed0a8fadbd58763aaf4e04ca"
+  },
+  {
+    "path": "native/otter-80-error.txt",
+    "sha256": "3b4f12506cb56635a0391f336cdc48ead20c818e7187d72f6b544312592c3e94"
+  },
+  {
+    "path": "native/otter-80-offline.txt",
+    "sha256": "2475a457bc08723d60a60800c647542e7fde2fc56105eea088e1de8a1093bbac"
+  },
+  {
+    "path": "native/otter-80-permission.txt",
+    "sha256": "bd737cfc4ea838138720f9eaf48a9a1f19e53b8453694010d20dd7e91e13814d"
+  },
+  {
+    "path": "native/otter-80-streaming.txt",
+    "sha256": "0c3d6e9afa5fe2a9f5bb11796e6df4e5120c08dbf1fc997be9685a914c50fb2c"
+  },
+  {
+    "path": "native/otter-80-welcome.txt",
+    "sha256": "8327444d8be9623cf94fa4ba234f046336fa0183c7fabf1e9328e0e093e61308"
+  },
+  {
+    "path": "native/phosphor-120-streaming.txt",
+    "sha256": "b38ee49929cb2d894bc4eeab8c414ba120d458494807c84a5d24d0be7d762dcb"
+  },
+  {
+    "path": "native/phosphor-120-welcome-history.txt",
+    "sha256": "5db4b930c2e42d3afc22c2393a01cfaee07d104ea836a6223d1671c075ff5249"
+  },
+  {
+    "path": "native/phosphor-120-welcome-wide.txt",
+    "sha256": "f62484e5da2b16bbb437c0a402deba3976e8205fb08afc9611f333f16eba5d85"
+  },
+  {
+    "path": "native/phosphor-200-streaming.txt",
+    "sha256": "8caf858c7fe1603f8cfc6b62af8a079fb05c79462adb307cce865e25649c0616"
+  },
+  {
+    "path": "native/phosphor-200-welcome-wide.txt",
+    "sha256": "eb91513dfd26200dd323e960e1dbd61d716cb13e6b37ebd8fb94f3690b7e0836"
+  },
+  {
+    "path": "native/phosphor-60-streaming-ascii-no-color.txt",
+    "sha256": "903cd807c2037aea8a7d5205c96a65f7002b600598f03a5a94310f13b54d1bd4"
+  },
+  {
+    "path": "native/phosphor-60-streaming.txt",
+    "sha256": "c2927c3037115e8e2d195f0e66f1c592f2ef79aef4a80af46849e42cd0251cb9"
+  },
+  {
+    "path": "native/phosphor-60-welcome-ascii-no-color.txt",
+    "sha256": "53455dc8ace340e9140ce1a3abedcf46ed69157c80a035c1d2e430a395435fc2"
+  },
+  {
+    "path": "native/phosphor-60-welcome-wide.txt",
+    "sha256": "6ba6fc78718363530a8fb48ea76d7a3f2645690b8daa59fc63f63f6d6298b0fa"
+  },
+  {
+    "path": "native/phosphor-60-welcome.txt",
+    "sha256": "2b80e00b12446c1ce9877d5ed0d8ae016a0b9f37a80c7ebd522a9cc25a9f5d1a"
+  },
+  {
+    "path": "native/phosphor-80-complete.txt",
+    "sha256": "851e13649c299636d5f15e31d59b46bd57214d9721c1cdf3c03a753acf8bb6fc"
+  },
+  {
+    "path": "native/phosphor-80-error.txt",
+    "sha256": "1a374eee34cd1d75693ed4de7beb88946ac37c1cd851c8dc1ca10c61a27ecb98"
+  },
+  {
+    "path": "native/phosphor-80-offline.txt",
+    "sha256": "bde61c7cb1686896f6a39acbb9a6b842f220c4af7ae0782b47556f0505012de6"
+  },
+  {
+    "path": "native/phosphor-80-permission.txt",
+    "sha256": "dc1114258fdb30f8090364ee693be3846723776da909250d53389e80f7675be7"
+  },
+  {
+    "path": "native/phosphor-80-streaming.txt",
+    "sha256": "d65d91dd2fb4e5cabc5a584aaa93bf44f1b759c25b65e8b42f7a2bf78a8f8051"
+  },
+  {
+    "path": "native/phosphor-80-welcome.txt",
+    "sha256": "8f6b1644fd6251227e9d05e17595a8c124e72c22d9d6af908167a1294b4f085e"
+  },
+  {
+    "path": "native/plain-120-streaming.txt",
+    "sha256": "5dd0a0ccc81abfa41e423135e4746418fb0678cdbc38e513d22bbd6d7cc155e9"
+  },
+  {
+    "path": "native/plain-120-welcome-history.txt",
+    "sha256": "178c7a72195d601d1a218d7ee3f6dfc231200c17093b453d54d7891a5aefc514"
+  },
+  {
+    "path": "native/plain-120-welcome-wide.txt",
+    "sha256": "b3096fb8eea98325059519177bcb4a48839e763dafb4b595cd01cec6770594c1"
+  },
+  {
+    "path": "native/plain-200-streaming.txt",
+    "sha256": "d29cff8755276ecbf13429ba091448e921e2272bccccb1867021b3906aba7ac1"
+  },
+  {
+    "path": "native/plain-200-welcome-wide.txt",
+    "sha256": "e6d4ea80059683ccef8c6518d9bb7b802f94066013f809059b40a435c39e439e"
+  },
+  {
+    "path": "native/plain-60-streaming-ascii-no-color.txt",
+    "sha256": "0327f1bfd7bb39ede94db0f1d36b64d18f3229d7bbaf8e11f9213ff9a3065e33"
+  },
+  {
+    "path": "native/plain-60-streaming.txt",
+    "sha256": "2c0078de16d6b77edb064d52770042483ea48e609878ea5c2f95eb5aff4a0a87"
+  },
+  {
+    "path": "native/plain-60-welcome-ascii-no-color.txt",
+    "sha256": "41f28111e4ee92dfc7a428387443e21eaca3572dc2a4727cda211a90ced5e520"
+  },
+  {
+    "path": "native/plain-60-welcome-wide.txt",
+    "sha256": "980ef16d96b89e6d69be59c8b7631d7e969fb196b231266f1db2395c0e3f053e"
+  },
+  {
+    "path": "native/plain-60-welcome.txt",
+    "sha256": "6fccb640402b3f8cc4daef3691e259cb1c49e89d7eda40c43867ee38e4d559e2"
+  },
+  {
+    "path": "native/plain-80-complete.txt",
+    "sha256": "b88446dbad9ce6deca050fcc38aeee506dba456e9fca71bf4e8c1814dbc191cb"
+  },
+  {
+    "path": "native/plain-80-error.txt",
+    "sha256": "72f4aa7d241b4852cc95118630d6cac3f3e26e0684b12c837dd2cdb3b81ef1d8"
+  },
+  {
+    "path": "native/plain-80-offline.txt",
+    "sha256": "c318d32bc5a61b2825204ae8d3702b532dc3b9b079a451c82398ec9cd90518dd"
+  },
+  {
+    "path": "native/plain-80-permission.txt",
+    "sha256": "a50547ab9dafbf2cf0559b92fdd2ff16dc763496af20116fd5cf566e5d97a3c1"
+  },
+  {
+    "path": "native/plain-80-streaming.txt",
+    "sha256": "33ec0cfc02d76e846a7bcb1cc1fe8e777a34c9035dc7c2ef0d72411021ccb0cc"
+  },
+  {
+    "path": "native/plain-80-welcome.txt",
+    "sha256": "9249fe9f0400f9afeb9a606da9a717c3e18b0aeba88b7ac1a6ce3f5977bb257f"
+  },
+  {
+    "path": "native/synthwave-120-streaming.txt",
+    "sha256": "3145b374872415fd77f70813ff740743328098f8af70d02f0597d6052f6806a9"
+  },
+  {
+    "path": "native/synthwave-120-welcome-history.txt",
+    "sha256": "f5a5f20f1cde04d451493b3d9daa6e4b6773e3837e2b699a39dbfd1b2d2bacc9"
+  },
+  {
+    "path": "native/synthwave-120-welcome-wide.txt",
+    "sha256": "a5268110c58c4dc242162799e8ea1716f395c788b948ca26d69569809559926e"
+  },
+  {
+    "path": "native/synthwave-200-streaming.txt",
+    "sha256": "a2511802407486438b62f7c51a322ea64effea062a110f790abea236317d360f"
+  },
+  {
+    "path": "native/synthwave-200-welcome-wide.txt",
+    "sha256": "d2dc45b9c494b5dfe2bde71c535ca2224d3ee7de3443ef45595e187984cb79e7"
+  },
+  {
+    "path": "native/synthwave-60-streaming-ascii-no-color.txt",
+    "sha256": "e4957b24e4bd9ebf90db47cc37fd5f1528de84e5240e8ea44ab2badf88ba11f4"
+  },
+  {
+    "path": "native/synthwave-60-streaming.txt",
+    "sha256": "e152ccc38c55db0aef32ec3d8a7648849f124dd61670d1a5543edbe3c606b801"
+  },
+  {
+    "path": "native/synthwave-60-welcome-ascii-no-color.txt",
+    "sha256": "33e880e5033ef88938dd1762f29250403e352a70a49b46add87291dab8b2e74a"
+  },
+  {
+    "path": "native/synthwave-60-welcome-wide.txt",
+    "sha256": "0e839b9d7bf8e0f7b1ba8f890614b182f8504699b4597cce9cf94f1a0a405489"
+  },
+  {
+    "path": "native/synthwave-60-welcome.txt",
+    "sha256": "85758f50625cea7c77a90899b5c96fa680838aa5cd873e7fa225a7a90869698e"
+  },
+  {
+    "path": "native/synthwave-80-complete.txt",
+    "sha256": "7044af426f63fa28e6e5549b5c3528b9c405a066962fe0d1bca69e8889a42f03"
+  },
+  {
+    "path": "native/synthwave-80-error.txt",
+    "sha256": "64325d4bc977b9d92a5f4dfb0a2965b9d5e5a710e206a8bcc028fe5328629797"
+  },
+  {
+    "path": "native/synthwave-80-offline.txt",
+    "sha256": "4ef7228235a91f4420012a0b008e5188fac0369283e91ef4c7300dd478948efa"
+  },
+  {
+    "path": "native/synthwave-80-permission.txt",
+    "sha256": "01c88d302ac2c2778f480c9b794c9c741138a6bbd78ef8029662066985bbd9e2"
+  },
+  {
+    "path": "native/synthwave-80-streaming.txt",
+    "sha256": "b9573e00ca43830ec67fe59cbd244b464fa880068d0f1fb85dc65c6a35eb9c39"
+  },
+  {
+    "path": "native/synthwave-80-welcome.txt",
+    "sha256": "475047525b4fe77802dc463bc115a7825969e6403c0e86101b1915f92d9c1d35"
+  },
+  {
+    "path": "otter-120-streaming.txt",
+    "sha256": "7ac59caf7789580309820297545b2252564c6dd6a798ed06056a1b6fa686d168"
+  },
+  {
+    "path": "otter-120-welcome-history.txt",
+    "sha256": "c51eb23c1c5d5ec5249c103702c4c1bb7655fd0cfdec19191d16846848d53a66"
+  },
+  {
+    "path": "otter-120-welcome-wide.txt",
+    "sha256": "031e265e1b346a1b8cda6915cea36d01454af5661c13ed507ec162d1179bd045"
+  },
+  {
+    "path": "otter-200-streaming.txt",
+    "sha256": "fe74fa4a97a477bd143970202f087b81cffd194d857c0c6052d5a0b8cc18dab1"
+  },
+  {
+    "path": "otter-200-welcome-wide.txt",
+    "sha256": "c67f1353ee0481056cfd931e64140c1498380e35386f7044636a4ac27598460f"
+  },
+  {
+    "path": "otter-60-streaming-ascii-no-color.txt",
+    "sha256": "669ffd4723b4bfbf1271bccd5ce13726649e8a779f3b82bc33bf17aed01cf500"
+  },
+  {
+    "path": "otter-60-streaming.txt",
+    "sha256": "c5c172b1b639ac2a0a085fbc96ff039ec89896911dbe4fc6a90aaacacc1764c3"
+  },
+  {
+    "path": "otter-60-welcome-ascii-no-color.txt",
+    "sha256": "d08a97b19d4c1876724f540604a6dda2ccc38d1b70bb2f16f6ae867a23f38137"
+  },
+  {
+    "path": "otter-60-welcome-wide.txt",
+    "sha256": "1123dcc54504aa5d34accd742daf1556f01a76d3ed783ae79df32627a69b68a8"
+  },
+  {
+    "path": "otter-60-welcome.txt",
+    "sha256": "07580a57a5dba6964a411e82cf9401e9d66e7b515c3b8f2163e449b9871b6193"
+  },
+  {
+    "path": "otter-80-complete.txt",
+    "sha256": "f4891bf4eced6ed279e1e9f74eabbd3e2bc5a939f455267f1f66e38beff406d9"
+  },
+  {
+    "path": "otter-80-error.txt",
+    "sha256": "1ce486411c47b48dad42c597bc727705b4e7d11f77b2035f8a1155b69193bf83"
+  },
+  {
+    "path": "otter-80-offline.txt",
+    "sha256": "0d26d11f67a1994652c4e202a267c1dd0165b6d1cd2cf02109780457c9f77923"
+  },
+  {
+    "path": "otter-80-permission.txt",
+    "sha256": "2ff3fc586ffe045321d8dc81a3936d937c878e6713959ba5c75f07da08049dd6"
+  },
+  {
+    "path": "otter-80-streaming.txt",
+    "sha256": "a67538bc720a944e75ceb5faf1f097d07b19075f7b9fb92cddee7f85d9e43ad9"
+  },
+  {
+    "path": "otter-80-welcome.txt",
+    "sha256": "1b686ecd804bd9f9b14d5ecb17c80ec96f524843f40aa636f3a2753c36367109"
+  },
+  {
+    "path": "phosphor-120-streaming.txt",
+    "sha256": "5474b0f0115326da300d4eb90035e91032dc86aedd949954b77cd308bae9dd33"
+  },
+  {
+    "path": "phosphor-120-welcome-history.txt",
+    "sha256": "5d37bab12ec8b1fbb2a8de248b6f602dbc2427a610d3df49d0dd67960c61783b"
+  },
+  {
+    "path": "phosphor-120-welcome-wide.txt",
+    "sha256": "dc01d99ec24716407a4c72404d3b3942d59b5632ed27ffe2b981d7110326ec7a"
+  },
+  {
+    "path": "phosphor-200-streaming.txt",
+    "sha256": "3eabf52f8b8c49093e546141c4a5e93ca12830a3b6e3c1027757b9d074afe134"
+  },
+  {
+    "path": "phosphor-200-welcome-wide.txt",
+    "sha256": "42e12f3ddb85b6080189fce5fcc7a9f27b99d63b54e30ca48d71660580771a85"
+  },
+  {
+    "path": "phosphor-60-streaming-ascii-no-color.txt",
+    "sha256": "2bc70b86eefa79f51d115be0aa1e22117901f613fadbee346120594f24dde75b"
+  },
+  {
+    "path": "phosphor-60-streaming.txt",
+    "sha256": "ae7149c2476a9f1d86501f05a1bfba5fbad6acae90560d840bc1783b4672c6cd"
+  },
+  {
+    "path": "phosphor-60-welcome-ascii-no-color.txt",
+    "sha256": "1ccd32e58fbcdb9c73986d8fa232831dbbd3509022df039d3cb20ec5562be409"
+  },
+  {
+    "path": "phosphor-60-welcome-wide.txt",
+    "sha256": "aadfd28f58e83d3a4f2e5e3acaec903e0217804108192e1250f2326f9083439f"
+  },
+  {
+    "path": "phosphor-60-welcome.txt",
+    "sha256": "95c291f1f2ed9717a20d5e1bf5e5870def072e3af900add43f21a8a919539a96"
+  },
+  {
+    "path": "phosphor-80-complete.txt",
+    "sha256": "e2058a64319b47982ca96a356504854ea2c980c852898f8d82872522758653da"
+  },
+  {
+    "path": "phosphor-80-error.txt",
+    "sha256": "fc4fb726e0546e330097a515057af191c993a638db878f0fa8d42354e238e070"
+  },
+  {
+    "path": "phosphor-80-offline.txt",
+    "sha256": "b471ee44eab7187e099747052829639972ebd73779231eca379d8b3483654529"
+  },
+  {
+    "path": "phosphor-80-permission.txt",
+    "sha256": "a942f7c9ea9412bb1ccaed36e5ff443a8e0fd2c38cac1ee1b8734e4b45065d9d"
+  },
+  {
+    "path": "phosphor-80-streaming.txt",
+    "sha256": "6265da60b28655574e7e569950b33298bc406e073eca122a0b062dbeb18635e6"
+  },
+  {
+    "path": "phosphor-80-welcome.txt",
+    "sha256": "bf6cb107c1013ffff41d0926208a4eea2bdb59719949f63d87abb975e2812087"
+  },
+  {
+    "path": "plain-120-streaming.txt",
+    "sha256": "c357fae76ee29619415c6649dc6d1c15f975a42eaa2d0db1c5d7d4496e578cc1"
+  },
+  {
+    "path": "plain-120-welcome-history.txt",
+    "sha256": "30c70128ac8b89565e3dbe92969e672ca47b0af2f0cd5ac7a73de656ffaef06c"
+  },
+  {
+    "path": "plain-120-welcome-wide.txt",
+    "sha256": "13f5ffea424fc0ba6495934479fcf471126d3f143df77fcf36bc8623030d8cb4"
+  },
+  {
+    "path": "plain-200-streaming.txt",
+    "sha256": "9d6bbd015b4019b54c772f2a374af12d7d83e0ffe0f4e85326f3ba4005bd55a0"
+  },
+  {
+    "path": "plain-200-welcome-wide.txt",
+    "sha256": "8a4e212f2f6cf7d354fcd299245545fd0c9bfcd65cb53ff1f2c9e852cc4a9a3e"
+  },
+  {
+    "path": "plain-60-streaming-ascii-no-color.txt",
+    "sha256": "cbbba801e83292ed4a2fce538fada471faf00e946ac6ebde84c4c9a084a6a8e6"
+  },
+  {
+    "path": "plain-60-streaming.txt",
+    "sha256": "0ae518508bebecb4fb9dd1a5d5280405d8e16adfe4893cb3202e44701b459658"
+  },
+  {
+    "path": "plain-60-welcome-ascii-no-color.txt",
+    "sha256": "629ca12f40b8614636722882491fd998097172fbc7716128cbf0b37311f95896"
+  },
+  {
+    "path": "plain-60-welcome-wide.txt",
+    "sha256": "12d9d22ed4ee75cc4331fdc9348e71e257359942cee1544969277d6142e95c0d"
+  },
+  {
+    "path": "plain-60-welcome.txt",
+    "sha256": "c15edb7c1750f57694fe5f82c494b1ddaecac6672faf87ee2a58221bd155cead"
+  },
+  {
+    "path": "plain-80-complete.txt",
+    "sha256": "70bff2e1beee858aad71a607e6941e7d4c7e966e22c574c526892434bfa3627c"
+  },
+  {
+    "path": "plain-80-error.txt",
+    "sha256": "e407b825664c12b1bb3c875c742952c0c3990f7cae8a128c9009652b63446ac6"
+  },
+  {
+    "path": "plain-80-offline.txt",
+    "sha256": "4fb8c3bb171d570b56f6b010f7bd6019f8cf2808197d08c76aa0c5820d3b90fe"
+  },
+  {
+    "path": "plain-80-permission.txt",
+    "sha256": "7821d6809f850055e5a61aa3a0a7208a95e8c99a185619ff031cd2c27a9f18fa"
+  },
+  {
+    "path": "plain-80-streaming.txt",
+    "sha256": "d56376f18db9c61c91a2442b7880fe28b18d0c8ab883f9e349228e9b42426e3b"
+  },
+  {
+    "path": "plain-80-welcome.txt",
+    "sha256": "ab774ab3029c73ab71a270f45833366f7f268b8c58adfadc237c07c362fe9321"
+  },
+  {
+    "path": "synthwave-120-streaming.txt",
+    "sha256": "3c5ce374e89a67ecb4876cd56367969ee18a16518ddb19871b9f52cd09d85072"
+  },
+  {
+    "path": "synthwave-120-welcome-history.txt",
+    "sha256": "b071eee61e5951100ce61a1d268086328b614d971512a5fabc3407762c6b6de9"
+  },
+  {
+    "path": "synthwave-120-welcome-wide.txt",
+    "sha256": "4ec6b45510d718676ab0cd4a041faaeac26bf52fb194a3ac0eb7b94ebbcdae65"
+  },
+  {
+    "path": "synthwave-200-streaming.txt",
+    "sha256": "1b90927f89c2588a8150ce7402b62393e17273c6a02f5c478f36f3ccef645ed4"
+  },
+  {
+    "path": "synthwave-200-welcome-wide.txt",
+    "sha256": "e0ddb7e0eca5a1a54c75e665991b01590ef9469d0d8b666fed20094f07f3db0f"
+  },
+  {
+    "path": "synthwave-60-streaming-ascii-no-color.txt",
+    "sha256": "652cfc0bda8d7474b9ef22cfc1ecb19b4151bbc4968f3cf18ae5951337b1b63d"
+  },
+  {
+    "path": "synthwave-60-streaming.txt",
+    "sha256": "066bac528747d29dafc2381792e080cb281a19bb503d9abc24d6dcecf184a881"
+  },
+  {
+    "path": "synthwave-60-welcome-ascii-no-color.txt",
+    "sha256": "3795425565d948b9b7b3fc66be77c24e1e546811c345b6f54a6beb4a3545c610"
+  },
+  {
+    "path": "synthwave-60-welcome-wide.txt",
+    "sha256": "eaaafd775b2874c0bf2d5099a012eabf82bc5437d9cb94fa4bc5fda3817ce005"
+  },
+  {
+    "path": "synthwave-60-welcome.txt",
+    "sha256": "ce2ebaed242a99ddc60837e884e2895a6160b29a83484ec2c0cd321d037e6eda"
+  },
+  {
+    "path": "synthwave-80-complete.txt",
+    "sha256": "e5edc2531edbc8e7d74b8bc42f47954ecbb987f23fc24718191c0ba99874f971"
+  },
+  {
+    "path": "synthwave-80-error.txt",
+    "sha256": "480db0e2bd0516d163d12ce277aff66965db49fe21835cab869c9a9f3d947375"
+  },
+  {
+    "path": "synthwave-80-offline.txt",
+    "sha256": "1f31262b8aab92d229d003e3b97288f4f7e8e19f1c843a91b4cfbb90264576e2"
+  },
+  {
+    "path": "synthwave-80-permission.txt",
+    "sha256": "6e2187a7d407e01278e754a59467657c80a8b99542ff003563a778e6eef8683b"
+  },
+  {
+    "path": "synthwave-80-streaming.txt",
+    "sha256": "fd7776f45bf83c8d910374cf2f4b41875699f21508a8eadec9e6a46e8f5db8b7"
+  },
+  {
+    "path": "synthwave-80-welcome.txt",
+    "sha256": "0cb57917e851843c914316e82120936f2399ba8446dc899f2be7033c153f04cb"
+  }
+]
