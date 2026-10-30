@@ -1,0 +1,32 @@
+  [ AURORA ]  /  BLOC
+  Cible pc-maitre.example · connecté · Diag 24 ms
+  Session demo-42 · Mission aucune
+ 1 [Conv]  2 Modu  3 Agen  4 Bila  5 Jour  6 Fich
+
+ BLOC / HAUT CONTRASTE
+
+  ▄▀█ █ █ █▀█ █▀█ █▀█ ▄▀█
+  █▀█ █▄█ █▀▄ █▄█ █▀▄ █▀█
+
+
+ ██████████████████████████████
+
+  FAITES PLACE.                                     ▀▀▀▀▀         ▀▀▀▀
+                                                    ▀▀▀▀▀         ▀▀▀▀
+  Décrivez le résultat attendu.                     ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+                                                    ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+  /modules   Explorer                               ▀▀▀▀▀         ▀▀▀▀
+  /missions  Reprendre                              ▀▀▀▀▀         ▀▀▀▀
+  /theme     Changer d’univers                      ▀▀▀▀▀         ▀▀▀▀
+  /help      Commandes                              ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+                                                    ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+
+
+ Activité observée · Prêt · aucun travail en cours
+ Mission conservée · /missions pour la retrouver
+ Reprise incomplète · /retry pour récupérer le texte
+ Demande · Entrée envoyer · Alt+Entrée ligne
+┃
+┃
+ F2 Thème  F3 Modèle  F4 Vue  F5 Diagnostic
+ Ctrl+C Arrêt · Ctrl+Q Sortie · Tab Défiler · / Aide

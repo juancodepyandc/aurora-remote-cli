@@ -3,22 +3,20 @@
 Dans une copie Git propre du CLI sur le Mac :
 
 ```sh
-git switch main
 git pull --ff-only
 ./install.sh
-.venv/bin/jobia theme set otter
-.venv/bin/jobia
+jobia
 ```
 
-Depuis la version 1.5.1, `install.sh` tente d'installer le renderer compilé sur GitHub pour la plateforme : Mac Apple Silicon ou Intel, Linux x64, Windows x64. **Cargo n'est pas nécessaire.** L'empreinte SHA-256, la version et le démarrage du binaire sont contrôlés avant son installation atomique dans `.venv/libexec/jobia/1.5.1/`. La ligne `renderer` du reçu indique le résultat. Si le téléchargement échoue, l'interface Python reste disponible et le motif est affiché ; réessayer avec `.venv/bin/jobia renderer install`.
+`install.sh` installe le renderer compilé sur GitHub pour la plateforme : Mac Apple Silicon ou Intel, Linux x64, Windows x64. **Cargo n'est pas nécessaire.** L'empreinte SHA-256, la version et le démarrage du binaire sont contrôlés avant son installation atomique dans `.venv/libexec/jobia/<version>/`. La ligne `renderer` du reçu indique le résultat. Si le téléchargement échoue, l'interface Python reste disponible et le motif est affiché ; relancer `./install.sh` réessaie aussi cette étape.
 
-Aucun téléchargement ni compilation au lancement de `jobia`. Aucun export de variable requis. Un ancien `JOBIA_NATIVE_BIN` vers un fichier absent ne bloque plus le mode auto : le binaire géré est recherché, puis le repli Python. `unset JOBIA_NATIVE_BIN` retire cet ancien réglage de la session du shell. Une demande explicite `--renderer native` échoue clairement si aucun binaire n'est disponible.
+Aucun téléchargement ni compilation au lancement de `jobia`. Aucun export ni nettoyage de variable requis. Un ancien `JOBIA_NATIVE_BIN` vers un fichier absent ne bloque plus le mode auto : le binaire géré est recherché, puis le repli Python. Une demande explicite `--renderer native` échoue clairement si aucun binaire n'est disponible.
 
 Pour compiler volontairement depuis les sources avec Rust/Cargo (toolchain de validation : 1.96.1), utiliser `cargo build --release --locked --manifest-path native/Cargo.toml`, puis lancer **sur une seule commande** `JOBIA_NATIVE_BIN="$PWD/native/target/release/aurora-native" .venv/bin/jobia ui --renderer native`. L'ancienne procédure qui exportait un chemin après un échec de compilation est retirée.
 
-La sélection du thème est indépendante du renderer : le réglage `synthwave` existant est conservé tant qu'on ne choisit pas `otter`. F2 ou `/theme` permettent de le changer. L'historique restauré reste sauvegardé ; `/home` montre l'accueil, `/view conversation` retrouve les messages. Une erreur de connexion ou un avis de mission conservée a priorité sur le décor.
+Le thème par défaut est otter. Un autre thème enregistré reste respecté ; F2 ou `/theme` permettent de le changer, facultativement. Au lancement, l'accueil reste visible avec une conversation ou une mission conservée. Les avis de reprise occupent la zone d'activité ; `/view conversation` retrouve les messages et les détails. Aucun travail n'est relancé automatiquement. Une erreur de connexion ouvre son diagnostic. `/home` est un raccourci de navigation, pas une étape d'installation.
 
-`.venv/bin/jobia` utilise directement l'installation du checkout. L'installateur expose aussi `jobia` dans `~/.local/bin` ; les commandes courtes ci-dessous supposent ce dossier dans PATH.
+L'installateur expose `jobia` via le lanceur de la venv et les chemins système accessibles sur Mac. Il vérifie le PATH du terminal appelant, distinct des chemins temporaires utilisés pour trouver Python. `.venv/bin/jobia` reste disponible comme chemin explicite de diagnostic. Les options suivantes sont facultatives :
 
 ```sh
 jobia theme list

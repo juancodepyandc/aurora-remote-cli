@@ -342,7 +342,8 @@ class Installer:
     def configure_path(self) -> StepResult:
         """Make the launcher discoverable in future sessions, without sudo."""
         bindir = str(self.target.bindir)
-        if bindir in os.environ.get("PATH", "").split(os.pathsep):
+        caller_path = os.environ.get("JOBIA_INSTALL_CALLER_PATH", os.environ.get("PATH", ""))
+        if bindir in caller_path.split(os.pathsep):
             return StepResult("path", "skipped", "déjà présent dans PATH")
         if self.target.system == "windows":
             try:

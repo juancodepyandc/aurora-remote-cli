@@ -566,7 +566,8 @@ impl Ui {
             area.height,
         );
         let prompt_rows = (self.input.value().lines().count().max(1) as u16 + 2).clamp(3, 6);
-        let activity_rows = if area.height >= 28 || list(&self.state, "recovery_notices").len() > 1 {
+        let activity_rows = if area.height >= 28 || list(&self.state, "recovery_notices").len() > 1
+        {
             3
         } else {
             2

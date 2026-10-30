@@ -1,0 +1,30 @@
+  ◌ AURORA /  /  Bathysphère
+  Cible pc-maitre.example · connecté · Diag 24 ms
+  Session demo-42 · Mission aucune
+ 1 [Conversation]  2 Modules  3 Agents  4 Bilans  5 Journal  6 Fichiers
+
+ BATHYSPHÈRE / OBSERVATOIRE
+
+               ▀     Sous la surface.
+    ▀   ▀▀▀▀▀
+     ▀▀▀     ▀▀▀     Décrivez le résultat attendu.
+   ▀▀   ▀▀▀▀▀   ▀▀
+ ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀  /modules   Explorer
+ ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀  /missions  Reprendre
+    ▀▀   ▀▀▀   ▀▀    /theme     Changer d’univers
+      ▀▀▀▀▀▀▀▀▀      /help      Commandes
+   ▀            ▀
+
+
+
+
+
+
+ Activité observée · Prêt · aucun travail en cours
+ Mission conservée · /missions pour la retrouver
+ Reprise incomplète · /retry pour récupérer le texte
+ Demande · Entrée envoyer · Alt+Entrée ligne
+│
+│
+ F2 Thème  F3 Modèle  F4 Vue  F5 Diagnostic
+ Ctrl+C Arrêt · Ctrl+Q Sortie · Tab Défiler · / Aide

@@ -276,7 +276,6 @@ class WorkspaceApp:
         self.bridge_factory = bridge_factory or Bridge
         self.history = history if history is not None else Conversation.open()
         self.home_open = True
-        self.recovery_notices = []
         self.state,self.page,self.task,self.local_process = MissionView(),'conversation',None,None
         self.active_module = ''
         self.models,self.health,self.journal = [],'Diagnostic en cours…',''
@@ -564,6 +563,20 @@ class WorkspaceApp:
         second = fit(f'  Cible {target} · {self.connection} · Diag {latency}',width,caps.unicode)
         third = fit(f'  Session {self.session()} · Mission {mission}',width,caps.unicode)
         return [('class:header',first+'\n'),('class:status',second+'\n'),('class:footer',third)]
+
+    @property
+    def recovery_notices(self):
+        if not self._recovery_notices_shown:
+            return []
+        saved = getattr(self.history,'state',{})
+        notices = []
+        if saved.get('active_mission_id'):
+            notices.append('Mission conservée · /missions pour la retrouver')
+        if saved.get('pending_request'):
+            notices.append('Acceptation incertaine · /retry (même demande)'
+                           if retry_payload_valid(saved['pending_request']) else
+                           'Reprise incomplète · /retry pour récupérer le texte')
+        return notices
 
     def activity_height(self):
         recovered = self.is_welcome() and len(self.recovery_notices)>1
@@ -901,7 +914,6 @@ class WorkspaceApp:
         self.partial = ''
         self.active_module = ''
         self.home_open = True
-        self.recovery_notices = []
         self.state = MissionView()
         self.refresh_body()
 
@@ -1239,14 +1251,11 @@ class WorkspaceApp:
         self._recovery_notices_shown = True
         active = getattr(self.history,'state',{}).get('active_mission_id')
         if active:
-            self.recovery_notices.append('Mission conservée · /missions pour la retrouver')
             self.note('Mission conservée : '+active+' · /attach '+active+' pour suivre son état.',reveal=False)
         if getattr(self.history,'state',{}).get('pending_request'):
             if retry_payload_valid(self.history.state['pending_request']):
-                self.recovery_notices.append('Acceptation incertaine · /retry (même demande)')
                 self.note('Une demande a une acceptation incertaine. /retry conserve sa clé pour éviter une double exécution.',reveal=False)
             else:
-                self.recovery_notices.append('Reprise incomplète · /retry pour récupérer le texte')
                 self.note('Une demande conservée a un format de reprise incomplet. /retry permet de la récupérer sans la lancer.',reveal=False)
 
     async def run(self):

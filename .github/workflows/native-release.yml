@@ -61,8 +61,38 @@ jobs:
       - uses: actions/setup-python@v7.0.0
         with:
           python-version: '3.13'
-      - run: python -m pip install ".[test]" pyte
+      - if: runner.os == 'Windows'
+        run: python -m pip install ".[test]" pyte
+      - name: Install through the user entrypoint and resolve bare jobia
+        if: runner.os != 'Windows'
+        shell: bash
+        env:
+          JOBIA_CONFIG_DIR: ${{ runner.temp }}/install-config
+          JOBIA_DATA_DIR: ${{ runner.temp }}/install-data
+          JOBIA_NATIVE_BIN: /missing/previous-export/aurora-native
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          config=Path(os.environ['JOBIA_CONFIG_DIR'])
+          config.mkdir(parents=True,exist_ok=True)
+          (config/'config.json').write_text(json.dumps({'mode':'remote','server_url':'http://127.0.0.1:9'}))
+          PY
+          ./install.sh
+          python - <<'PY'
+          import json, shutil
+          from pathlib import Path
+          receipt=json.loads(Path('install-receipt.json').read_text())
+          assert receipt['ok']
+          assert next(s for s in receipt['steps'] if s['id']=='renderer')['status']=='ok'
+          resolved=shutil.which('jobia')
+          assert resolved, 'jobia must be available in the calling shell without PATH edits'
+          assert Path(resolved).resolve()==Path('.venv/bin/jobia').resolve(), resolved
+          PY
+          jobia --version
+          .venv/bin/python -m pip install pyte
       - name: Download and probe the published binary without invoking Cargo
+        if: runner.os == 'Windows'
         working-directory: ${{ runner.temp }}
         env:
           JOBIA_NATIVE_BIN: /missing/previous-export/aurora-native
@@ -74,4 +104,13 @@ jobs:
         if: runner.os != 'Windows'
         shell: bash
         working-directory: ${{ runner.temp }}
-        run: python "$GITHUB_WORKSPACE/scripts/validate_terminal.py" --source "$RUNNER_TEMP/installed-blank" --depth truecolor --extended --output "$RUNNER_TEMP/installed-proof"
+        run: |
+          "$GITHUB_WORKSPACE/.venv/bin/python" "$GITHUB_WORKSPACE/scripts/validate_terminal.py" --source "$RUNNER_TEMP/installed-blank" --launcher jobia --restored --depth truecolor --extended --output "$RUNNER_TEMP/installed-proof"
+      - uses: actions/upload-artifact@v4
+        if: always() && runner.os != 'Windows'
+        with:
+          name: installed-proof-${{ matrix.os }}
+          path: |
+            ${{ runner.temp }}/installed-proof/*
+            install-receipt.json
+          if-no-files-found: warn

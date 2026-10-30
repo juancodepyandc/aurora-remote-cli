@@ -1,0 +1,24 @@
+  ◉ Aurora                            Connexion : connecté  
+  Cible pc-maitre.example                      Diag. 24 ms  
+  Session demo-42                           Mission aucune  
+  Prêt                                               abyss  
+   [1 Conversation]   F4 : changer de vue                   
+   BATHYSPHÈRE / OBSERVATOIRE                               
+                                                            
+                 ▀     Sous la surface.                     
+      ▀   ▀▀▀▀▀                                             
+       ▀▀▀     ▀▀▀     Décrivez le résultat attendu.        
+     ▀▀   ▀▀▀▀▀   ▀▀                                        
+   ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀  /modules Explorer                    
+   ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀  /missions Reprendre                  
+      ▀▀   ▀▀▀   ▀▀    /theme Changer d’univers             
+        ▀▀▀▀▀▀▀▀▀      /help Commandes                      
+     ▀            ▀                                         
+                                                            
+  idle · Prêt                                               
+   Mission conservée · /missions pour la retrouver          
+   Reprise incomplète · /retry pour récupérer le texte      
+  ╔ Votre demande · Entrée envoyer · Alt+Entrée ligne ═══╗  
+  ║                                                      ║  
+  ╚══════════════════════════════════════════════════════╝  
+  F2 thème · F3 modèle · F4 vue · ^C arrêt · ^Q sortie      

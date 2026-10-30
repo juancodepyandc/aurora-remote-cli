@@ -72,7 +72,9 @@ async def capture(theme, width, height, scenario, output, *, ascii_only=False, n
          patch.object(config, 'resolve_server_url', return_value=cfg['server_url']), \
          patch.object(config, 'is_configured', return_value=True), create_pipe_input() as pipe:
         display.bind(theme=theme, caps=caps)
-        history = History([{'role':'user','content':'Demande précédente'},{'role':'assistant','content':'Résultat conservé'}] if scenario=='welcome-history' else [])
+        history = History([{'role':'user','content':'Demande précédente'},{'role':'assistant','content':'Résultat conservé'}] if scenario in {'welcome-history','welcome-recovery'} else [])
+        if scenario=='welcome-recovery':
+            history.state={'active_mission_id':'mis_saved','pending_request':{'request':'Brouillon conservé'}}
         app = ui.WorkspaceApp(history=history, input=pipe, output=SizedOutput())
         async def discover():
             pass
@@ -130,6 +132,11 @@ async def main(args):
     from aurora_cli import themes
     selected = [themes.get(args.theme)] if args.theme else themes.all_themes()
     for theme in selected:
+        if args.recovery_only:
+            for width,height in [(60,24),(80,32),(120,30),(200,60)]:
+                await capture(theme,width,height,'welcome-recovery',args.output)
+            await capture(theme,60,24,'welcome-recovery',args.output,ascii_only=True,no_color=True)
+            continue
         for width in [60,80,120,200]:
             await capture(theme,width,32,'streaming',args.output)
             if width != 80:
@@ -148,6 +155,8 @@ async def main(args):
             height = 24 if '-ascii' in source.stem or ('-60-welcome' in source.stem and '-welcome-wide' not in source.stem) else 32
             if '-welcome-history' in source.stem:
                 height = 30
+            if '-welcome-recovery' in source.stem:
+                height = {60:24,80:32,120:30,200:60}[width]
             cells_path = native_output/(source.stem+'.cells.json')
             captured = subprocess.run([str(args.native.resolve()),'--snapshot',str(source),
                                        str(width),str(height),'--cells',str(cells_path)],
@@ -172,5 +181,6 @@ if __name__ == '__main__':
     parser.add_argument('--source',type=Path,default=ROOT)
     parser.add_argument('--output',type=Path,default=ROOT/'docs/snapshots/python')
     parser.add_argument('--theme')
+    parser.add_argument('--recovery-only',action='store_true',help='Capture startup with both retained mission and incomplete request.')
     parser.add_argument('--native',type=Path,help='Built aurora-native binary; capture both renderers.')
     asyncio.run(main(parser.parse_args()))

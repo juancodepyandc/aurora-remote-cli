@@ -8,6 +8,8 @@ Le lanceur appelle `aurora-native --backend <Python du CLI>`, sans shell. Le ren
 
 Chaque message est un objet JSON UTF-8 sur une ligne, suivi de LF. Les retours à la ligne du texte sont échappés dans JSON. stdout du backend est réservé au protocole ; ses autres sorties sont redirigées vers stderr. Le renderer ne montre pas ces logs.
 
+`state.welcome` décrit l'accueil demandé, même avec historique et mission conservés. `state.recovery_notices` est une liste optionnelle de résumés de reprise ; absente, elle vaut une liste vide. Les textes sont aussi inclus dans `activity`. Deux avis réservent trois lignes d'activité même à faible hauteur pour rester visibles sans remplacer l'accueil. Cette extension additive reste dans JSONL v1 et n'autorise aucune exécution automatique.
+
 ```json
 {"version":1,"type":"command","command":"submit","value":"Inspecter le projet"}
 {"version":1,"type":"state","state":{"title":"Aurora","status":"idle","busy":false,"connection":"non vérifiée","target":"pc.example","session":"demo","mission":"","latency":"n/d","body":"…","theme":{"id":"otter"}}}

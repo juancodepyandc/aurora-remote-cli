@@ -475,6 +475,10 @@ def test_startup_recovery_keeps_home_and_visible_notices_without_dispatch(with_m
         assert len(history)==int(with_messages)
         app.note('Connexion indisponible : erreur à lire')
         assert not app.is_welcome() and 'Connexion indisponible' in app.body_source()
+        history.state.clear()
+        app.home_open=True
+        assert not snapshot(app)['state']['recovery_notices']
+        assert 'Mission conservée' not in '\n'.join(snapshot(app)['state']['activity'])
 
 
 def test_server_snapshot_callback_and_stream_do_not_raise_in_event_loop():

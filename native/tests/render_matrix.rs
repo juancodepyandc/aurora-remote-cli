@@ -85,6 +85,53 @@ fn ascii_no_color_and_low_color_render_without_escape_leaks() {
         }
     }
 }
+
+#[test]
+fn retained_mission_and_pending_request_keep_welcome_actions_at_small_height() {
+    for id in [
+        "otter",
+        "jobia",
+        "abyss",
+        "glacier",
+        "synthwave",
+        "brutal",
+        "phosphor",
+        "plain",
+    ] {
+        let mut state = fixture(id);
+        state["body"] = json!(
+            "# Un horizon ouvert.\n\nDécrivez le résultat attendu.\n\n**/modules** Explorer  \n**/missions** Reprendre  \n**/theme** Changer d’univers  \n**/help** Commandes"
+        );
+        let notices = json!([
+            "Mission conservée · /missions",
+            "Reprise incomplète · /retry"
+        ]);
+        state["recovery_notices"] = notices.clone();
+        state["activity"] = notices;
+        let mut ui = Ui::default();
+        ui.update(state);
+        let mut terminal = Terminal::new(TestBackend::new(60, 24)).unwrap();
+        terminal.draw(|f| ui.draw(f)).unwrap();
+        let text = terminal
+            .backend()
+            .buffer()
+            .content
+            .iter()
+            .map(|c| c.symbol())
+            .collect::<String>();
+        for required in [
+            "/modules",
+            "/missions",
+            "/theme",
+            "/help",
+            "Mission conservée",
+            "Reprise incomplète",
+            "/retry",
+        ] {
+            assert!(text.contains(required), "{id}: {required} absent");
+        }
+    }
+}
 #[test]
 fn permissions_disconnect_and_errors_have_textual_states() {
     for status in ["permission_required", "reconnecting", "failed", "completed"] {
