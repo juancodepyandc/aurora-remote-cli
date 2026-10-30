@@ -275,7 +275,8 @@ class WorkspaceApp:
         from .core.conversation import Conversation
         self.bridge_factory = bridge_factory or Bridge
         self.history = history if history is not None else Conversation.open()
-        self.home_open = bool(self.history)
+        self.home_open = True
+        self.recovery_notices = []
         self.state,self.page,self.task,self.local_process = MissionView(),'conversation',None,None
         self.active_module = ''
         self.models,self.health,self.journal = [],'Diagnostic en cours…',''
@@ -413,7 +414,7 @@ class WorkspaceApp:
             Window(FormattedTextControl(self.tabs),height=1),
             Window(height=1),
             main_body,
-            Window(FormattedTextControl(self.activity_text), height=lambda:3 if self.app.output.get_size().rows>=28 else 2),
+            Window(FormattedTextControl(self.activity_text), height=self.activity_height),
             slash_dock,
             HorizonFrame(self.prompt,title=self.prompt_title),
             Window(FormattedTextControl(self.footer),height=2,style='class:footer'),
@@ -564,6 +565,10 @@ class WorkspaceApp:
         third = fit(f'  Session {self.session()} · Mission {mission}',width,caps.unicode)
         return [('class:header',first+'\n'),('class:status',second+'\n'),('class:footer',third)]
 
+    def activity_height(self):
+        recovered = self.is_welcome() and len(self.recovery_notices)>1
+        return 3 if self.app.output.get_size().rows>=28 or recovered else 2
+
     def activity_text(self):
         state = self.state
         active = state.status in {'starting','running','queued','permission'}
@@ -581,6 +586,12 @@ class WorkspaceApp:
             style = 'failure' if state.status in {'failed','interrupted'} else 'activity'
         width = self.app.output.get_size().columns-2
         rows = [('class:'+style,fit(' Activité observée · '+label,width,display.view.caps.unicode)+'\n')]
+        if self.is_welcome() and self.recovery_notices:
+            if len(self.recovery_notices)==1 and self.activity_height()==3:
+                rows.append(('class:footer',' Historique conservé · /view conversation\n'))
+            rows.extend(('class:warning',fit(' '+text,width,display.view.caps.unicode)+'\n')
+                        for text in self.recovery_notices)
+            return [(tone,safe_text(text,unicode=display.view.caps.unicode)) for tone,text in rows]
         if self.app.output.get_size().rows>=28:
             counts = f' {len(state.evidence)} observations · {len(state.files)} fichiers · {state.received_chars} caractères reçus'
             rows.append(('class:footer',fit(counts,width,display.view.caps.unicode)+'\n'))
@@ -697,8 +708,9 @@ class WorkspaceApp:
             except RuntimeError:
                 self.refresh_body()
 
-    def note(self,text):
-        self.home_open = False
+    def note(self,text,*,reveal=True):
+        if reveal:
+            self.home_open = False
         self.transcript = (self.transcript+'\n'+plain(text)+'\n')[-200000:]
         self.refresh_body()
 
@@ -888,6 +900,8 @@ class WorkspaceApp:
         self.transcript,self.journal = 'Nouvelle conversation. La précédente reste archivée.\n',''
         self.partial = ''
         self.active_module = ''
+        self.home_open = True
+        self.recovery_notices = []
         self.state = MissionView()
         self.refresh_body()
 
@@ -1225,12 +1239,15 @@ class WorkspaceApp:
         self._recovery_notices_shown = True
         active = getattr(self.history,'state',{}).get('active_mission_id')
         if active:
-            self.note('Mission conservée : '+active+' · /attach '+active+' pour suivre son état.')
+            self.recovery_notices.append('Mission conservée · /missions pour la retrouver')
+            self.note('Mission conservée : '+active+' · /attach '+active+' pour suivre son état.',reveal=False)
         if getattr(self.history,'state',{}).get('pending_request'):
             if retry_payload_valid(self.history.state['pending_request']):
-                self.note('Une demande a une acceptation incertaine. /retry conserve sa clé pour éviter une double exécution.')
+                self.recovery_notices.append('Acceptation incertaine · /retry (même demande)')
+                self.note('Une demande a une acceptation incertaine. /retry conserve sa clé pour éviter une double exécution.',reveal=False)
             else:
-                self.note('Une demande conservée a un format de reprise incomplet. /retry permet de la récupérer sans la lancer.')
+                self.recovery_notices.append('Reprise incomplète · /retry pour récupérer le texte')
+                self.note('Une demande conservée a un format de reprise incomplet. /retry permet de la récupérer sans la lancer.',reveal=False)
 
     async def run(self):
         self.loop = asyncio.get_running_loop()

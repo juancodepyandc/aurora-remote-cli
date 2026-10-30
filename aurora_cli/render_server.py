@@ -48,6 +48,7 @@ def snapshot(app, *, picker=''):
         'phase': clean(app.state.phase), 'status': app.state.status, 'busy': app.busy,
         'page': app.page, 'tabs': [{'id': page, 'label': label} for page,label in PAGE_LABELS.items()],
         'welcome':app.is_welcome(),
+        'recovery_notices':[clean(text) for text in app.recovery_notices] if app.is_welcome() else [],
         'commands':[{'name':command,'description':clean(description)} for command,_,_,description in SLASH_COMMANDS_CATALOG],
         'body': clean(app.body_source()), 'activity': activity,
         'sidebar': app.sidebar_text().splitlines(),

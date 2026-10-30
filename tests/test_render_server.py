@@ -122,8 +122,10 @@ def test_native_startup_exposes_retained_mission_without_dispatch(monkeypatch):
     output = StringIO()
     asyncio.run(serve(StringIO(json.dumps(command('quit'))+'\n'),output))
     first = json.loads(output.getvalue().splitlines()[0])['state']
-    assert '/attach retained-mission' in first['body']
-    assert 'format de reprise incomplet' in first['body']
+    assert first['welcome']
+    assert 'Mission conservée' in '\n'.join(first['activity'])
+    assert 'Reprise incomplète' in '\n'.join(first['activity'])
+    assert '/retry' in '\n'.join(first['activity'])
     submit.assert_not_awaited()
 
 
