@@ -444,6 +444,43 @@ def test_restored_history_can_show_home_without_erasing_or_replaying_it():
     asyncio.run(scenario())
 
 
+@pytest.mark.parametrize('with_messages',[False,True])
+@pytest.mark.parametrize('pending',[None,{'request':'Texte conservé'},
+    {'request':'Demande incertaine','idempotency_key':'fixture-key','permissions':'SAFE',
+     'workspace':'','model':'','history':[]}])
+def test_startup_recovery_keeps_home_and_visible_notices_without_dispatch(with_messages,pending):
+    from prompt_toolkit.data_structures import Size
+    from aurora_cli.render_server import snapshot
+    class History(list):
+        session_id='saved-session'
+    class CompactOutput(DummyOutput):
+        def get_size(self):
+            return Size(rows=24,columns=60)
+    history=History([{'role':'user','content':'Ancienne demande'}] if with_messages else [])
+    history.state={'active_mission_id':'mis_previous','pending_request':pending}
+    with create_pipe_input() as pipe:
+        app=ui.WorkspaceApp(history=history,input=pipe,output=CompactOutput())
+        app.show_recovery_notices()
+        app.show_recovery_notices()
+        assert app.is_welcome()
+        assert '/attach mis_previous' in app.transcript
+        assert app.transcript.count('Mission conservée')==1
+        state=snapshot(app)['state']
+        assert state['welcome'] and 'Décrivez' in state['body']
+        assert 'Mission conservée' in '\n'.join(state['activity'])
+        if pending:
+            assert '/retry' in '\n'.join(state['activity'])
+        assert app.activity_height()>=1+(2 if pending else 1)
+        assert app.task is None and not app.state.id
+        assert len(history)==int(with_messages)
+        app.note('Connexion indisponible : erreur à lire')
+        assert not app.is_welcome() and 'Connexion indisponible' in app.body_source()
+        history.state.clear()
+        app.home_open=True
+        assert not snapshot(app)['state']['recovery_notices']
+        assert 'Mission conservée' not in '\n'.join(snapshot(app)['state']['activity'])
+
+
 def test_server_snapshot_callback_and_stream_do_not_raise_in_event_loop():
     class RealStatus(FakeBridge):
         def mission_status(self,mid):

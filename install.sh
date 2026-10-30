@@ -4,6 +4,7 @@
 # an optimal Python interpreter before handing over to aurora_cli/install.py.
 set -euo pipefail
 JOBIA_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+export JOBIA_INSTALL_CALLER_PATH="$PATH"
 export PATH="$HOME/.local/bin:$HOME/.cargo/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
 
 pick_python() {

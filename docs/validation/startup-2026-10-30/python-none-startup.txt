@@ -1,0 +1,32 @@
+  Aurora.  /  Edition                                                           
+  Cible 127.0.0.1:36501 . connecte . Diag 2 ms                                  
+  Session 7da89e19 . Mission aucune                                             
+ 1 [Conv]  2 Modu  3 Agen  4 Bila  5 Jour  6 Fich                               
+                                                                                
+ EDITION / CORRESPONDANCE                                                       
+                                                                                
+ A U R O R A                                                                    
+                                                                                
+ ------------------------------                                                 
+                                                                                
+ L'espace des possibles.                                                        
+                                                    #################           
+ Decrivez le resultat attendu.                      ## +++++++     ##++         
+                                                    ## +++++++     ++++#        
+ /modules   Explorer                                ## +++++++++++++++ #        
+ /missions  Reprendre                               ## +++++++++++++++ #        
+ /theme     Changer d'univers                       ##                 #        
+ /help      Commandes                               ## +++++++++       #        
+                                                    ## +++++++         #        
+                                                    ## +++++++         #        
+                                                    ++++++++++++++++++++        
+                                                                                
+                                                                                
+ Activite observee . Pret . aucun travail en cours                              
+ Mission conservee . /missions pour la retrouver                                
+ Reprise incomplete . /retry pour recuperer le texte                            
+ Demande . Entree envoyer . Alt+Entree ligne                                    
+|                                                                               
+|                                                                               
+ F2 Theme  F3 Modele  F4 Vue  F5 Diagnostic                                     
+ Ctrl+C Arret . Ctrl+Q Sortie . Tab Defiler . / Aide                            

@@ -1,0 +1,24 @@
+  ? A U R O R A  /  Minuit FM
+  Cible pc-maitre.example . connecte . Diag 24 ms
+  Session demo-42 . Mission aucune
+ 1 [Con]  2 Mod  3 Age  4 Bil  5 Jou  6 Fic
+
+ MINUIT FM / ESPACE DISTANT
+
+     ++######++      La nuit vous appartient.
+   +#++######++#+
+   ++++++++++++++    Decrivez le resultat attendu.
+    ++++++++++++
+      ++++++++       /modules   Explorer
+  +              +   /missions  Reprendre
+   +#++++++++++#+    /theme     Changer d'univers
+     +#++++++#+      /help      Commandes
+
+ Activite observee . Pret . aucun travail en cours
+ Mission conservee . /missions pour la retrouver
+ Reprise incomplete . /retry pour recuperer le texte
+ Demande . Entree envoyer . Alt+Entree ligne
+|
+|
+ F2 Theme  F3 Modele  F4 Vue  F5 Diagnostic
+ Ctrl+C Arret . Ctrl+Q Sortie . Tab Defiler . / Aide

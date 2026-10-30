@@ -29,7 +29,7 @@ import pyte
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def scenario(renderer, depth, output, *, extended=False):
+def scenario(renderer, depth, output, *, extended=False, launcher=None, restored=False):
     requests, cursors = [], []
     stopped = threading.Event()
     class Handler(BaseHTTPRequestHandler):
@@ -91,7 +91,7 @@ def scenario(renderer, depth, output, *, extended=False):
         temp = Path(tmp)
         cfg = temp/'config';cfg.mkdir()
         settings = {'mode':'remote','server_url':f'http://127.0.0.1:{server.server_port}',
-                    'api_key':'fixture-only','default_permissions':'SAFE','theme':'otter'}
+                    'api_key':'fixture-only','default_permissions':'SAFE'}
         (cfg/'config.json').write_text(json.dumps(settings)) # Prevent legacy migration.
         env = {k:v for k,v in os.environ.items() if not k.startswith(('JOBIA_','AURORA_')) and k!='NO_COLOR'}
         env.update(JOBIA_CONFIG_DIR=str(cfg),JOBIA_DATA_DIR=str(temp/'data'),JOBIA_COLOR=depth,
@@ -99,9 +99,18 @@ def scenario(renderer, depth, output, *, extended=False):
                    PYTHONPATH=str(ROOT),JOBIA_NATIVE_BIN=str(ROOT/'native/target/release/aurora-native'))
         if depth=='none':
             env.update(NO_COLOR='1',JOBIA_UNICODE='0')
+        if restored:
+            # Use the real persistence API in the same interpreter/package as the
+            # launched UI, with a disposable project and no real configuration.
+            subprocess.run([sys.executable,'-c',
+                "from aurora_cli.core.conversation import Conversation; "
+                "h=Conversation.open(); h.append({'role':'user','content':'ANCIENNE DEMANDE CONSERVEE'}); "
+                "h.state.update(active_mission_id='mis_saved',pending_request={'request':'Brouillon conserve'}); "
+                "h.save()"],cwd=temp,env=env,check=True)
+            saved={p:p.read_bytes() for p in (temp/'data').rglob('*.json')}
         master,slave = pty.openpty()
         fcntl.ioctl(slave,termios.TIOCSWINSZ,struct.pack('HHHH',32,80,0,0))
-        command = [sys.executable,'-m','aurora_cli','ui','--renderer',renderer]
+        command = [launcher] if launcher else [sys.executable,'-m','aurora_cli','ui','--renderer',renderer]
         began = time.monotonic()
         proc = subprocess.Popen(command,stdin=slave,stdout=slave,stderr=slave,cwd=temp,env=env,start_new_session=True)
         os.close(slave)
@@ -150,13 +159,21 @@ def scenario(renderer, depth, output, *, extended=False):
         try:
             until(lambda:'connect' in visible())
             pump(1)
+            if restored:
+                assert '/modules' in visible() and '/theme' in visible(),visible()
+                assert 'Mission conserv' in visible() and 'Reprise incompl' in visible(),visible()
+                assert 'ANCIENNE DEMANDE' not in visible(),visible()
+                assert not requests,requests  # No automatic start, resume or stop.
+                assert all(p.read_bytes()==content for p,content in saved.items())
+                output.mkdir(parents=True,exist_ok=True)
+                (output/f'{renderer}-{depth}-startup.txt').write_text(visible()+'\n')
             start_cpu = resources()[1];start_bytes=len(raw);start_idle=time.monotonic()
             pump(1.5)
             idle_cpu = 100*(resources()[1]-start_cpu)/(time.monotonic()-start_idle)
             idle_bytes = len(raw)-start_bytes
             # Live preview then cancellation must not persist.
             send(b'\x1bOQ');pump(.12);send(b'\x1b[B');pump(.2)
-            assert json.loads((cfg/'config.json').read_text())['theme']=='otter'
+            assert json.loads((cfg/'config.json').read_text()).get('theme','otter')=='otter'
             send(b'\x1b');pump(.3)
             # Explicit command persists; F2 works even during a running mission.
             send(b'/theme glacier\r')
@@ -197,7 +214,8 @@ def scenario(renderer, depth, output, *, extended=False):
                           peak_tree_rss_mib=round(rss_peak/1048576,3),exit=proc.returncode,
                           sse_cursors=cursors,mission_posts=sum(p.endswith('/start') for p,_ in requests),
                           stop_posts=sum(p.endswith('/stop') for p,_ in requests),
-                          resize=True,theme_preview=True,busy_controls=extended)
+                          resize=True,theme_preview=True,busy_controls=extended,
+                          restored_startup=restored,bare_launcher=bool(launcher))
             output.mkdir(parents=True,exist_ok=True)
             name=f'{renderer}-{depth}'
             (output/(name+'.json')).write_text(json.dumps(result,indent=2)+'\n')
@@ -220,6 +238,9 @@ if __name__=='__main__':
     parser.add_argument('--source',type=Path,default=ROOT,
                         help='Import root; use an empty directory to exercise the installed wheel and managed binary.')
     parser.add_argument('--extended',action='store_true',help='Also verify theme command and Ctrl+C inside a picker during a mission.')
+    parser.add_argument('--launcher',help='Run this installed command without arguments, e.g. jobia.')
+    parser.add_argument('--restored',action='store_true',help='Seed a real saved conversation, retained mission and incomplete request before startup.')
     args=parser.parse_args()
     ROOT=args.source.resolve()
-    print(json.dumps(scenario(args.renderer,args.depth,args.output,extended=args.extended),ensure_ascii=False))
+    print(json.dumps(scenario(args.renderer,args.depth,args.output,extended=args.extended,
+                              launcher=args.launcher,restored=args.restored),ensure_ascii=False))

@@ -1,0 +1,32 @@
+ >_ Aurora                                                 Connexion : connecté 
+ Cible pc-maitre.example                                            Diag. 24 ms 
+ Session demo-42                                                 Mission aucune 
+ Prêt                                                                  phosphor 
+  <1 Conversation>   F4 : changer de vue                                        
+ ┌ P·31 ──────────────────────────────────────────────────────────────────────┐ 
+ │  P·31 / TERMINAL DISTANT                                                   │ 
+ │                                                                            │ 
+ │  A U R O R A   /   P·31                                                    │ 
+ │                                                                            │ 
+ │                                                ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀  │ 
+ │  Prêt pour vos instructions.                   ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀  │ 
+ │                                                ▀▀▀▀                   ▀▀▀  │ 
+ │  Décrivez le résultat attendu.                 ▀▀▀▀        ▀          ▀▀▀  │ 
+ │                                                ▀▀▀▀      ▀▀▀▀▀        ▀▀▀  │ 
+ │  /modules Explorer                             ▀▀▀▀▀▀▀▀▀▀▀▀ ▀▀▀▀▀▀▀▀▀▀▀▀▀  │ 
+ │  /missions Reprendre                           ▀▀▀▀   ▀▀▀     ▀▀▀     ▀▀▀  │ 
+ │  /theme Changer d’univers                      ▀▀▀▀   ▀▀        ▀     ▀▀▀  │ 
+ │  /help Commandes                               ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀  │ 
+ │                                                ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀  │ 
+ │                                                            ▀▀▀             │ 
+ │                                                       ▀▀▀▀▀▀▀▀▀▀▀▀▀        │ 
+ │                                                       ▀▀▀▀▀▀▀▀▀▀▀▀▀        │ 
+ │                                                                            │ 
+ └────────────────────────────────────────────────────────────────────────────┘ 
+ idle · Prêt                                                                    
+  Mission conservée · /missions pour la retrouver                               
+  Reprise incomplète · /retry pour récupérer le texte                           
+ ┌ Votre demande · Entrée envoyer · Alt+Entrée ligne ─────────────────────────┐ 
+ │                                                                            │ 
+ └────────────────────────────────────────────────────────────────────────────┘ 
+ F2 thèmes · F3 modèles · F4 vues · F5 état · ^C arrêt · ^Q sortie              

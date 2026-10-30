@@ -241,3 +241,14 @@ def test_install_native_is_a_separate_nonfatal_step_without_cargo(target,policy)
     result=make(target,policy,runner).install_renderer()
     assert result.status=='skipped' and 'Interface Python' in result.detail
     assert runner.calls==[[str(target.python),'-m','aurora_cli.renderer_install']]
+
+
+def test_path_configuration_uses_the_calling_shell_not_the_bootstrap_path(target,policy,monkeypatch,tmp_path):
+    monkeypatch.setenv('SHELL','/bin/zsh')
+    monkeypatch.setenv('JOBIA_INSTALL_CALLER_PATH','/usr/bin:/bin')
+    monkeypatch.setenv('PATH',str(target.bindir)+':/usr/bin:/bin')
+    result=make(target,policy).configure_path()
+    assert result.status=='ok'
+    assert str(target.bindir) in (tmp_path/'.zshrc').read_text()
+    make(target,policy).configure_path()
+    assert (tmp_path/'.zshrc').read_text().count('# JOBIA launcher')==1

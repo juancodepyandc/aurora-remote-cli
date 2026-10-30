@@ -30,6 +30,31 @@ jobs:
       - run: python -m build --no-isolation
       - run: jobia --version
       - run: jobia --color never ui
+      - name: Verify install.sh exposes jobia in the calling shell
+        if: matrix.python == '3.13' && runner.os != 'Windows'
+        shell: bash
+        env:
+          JOBIA_CONFIG_DIR: ${{ runner.temp }}/install-config
+          JOBIA_DATA_DIR: ${{ runner.temp }}/install-data
+          JOBIA_NATIVE_BIN: /missing/previous-export/aurora-native
+        run: |
+          python -m pip uninstall -y jobia-cli
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          config=Path(os.environ['JOBIA_CONFIG_DIR'])
+          config.mkdir(parents=True,exist_ok=True)
+          (config/'config.json').write_text(json.dumps({'mode':'remote','server_url':'http://127.0.0.1:9'}))
+          PY
+          ./install.sh
+          python - <<'PY'
+          import shutil
+          from pathlib import Path
+          resolved=shutil.which('jobia')
+          assert resolved, 'jobia must be available without a shell restart'
+          assert Path(resolved).resolve()==Path('.venv/bin/jobia').resolve(), resolved
+          PY
+          jobia --version
   native:
     strategy:
       fail-fast: false
@@ -53,11 +78,11 @@ jobs:
         run: python -m pip install -e ".[test]" pyte
       - if: runner.os != 'Windows'
         run: |
-          python scripts/validate_terminal.py --depth truecolor --extended
+          python scripts/validate_terminal.py --depth truecolor --extended --restored
           python scripts/validate_terminal.py --depth color256
           python scripts/validate_terminal.py --depth ansi
           python scripts/validate_terminal.py --depth none
-          python scripts/validate_terminal.py --renderer python --depth none --extended
+          python scripts/validate_terminal.py --renderer python --depth none --extended --restored
       - run: python scripts/package_native.py
       - uses: actions/upload-artifact@v4
         with:

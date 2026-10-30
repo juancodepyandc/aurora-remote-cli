@@ -3,8 +3,6 @@
 Python ≥ 3.10. Référence du serveur : [document maître Aurora](../AuroraIA/ARCHITECTURE_MAITRE.md#cli). Les moteurs ont leurs propres contraintes ; leur disponibilité sur tous les OS n'est pas garantie.
 
 ```bash
-git fetch origin
-git switch main
 git pull --ff-only
 ./install.sh
 jobia
@@ -35,4 +33,4 @@ Le serveur conserve l'objectif original, découvre les scripts des modules, mèn
 
 Ce README est un export de compatibilité du maître.
 
-Depuis JOBIA 1.5.1, `./install.sh` installe aussi le renderer natif compilé sur GitHub, avec contrôle SHA-256 et version, sans Cargo sur le Mac. `jobia renderer install` permet de réessayer ; `jobia theme set otter` choisit la loutre et `jobia` ouvre l'interface. `/home` retrouve l'accueil sans effacer l'historique. Le moteur reste Python ; le repli `jobia ui --renderer python` fonctionne sans binaire natif. Voir [installation et tests](docs/CLI.md), [thèmes](docs/THEMES.md), [design et mesures](docs/DESIGN.md), [protocole](docs/PROTOCOL.md). Ces documents concernent le CLI ; les moteurs restent régis par le document maître.
+`./install.sh` installe aussi le renderer natif compilé sur GitHub, avec contrôle SHA-256 et version, sans Cargo sur le Mac. `jobia` ouvre directement l'accueil, y compris avec une mission conservée : les avis de reprise restent visibles sous le dessin, sans relancer le travail. Otter est le thème par défaut ; un autre choix enregistré reste respecté. Aucun choix de renderer, commande de thème ou export de variable n'est requis pour démarrer. `/home` retrouve l'accueil sans effacer l'historique. Le moteur reste Python ; le repli `jobia ui --renderer python` fonctionne sans binaire natif. Voir [installation et tests](docs/CLI.md), [thèmes](docs/THEMES.md), [design et mesures](docs/DESIGN.md), [protocole](docs/PROTOCOL.md). Ces documents concernent le CLI ; les moteurs restent régis par le document maître.
