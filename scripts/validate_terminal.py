@@ -177,7 +177,7 @@ def scenario(renderer, depth, output, *, extended=False, launcher=None, restored
             send(b'\x1b');pump(.3)
             # Explicit command persists; F2 works even during a running mission.
             send(b'/theme glacier\r')
-            until(lambda:json.loads((cfg/'config.json').read_text())['theme']=='glacier')
+            until(lambda:json.loads((cfg/'config.json').read_text()).get('theme')=='glacier')
             fcntl.ioctl(master,termios.TIOCSWINSZ,struct.pack('HHHH',24,60,0,0))
             screen.resize(24,60);pump(.2)
             send('Vérifie le contrat\r'.encode())
@@ -189,7 +189,7 @@ def scenario(renderer, depth, output, *, extended=False, launcher=None, restored
                 send('Garde cette mission ouverte\r'.encode())
                 until(lambda:'MISSION EN ATTENTE' in visible())
                 send(b'/theme brutal\r')
-                until(lambda:json.loads((cfg/'config.json').read_text())['theme']=='brutal')
+                until(lambda:json.loads((cfg/'config.json').read_text()).get('theme')=='brutal')
                 send(b'\x1bOQ')
                 until(lambda:'imm' in visible())
                 send(b'\x03')
