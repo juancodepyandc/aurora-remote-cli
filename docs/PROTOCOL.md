@@ -65,3 +65,7 @@ Validation : tests de contrats Python et Rust, plus `scripts/validate_terminal.p
 ## Statut distant : compteur et plan
 
 `GET /api/cli/mission/<id>/status` retourne `steps` comme entier (nombre d'événements `step_start`) et `plan` comme liste de textes du checkpoint. Le CLI les conserve séparément. Les événements de flux `plan` et `plan_revision` utilisent en revanche `steps` comme liste. Les collections absentes/nulles/malformées ne remplacent pas les détails déjà observés. Ce contrat est vérifié dans les sources `application/mission_api.py::public` et `agi_core/mission_store.py::append` ; aucun changement serveur n'est nécessaire. Les fixtures de statut et les PTY doivent inclure ce compteur, pas seulement une liste `plan`.
+
+### Canal des tokens de commande
+
+Le flux distant de mission peut ajouter `channel: "tool_call"` à un événement `token`. Ce contenu est le JSON structuré destiné à l'exécuteur : le client le conserve dans son journal borné et met à jour l'activité, sans l'ajouter à la réponse conversationnelle. Un token sans ce champ garde le comportement historique. Le résultat final reste transmis par `mission_complete`. Champ additif, aucune modification de la version du protocole natif.

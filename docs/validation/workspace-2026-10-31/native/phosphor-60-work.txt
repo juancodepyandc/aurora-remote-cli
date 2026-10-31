@@ -1,0 +1,24 @@
+ >_ Aurora                            Connexion : flux reçu 
+ Cible pc-maitre.example                        Diag. 24 ms 
+ Session demo-42                           Mission mis_demo 
+ read_file                                         phosphor 
+  <1 Conversation>   F4 : changer de vue                    
+ ▀▀▀▀▀▀  Prêt pour vos instructions.                        
+ ▀  ▀▀   P·31 / TERMINAL DISTANT                            
+ ▀▀▀▀▀▀  ┌─ INPUT ──────────────────────                    
+ ┌ conversation ──────────────────────────────────────────┐ 
+ │  def ready():                                          │ 
+ │      return True                                       │ 
+ │                                                        │ 
+ │                                                        │ 
+ │                                                        │ 
+ │SORTIE REÇUE · résultat non encore confirmé             │ 
+ │                                                        │ 
+ │Lecture de la configuration en cours…                   │ 
+ └────────────────────────────────────────────────────────┘ 
+ running · read_file                                        
+  00:00  Outil en cours · read_file                         
+ ┌ Votre demande · Entrée envoyer · Alt+Entrée ligne ─────┐ 
+ │Explique le résultat                                    │ 
+ └────────────────────────────────────────────────────────┘ 
+ F2 thème · F3 modèle · F4 vue · ^C arrêt · ^Q sortie       

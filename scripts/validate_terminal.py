@@ -59,10 +59,10 @@ def scenario(renderer, depth, output, *, extended=False, launcher=None, restored
                     self.send_header('Content-Type','text/event-stream')
                     self.send_header('Connection','close')
                     self.end_headers()
-                    self.wfile.write(b'id: 1\ndata: {"type":"token","content":"MISSION EN ATTENTE"}\n\n')
+                    self.wfile.write(b'id: 1\ndata: {"type":"token","channel":"tool_call","content":"{\\"tool\\":\\"read_file\\"}"}\n\nid: 2\ndata: {"type":"token","content":"MISSION EN ATTENTE"}\n\n')
                     self.wfile.flush()
                     if stopped.wait(12):
-                        self.wfile.write(b'id: 2\ndata: {"type":"mission_complete","status":"stopped","result":"ARRET CONFIRME"}\n\n')
+                        self.wfile.write(b'id: 3\ndata: {"type":"mission_complete","status":"stopped","result":"ARRET CONFIRME"}\n\n')
                         self.wfile.flush()
                     self.close_connection = True
                     return
@@ -177,7 +177,7 @@ def scenario(renderer, depth, output, *, extended=False, launcher=None, restored
             send(b'\x1b');pump(.3)
             # Explicit command persists; F2 works even during a running mission.
             send(b'/theme glacier\r')
-            until(lambda:json.loads((cfg/'config.json').read_text())['theme']=='glacier')
+            until(lambda:json.loads((cfg/'config.json').read_text()).get('theme')=='glacier')
             fcntl.ioctl(master,termios.TIOCSWINSZ,struct.pack('HHHH',24,60,0,0))
             screen.resize(24,60);pump(.2)
             send('Vérifie le contrat\r'.encode())
@@ -187,9 +187,13 @@ def scenario(renderer, depth, output, *, extended=False, launcher=None, restored
             if extended:
                 # Busy presentation commands must preserve the original mission.
                 send('Garde cette mission ouverte\r'.encode())
-                until(lambda:'MISSION EN ATTENTE' in visible())
+                until(lambda:'MISSION EN ATTENTE' in visible() and 'Un cap.' in visible())
+                assert 'read_file' not in visible(), 'Control JSON leaked into the conversation'
+                active_capture = visible()
+                output.mkdir(parents=True,exist_ok=True)
+                (output/(renderer+'-'+depth+'-active.txt')).write_text(active_capture+'\n')
                 send(b'/theme brutal\r')
-                until(lambda:json.loads((cfg/'config.json').read_text())['theme']=='brutal')
+                until(lambda:json.loads((cfg/'config.json').read_text()).get('theme')=='brutal')
                 send(b'\x1bOQ')
                 until(lambda:'imm' in visible())
                 send(b'\x03')
@@ -215,7 +219,7 @@ def scenario(renderer, depth, output, *, extended=False, launcher=None, restored
                           sse_cursors=cursors,mission_posts=sum(p.endswith('/start') for p,_ in requests),
                           stop_posts=sum(p.endswith('/stop') for p,_ in requests),
                           resize=True,theme_preview=True,busy_controls=extended,
-                          restored_startup=restored,bare_launcher=bool(launcher))
+                          restored_startup=restored,bare_launcher=bool(launcher),active_identity=extended,control_stream_hidden=extended)
             output.mkdir(parents=True,exist_ok=True)
             name=f'{renderer}-{depth}'
             (output/(name+'.json')).write_text(json.dumps(result,indent=2)+'\n')

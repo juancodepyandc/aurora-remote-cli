@@ -153,6 +153,8 @@ class MissionView:
             self.plan = collection(event.get('steps'), self.plan)
             self.record('Étapes adaptées · '+str(event.get('reason','Observations nouvelles')))
         elif kind == 'token':
+            if event.get('channel')=='tool_call':
+                self.phase = 'Préparation de l’action'
             self.received_chars += len(event.get('content',''))
         elif kind == 'tool_result':
             if not any(e.get('id')==event.get('id') for e in self.evidence):
@@ -179,6 +181,9 @@ class MissionView:
                 self.status = event['status']
                 self.phase = ('État local · ' if event.get('id','').startswith('loc_') else 'État distant · ')+str(event['status'])
             self.record(f'État reçu · {self.status} · {len(self.plan)} étapes · {len(self.evidence)} preuves')
+        elif kind in {'context_recovery','context_adjustment'}:
+            self.phase = 'Adaptation du contexte'
+            self.record(event.get('message','Budget de contexte ajusté avant génération'), 'activity')
         elif kind == 'model_metrics':
             self.metrics = event
         elif kind in {'file_received', 'file_available'}:
@@ -401,9 +406,13 @@ class WorkspaceApp:
             self.finish_theme_preview(commit=False)
 
         header = Window(FormattedTextControl(self.header),height=3,style='class:header')
+        companion = lambda stacked: Window(FormattedTextControl(lambda:self.companion_text(stacked)),
+                                            height=self.companion_height)
         sidebar = ConditionalContainer(
-            HorizonFrame(self.sidebar,title='Mission · critères & preuves'),
-            Condition(lambda:self.app.output.get_size().columns>=110 and not self.is_welcome()))
+            HSplit([companion(True), HorizonFrame(self.sidebar,title='Mission · critères & preuves')]),
+            Condition(lambda:self.wide_workspace() and not self.is_welcome()))
+        ribbon = ConditionalContainer(companion(False),
+            Condition(lambda:not self.wide_workspace() and not self.is_welcome()))
         slash_dock = ConditionalContainer(
             Window(FormattedTextControl(self.slash_dock_text), height=2, style='class:dock'),
             Condition(lambda:self.prompt.text.lstrip().startswith('/')))
@@ -411,7 +420,8 @@ class WorkspaceApp:
         root = HSplit([
             header,
             Window(FormattedTextControl(self.tabs),height=1),
-            Window(height=1),
+            Window(height=lambda:1 if self.is_welcome() else 0),
+            ribbon,
             main_body,
             Window(FormattedTextControl(self.activity_text), height=self.activity_height),
             slash_dock,
@@ -442,9 +452,23 @@ class WorkspaceApp:
 
     def body_width(self):
         width = self.app.output.get_size().columns
-        if width >= 110 and not self.is_welcome():
+        if self.wide_workspace() and not self.is_welcome():
             width -= display.view.theme.spacing.sidebar_width + display.view.theme.spacing.gutter + 4
         return max(20, width - 4)
+
+    def wide_workspace(self):
+        return self.app.output.get_size().columns >= 112
+
+    def companion_height(self):
+        rows = self.app.output.get_size().rows
+        return min(14,max(10,(rows-13)//2)) if self.wide_workspace() else 4 if rows>=40 else 3
+
+    def companion_text(self, stacked):
+        from .welcome import render_companion
+        width = display.view.theme.spacing.sidebar_width+2 if stacked else self.app.output.get_size().columns
+        _,lines = render_companion(width,self.companion_height(),display.view.theme,display.view.caps,stacked=stacked)
+        return [fragment for index,line in enumerate(lines)
+                for fragment in ([('', '\n')] if index else [])+line]
 
     def welcome_text(self):
         return ('# Un horizon ouvert.\n\n'
@@ -627,9 +651,9 @@ class WorkspaceApp:
     def sidebar_text(self):
         state = self.state
         mod_focus = self.active_module or domain_label(state.goal)
-        lines = [state.id or 'Aucune mission',f'État : {state.status}',
-                 f'Module : {mod_focus}',
-                 'Permissions : '+config.get('default_permissions','SAFE'),'','OBJECTIF',plain(state.goal),'','PLAN']
+        lines = [f'{mod_focus} · '+config.get('default_permissions','SAFE'),
+                 f'Critères {len(state.verified)}/{len(state.criteria)} · Fichiers {len(state.files)}',
+                 'PLAN']
         lines.extend(f'{i+1}. {plain(step)}' for i,step in enumerate(state.plan))
         if not state.plan:
             lines.append('En attente d’un plan enregistré')
@@ -645,7 +669,7 @@ class WorkspaceApp:
             bar = "#" * filled + "-" * (bar_len - filled)
             lines.extend(["", f"PROGRESSION : [{bar}] {pct}%"])
 
-        lines.extend(['','OBSERVATIONS'])
+        lines.extend(['','OBJECTIF',plain(state.goal),'','OBSERVATIONS'])
         lines.extend((ok if e.get('ok') else failed)+e.get('tool','')+' · '+e.get('id','')+
                      '\n  '+observation_text(e, 250) for e in state.evidence[-8:])
         if state.metrics.get('tokens_per_second') is not None:
@@ -741,7 +765,10 @@ class WorkspaceApp:
         if kind not in {'token','heartbeat'}:
             self.journal = (self.journal+'\n'+plain(json.dumps(event,ensure_ascii=False,indent=2)))[-200000:]
         if kind == 'token':
-            self.partial = (self.partial + plain(event.get('content','')))[-16000:]
+            if event.get('channel')=='tool_call':
+                self.journal = (self.journal+plain(event.get('content','')))[-200000:]
+            else:
+                self.partial = (self.partial + plain(event.get('content','')))[-16000:]
         if kind=='mission_complete':
             self.partial = ''
             if hasattr(self.history,'state'):

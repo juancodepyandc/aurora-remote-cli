@@ -344,3 +344,36 @@ fn every_welcome_keeps_actions_at_compact_and_full_heights() {
         }
     }
 }
+
+#[test]
+fn active_work_keeps_theme_art_with_conversation_and_tool_feedback() {
+    for id in [
+        "otter",
+        "jobia",
+        "abyss",
+        "glacier",
+        "synthwave",
+        "brutal",
+        "phosphor",
+        "plain",
+    ] {
+        for width in [60, 80, 120, 200] {
+            let mut state = fixture(id);
+            state["welcome"] = json!(false);
+            state["status"] = json!("running");
+            state["phase"] = json!("read_file");
+            state["body"] = json!("## VOUS\nMa demande\n\n## AURORA\nRéponse en cours");
+            let mut ui = Ui::default();
+            ui.update(state);
+            let (text, _) = render(&mut ui, width);
+            assert!(text.contains("Ma demande") && text.contains("Réponse en cours"));
+            assert!(text.contains("read_file"));
+            let headline = ui.component("headline");
+            assert!(
+                text.contains(headline.split_whitespace().next().unwrap()),
+                "{id} {width}: identity lost"
+            );
+            assert!(text.contains('▀'), "{id} {width}: artwork lost");
+        }
+    }
+}

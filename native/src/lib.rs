@@ -77,6 +77,9 @@ pub fn clean(value: &str, unicode: bool) -> String {
             '·' | '•' | '◈' | '●' | '○' => '*',
             '─' | '━' | '—' | '–' => '-',
             '│' | '┃' => '|',
+            '≈' => '~',
+            c if ('\u{2800}'..='\u{28ff}').contains(&c) => '.',
+            '▀' | '▄' | '█' | '▓' | '▒' | '░' => '#',
             '→' => '>',
             '←' => '<',
             '’' | '‘' => '\'',
@@ -276,7 +279,9 @@ impl Ui {
                     "Demande récupérée dans la conversation ; votre brouillon reste intact".into();
             }
         }
-        let changed = state.pointer("/theme/id") != self.state.pointer("/theme/id");
+        let changed = state.pointer("/theme/id") != self.state.pointer("/theme/id")
+            || state.get("phase") != self.state.get("phase")
+            || state.get("status") != self.state.get("status");
         self.state = state;
         if changed {
             self.motion_started = Some(Instant::now());
@@ -600,16 +605,29 @@ impl Ui {
             Constraint::Length(if wide { sidebar_width } else { 0 }),
         ])
         .split(parts[2]);
+        let mut conversation = content[0];
+        if !welcome && !wide {
+            let h = if area.height >= 40 { 4 } else { 3 };
+            let band = Rect::new(
+                conversation.x,
+                conversation.y,
+                conversation.width,
+                h.min(conversation.height),
+            );
+            welcome::draw_companion(self, f, band, false);
+            conversation.y += band.height;
+            conversation.height = conversation.height.saturating_sub(band.height);
+        }
         let lines = markdown(
             &self.text("body"),
             self,
-            content[0].width.saturating_sub(4) as usize,
+            conversation.width.saturating_sub(4) as usize,
         );
-        let body_height = content[0].height.saturating_sub(2) as usize;
+        let body_height = conversation.height.saturating_sub(2) as usize;
         let body = Paragraph::new(lines)
             .block(self.block(&self.text("page")))
             .wrap(Wrap { trim: false });
-        let height = body.line_count(content[0].width).saturating_sub(2);
+        let height = body.line_count(conversation.width).saturating_sub(2);
         if self.follow {
             self.scroll = height.saturating_sub(body_height).min(u16::MAX as usize) as u16;
         }
@@ -624,9 +642,20 @@ impl Ui {
         {
             self.draw_welcome(f, content[0]);
         } else {
-            f.render_widget(body, content[0]);
+            f.render_widget(body, conversation);
         }
         if wide {
+            let side = content[1];
+            let h = (area.height.saturating_sub(13) / 2)
+                .clamp(10, 14)
+                .min(side.height);
+            welcome::draw_companion(self, f, Rect::new(side.x, side.y, side.width, h), true);
+            let mission_area = Rect::new(
+                side.x,
+                side.y + h,
+                side.width,
+                side.height.saturating_sub(h),
+            );
             let text = value_lines(&self.state, "sidebar", self.unicode())
                 .into_iter()
                 .map(Line::from)
@@ -635,7 +664,7 @@ impl Ui {
                 Paragraph::new(text)
                     .block(self.block("Mission"))
                     .wrap(Wrap { trim: false }),
-                content[1],
+                mission_area,
             );
         }
         let activity = value_lines(&self.state, "activity", self.unicode());

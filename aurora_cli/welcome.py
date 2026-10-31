@@ -74,10 +74,11 @@ def geometry(width, height, mode):
     return dict(art=art,body=body,brand=brand,ornament=ornament,eyebrow=eyebrow)
 
 
-def render_welcome(width, height, theme, caps):
+def render_welcome(width, height, theme, caps, *, regions=None, semantic=None):
     """Return the same plain text / lexer fragments contract as render_document."""
-    width,height=max(40,width),max(11,height)
-    regions=geometry(width,height,theme.components.composition)
+    companion = regions is not None
+    width,height=max(1,width),max(1,height)
+    regions=regions or geometry(width,height,theme.components.composition)
     cells=[[('', ' ') for _ in range(width)] for _ in range(height)]
     def style(slot,bold=False):
         return ('fg:'+theme.palette.slot(slot)+' ' if caps.color else '')+('bold' if bold else '')
@@ -90,7 +91,7 @@ def render_welcome(width, height, theme, caps):
                 x,y=region.x+dx,region.y+dy
                 if 0<=x<width and 0<=y<height:
                     cells[y][x]=(('fg:'+ramp[dx]+' bold') if gradient and caps.color else style(slot,bold),char)
-    if theme.components.composition=='console':
+    if theme.components.composition=='console' and not companion:
         horizontal,vertical,corner=('─','│','┌') if caps.unicode else ('-','|','+')
         put(Region(0,0,width,1),[corner+horizontal*(width-2)+('┐' if caps.unicode else '+')],'border')
         put(Region(0,height-1,width,1),[('└' if caps.unicode else '+')+horizontal*(width-2)+('┘' if caps.unicode else '+')],'border')
@@ -122,7 +123,7 @@ def render_welcome(width, height, theme, caps):
                 pixel_style=(f'fg:{palette[a]} bg:{palette[b]}' if caps.color and max(a,b)<len(palette) else '')
                 cells[region.y+y][xx+x]=(pixel_style,glyph)
     region=regions['body']
-    semantic=[(theme.components.headline,'primary',True),('', 'text',False),
+    semantic=semantic if semantic is not None else [(theme.components.headline,'primary',True),('', 'text',False),
               ('Décrivez le résultat attendu.','text',False),('', 'text',False),
               ('/modules   Explorer','accent',False),('/missions  Reprendre','accent',False),
               ('/theme     Changer d’univers','accent',False),('/help      Commandes','accent',False)]
@@ -147,3 +148,19 @@ def render_welcome(width, height, theme, caps):
     while lines and not lines[-1]:
         lines.pop()
     return '\n'.join(''.join(text for _,text in row) for row in lines),lines
+
+
+def render_companion(width, height, theme, caps, *, stacked=False):
+    """Persistent theme identity alongside work; never replaces the conversation."""
+    zero=Region(0,0,0,0)
+    if stacked:
+        art=Region(0,0,width,max(1,height-1))
+        body=Region(1,max(1,height-1),max(1,width-2),1)
+        ornament=zero
+    else:
+        size=min(16,height*2)
+        art=Region(0,0,size,height)
+        body=Region(size+2,0,max(1,width-size-3),height-1)
+        ornament=Region(size+2,height-1,max(1,width-size-3),1)
+    return render_welcome(width,height,theme,caps,regions=dict(art=art,body=body,ornament=ornament,brand=zero,eyebrow=zero),
+        semantic=[(theme.components.headline,'primary',True),(theme.components.eyebrow,'muted',False)])

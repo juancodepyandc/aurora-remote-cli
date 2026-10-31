@@ -132,6 +132,11 @@ async def main(args):
     from aurora_cli import themes
     selected = [themes.get(args.theme)] if args.theme else themes.all_themes()
     for theme in selected:
+        if args.work_only:
+            for width,height in [(60,24),(80,32),(120,30),(200,60)]:
+                await capture(theme,width,height,'work',args.output)
+            await capture(theme,60,24,'work',args.output,ascii_only=True,no_color=True)
+            continue
         if args.recovery_only:
             for width,height in [(60,24),(80,32),(120,30),(200,60)]:
                 await capture(theme,width,height,'welcome-recovery',args.output)
@@ -155,7 +160,7 @@ async def main(args):
             height = 24 if '-ascii' in source.stem or ('-60-welcome' in source.stem and '-welcome-wide' not in source.stem) else 32
             if '-welcome-history' in source.stem:
                 height = 30
-            if '-welcome-recovery' in source.stem:
+            if '-welcome-recovery' in source.stem or '-work' in source.stem:
                 height = {60:24,80:32,120:30,200:60}[width]
             cells_path = native_output/(source.stem+'.cells.json')
             captured = subprocess.run([str(args.native.resolve()),'--snapshot',str(source),
@@ -181,6 +186,7 @@ if __name__ == '__main__':
     parser.add_argument('--source',type=Path,default=ROOT)
     parser.add_argument('--output',type=Path,default=ROOT/'docs/snapshots/python')
     parser.add_argument('--theme')
+    parser.add_argument('--work-only',action='store_true',help='Capture active conversation, theme identity and tools at four sizes plus ASCII.')
     parser.add_argument('--recovery-only',action='store_true',help='Capture startup with both retained mission and incomplete request.')
     parser.add_argument('--native',type=Path,help='Built aurora-native binary; capture both renderers.')
     asyncio.run(main(parser.parse_args()))

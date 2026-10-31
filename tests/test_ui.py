@@ -509,3 +509,18 @@ def test_server_snapshot_callback_and_stream_do_not_raise_in_event_loop():
         finally:
             loop.set_exception_handler(previous)
     asyncio.run(scenario())
+
+
+def test_tool_call_stream_stays_in_journal_with_observed_activity():
+    with create_pipe_input() as pipe:
+        app = ui.WorkspaceApp(history=[],input=pipe,output=DummyOutput())
+        app.note('### VOUS\n\nMa demande')
+        app.event({'type':'token','channel':'tool_call','content':'{"tool":"read_file",'})
+        app.event({'type':'token','channel':'tool_call','content':'"args":{"path":"README.md"}}'})
+        assert app.partial == ''
+        assert '"tool":"read_file"' not in app.body_source()
+        assert '"tool":"read_file"' in app.journal
+        assert app.state.phase == 'Préparation de l’action'
+        assert app.state.received_chars > 0
+        app.event({'type':'token','content':'Une vraie réponse lisible'})
+        assert 'Une vraie réponse lisible' in app.partial

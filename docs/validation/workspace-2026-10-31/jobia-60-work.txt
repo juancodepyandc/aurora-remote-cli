@@ -1,0 +1,24 @@
+  A U R O R A  /  Horizon
+  Cible pc-maitre.example · flux reçu · Diag 24 ms
+  Session demo-42 · Mission mis_demo
+ 1 [Con]  2 Mod  3 Age  4 Bil  5 Jou  6 Fic
+  ▀▀    Ouvrez le champ.
+▀▀▀▀ ▀  HORIZON / AURORE BORÉALE
+▀▀ ▀▀▀         ╱╱╱       ╱╱╱╱╱      ╱╱╱
+Le plan est prêt. Je commence par le fichier d’entrée.   ^
+
+
+ def ready():
+     return True
+
+
+SORTIE REÇUE · résultat non encore confirmé
+
+Lecture de la configuration en cours…                    v
+ Activité observée · Mission acceptée · read_file
+ 00:00  Outil en cours · read_file
+ Demande · Entrée envoyer · Alt+Entrée ligne
+│ Explique le résultat
+│
+ F2 Thème  F3 Modèle  F4 Vue  F5 Diagnostic
+ Ctrl+C Arrêt · Ctrl+Q Sortie · Tab Défiler · / Aide

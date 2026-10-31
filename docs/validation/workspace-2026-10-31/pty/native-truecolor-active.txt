@@ -1,0 +1,24 @@
+   ◇ Aurora                         Connexion : flux reçu   
+   Cible 127.0.0.1:44169                       Diag. 2 ms   
+   Session 7ed90fcc                       Mission mis_pty   
+   Préparation de l’action                        glacier   
+    <1 Conversation>   F4 : changer de vue                  
+     ▀     Une idée. Un cap.                                
+   ▀▀▀▀▀▀  ISOBARE / ATELIER POLAIRE                        
+   ▀▀▀▀▀▀             ╱╲                                    
+   ┌ conversation ──────────────────────────────────────┐   
+   │Garde cette mission ouverte                         │   
+   │                                                    │   
+   │Exécution sur le serveur · 127.0.0.1:44169          │   
+   │                                                    │   
+   │                                                    │   
+   │SORTIE REÇUE · résultat non encore confirmé         │   
+   │                                                    │   
+   │MISSION EN ATTENTE                                  │   
+   └────────────────────────────────────────────────────┘   
+   running · Préparation de l’action                        
+    00:00  État reçu · running · 2 étapes · 0 preuves       
+   ┌ Votre demande · Entrée envoyer · Alt+Entrée ligne ─┐   
+   │                                                    │   
+   └────────────────────────────────────────────────────┘   
+   F2 thème · F3 modèle · F4 vue · ^C arrêt · ^Q sortie     
