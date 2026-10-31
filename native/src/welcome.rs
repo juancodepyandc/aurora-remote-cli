@@ -300,3 +300,41 @@ fn draw_pixels(ui: &Ui, f: &mut Frame, area: Rect) {
         }
     }
 }
+
+/// Compact identity stays beside the transcript through every mission state.
+pub fn draw_companion(ui: &Ui, f: &mut Frame, area: Rect, stacked: bool) {
+    if area.width < 4 || area.height < 2 {
+        return;
+    }
+    let (art, body, ornament) = if stacked {
+        let h = area.height.saturating_sub(1).max(1);
+        (
+            Rect::new(area.x, area.y, area.width, h),
+            Rect::new(area.x + 1, area.y + h, area.width - 2, 1),
+            Rect::default(),
+        )
+    } else {
+        let w = (area.height * 2).min(16).min(area.width - 3);
+        (
+            Rect::new(area.x, area.y, w, area.height),
+            Rect::new(area.x + w + 2, area.y, area.width - w - 3, area.height - 1),
+            Rect::new(area.x + w + 2, area.bottom() - 1, area.width - w - 3, 1),
+        )
+    };
+    draw_pixels(ui, f, art);
+    f.render_widget(
+        Paragraph::new(vec![
+            Line::styled(
+                clean(&ui.component("headline"), ui.unicode()),
+                ui.style("primary").add_modifier(Modifier::BOLD),
+            ),
+            Line::styled(
+                clean(&ui.component("eyebrow"), ui.unicode()),
+                ui.style("muted"),
+            ),
+        ])
+        .wrap(Wrap { trim: false }),
+        body,
+    );
+    lettering(ui, f, ornament, &rows(ui, "ornament"), "secondary");
+}

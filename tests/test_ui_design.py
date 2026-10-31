@@ -57,8 +57,10 @@ def test_readable_cells_survive_streaming_and_resize(width,monkeypatch):
             running = asyncio.create_task(app.run())
             await asyncio.sleep(.08)
             text = grid(app)
-            assert 'Vous' in text and 'Aurora' in text and 'def ready()' in text
+            assert 'Vous' in text and 'Aurora' in text and 'def ready()' in text, text
             assert 'Lecture en cours' in text and 'read_file' in text
+            assert display.view.theme.components.headline.split()[0] in text
+            assert '▀' in text
             assert 'Session' in text and 'Mission mis_live' in text and '24 ms' in text
             assert 'password' not in text and 'token=' not in text
             assert app.body.window.horizontal_scroll == 0

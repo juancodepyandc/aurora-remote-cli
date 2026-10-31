@@ -90,3 +90,9 @@ Preuves et critique : [validation/composition-2026-10-29](validation/composition
 ### Démarrage normal et reprise (30 octobre)
 
 L'accueil doit apparaître au lancement normal, même si une conversation et une mission précédente sont enregistrées. Un avis de reprise est une information durable, pas une erreur qui impose d'ouvrir la conversation. Il remplace les compteurs vides sous l'accueil, avec ses actions visibles ; les détails restent accessibles dans la conversation. Deux avis simultanés disposent de trois lignes, y compris à 60×24. Les erreurs de connexion continuent d'ouvrir leur diagnostic. Aucune reprise d'exécution n'est implicite. Le parcours utilisateur de référence est `git pull`, `./install.sh`, `jobia` ; choisir un thème ou un renderer ne doit pas être un préalable à un accueil complet. Le thème par défaut reste otter et un autre choix enregistré reste respecté.
+
+## Continuité pendant une demande — 31 octobre 2026
+
+L'accueil seul ne suffit pas : faire disparaître toute illustration dès l'envoi rompt l'identité du produit. La vue active conserve le même art déclaratif, le titre et l'ornement du thème. À partir de 112 colonnes, ce compagnon occupe le haut de la colonne de mission ; en dessous, un bandeau de trois lignes (quatre à partir de 40 lignes) réserve la hauteur à la réponse. Une animation native brève accompagne un changement de phase ou d'état, au rythme du thème. Le repos revient sans timer de dessin. Le renderer Python conserve une illustration statique et les mêmes zones.
+
+Les commandes structurées du modèle sont des opérations de contrôle. Le champ additif `channel: tool_call` les dirige vers le journal, avec activité visible ; les tokens conversationnels sans ce champ gardent leur rendu progressif. Le plan, les observations, les erreurs et la livraison restent visibles avec la conversation. Aucun avancement ni succès n'est inventé pour animer l'écran.

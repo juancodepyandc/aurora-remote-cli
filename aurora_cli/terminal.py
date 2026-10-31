@@ -18,6 +18,7 @@ _ASCII = str.maketrans({
 
 
 def ascii_text(value: str) -> str:
+    value = ''.join('.' if 0x2800<=ord(c)<=0x28ff else '#' if c in '▀▄█▓▒░' else c for c in value)
     normalized = unicodedata.normalize('NFKD', value.translate(_ASCII))
     return ''.join(c for c in normalized if not unicodedata.combining(c)).encode('ascii', 'replace').decode('ascii')
 
