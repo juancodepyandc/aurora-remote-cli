@@ -1,0 +1,142 @@
+{
+  "release": "https://github.com/juancodepyandc/aurora-remote-cli/releases/tag/v1.5.3",
+  "published_at": "2026-10-31T11:54:37Z",
+  "workflow": "https://github.com/juancodepyandc/aurora-remote-cli/actions/runs/41198267256",
+  "head_sha": "b0a032d0eb654b93ae2358bb246bd736c1e56e1a",
+  "conclusion": "success",
+  "jobs": [
+    {
+      "id": 124528740851,
+      "name": "checks / client (ubuntu-latest, 3.10)",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "id": 124528740939,
+      "name": "checks / native (macos-latest)",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "id": 124528740954,
+      "name": "checks / native (ubuntu-22.04)",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "id": 124528740956,
+      "name": "checks / native (macos-15-intel)",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "id": 124528740958,
+      "name": "checks / native (windows-latest)",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "id": 124528740962,
+      "name": "checks / client (macos-latest, 3.10)",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "id": 124528740967,
+      "name": "checks / client (windows-latest, 3.13)",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "id": 124528741041,
+      "name": "checks / client (macos-latest, 3.13)",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "id": 124528741076,
+      "name": "checks / client (ubuntu-latest, 3.13)",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "id": 124528741146,
+      "name": "checks / client (windows-latest, 3.10)",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "id": 124530245980,
+      "name": "publish",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "id": 124530278722,
+      "name": "installed (macos-latest)",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "id": 124530278732,
+      "name": "installed (windows-latest)",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "id": 124530278736,
+      "name": "installed (macos-15-intel)",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "id": 124530278842,
+      "name": "installed (ubuntu-22.04)",
+      "status": "completed",
+      "conclusion": "success"
+    }
+  ],
+  "assets": [
+    {
+      "name": "aurora-native-v1.5.3-aarch64-apple-darwin",
+      "size": 1053136,
+      "url": "https://github.com/juancodepyandc/aurora-remote-cli/releases/download/v1.5.3/aurora-native-v1.5.3-aarch64-apple-darwin"
+    },
+    {
+      "name": "aurora-native-v1.5.3-aarch64-apple-darwin.sha256",
+      "size": 108,
+      "url": "https://github.com/juancodepyandc/aurora-remote-cli/releases/download/v1.5.3/aurora-native-v1.5.3-aarch64-apple-darwin.sha256"
+    },
+    {
+      "name": "aurora-native-v1.5.3-x86_64-apple-darwin",
+      "size": 1057424,
+      "url": "https://github.com/juancodepyandc/aurora-remote-cli/releases/download/v1.5.3/aurora-native-v1.5.3-x86_64-apple-darwin"
+    },
+    {
+      "name": "aurora-native-v1.5.3-x86_64-apple-darwin.sha256",
+      "size": 107,
+      "url": "https://github.com/juancodepyandc/aurora-remote-cli/releases/download/v1.5.3/aurora-native-v1.5.3-x86_64-apple-darwin.sha256"
+    },
+    {
+      "name": "aurora-native-v1.5.3-x86_64-pc-windows-msvc.exe",
+      "size": 956416,
+      "url": "https://github.com/juancodepyandc/aurora-remote-cli/releases/download/v1.5.3/aurora-native-v1.5.3-x86_64-pc-windows-msvc.exe"
+    },
+    {
+      "name": "aurora-native-v1.5.3-x86_64-pc-windows-msvc.exe.sha256",
+      "size": 115,
+      "url": "https://github.com/juancodepyandc/aurora-remote-cli/releases/download/v1.5.3/aurora-native-v1.5.3-x86_64-pc-windows-msvc.exe.sha256"
+    },
+    {
+      "name": "aurora-native-v1.5.3-x86_64-unknown-linux-gnu",
+      "size": 1110376,
+      "url": "https://github.com/juancodepyandc/aurora-remote-cli/releases/download/v1.5.3/aurora-native-v1.5.3-x86_64-unknown-linux-gnu"
+    },
+    {
+      "name": "aurora-native-v1.5.3-x86_64-unknown-linux-gnu.sha256",
+      "size": 112,
+      "url": "https://github.com/juancodepyandc/aurora-remote-cli/releases/download/v1.5.3/aurora-native-v1.5.3-x86_64-unknown-linux-gnu.sha256"
+    }
+  ],
+  "scope": "Published binaries installed and launched on CI runners; not a claim of real model generation quality."
+}
