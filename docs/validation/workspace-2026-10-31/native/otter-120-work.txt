@@ -1,0 +1,30 @@
+  ≈ Aurora                                                                                       Connexion : flux reçu  
+  Cible pc-maitre.example                                                                                  Diag. 24 ms  
+  Session demo-42                                                                                     Mission mis_demo  
+  read_file                                                                                                      otter  
+   [1 Conversation]  2 Modules  3 Agents  4 Bilans  5 Journal  6 Fichiers                                               
+  ╭ conversation ──────────────────────────────────────────────────────────────────╮                ▀                   
+  │Vous                                                                            │           ▀▀▀▀▀▀▀▀▀▀▀▀             
+  │Inspecte ce projet et vérifie les tests.                                        │          ▀▀▀▀▀▀▀▀▀▀▀▀▀             
+  │                                                                                │           ▀▀▀▀▀▀▀▀▀▀▀▀             
+  │Aurora                                                                          │            ▀▀▀▀▀▀▀▀▀               
+  │Le plan est prêt. Je commence par le fichier d’entrée.                          │           ▀▀▀▀▀▀▀▀▀▀▀              
+  │                                                                                │           ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀          
+  │python                                                                          │            ▀▀▀▀▀▀▀▀▀▀▀▀▀▀          
+  │  def ready():                                                                  │            ▀▀▀▀▀▀▀▀▀▀▀▀▀           
+  │      return True                                                               │ À votre rythme.                    
+  │                                                                                │╭ Mission ───────────────────────╮  
+  │                                                                                ││Mission · SAFE                  │  
+  │                                                                                ││Critères 0/1 · Fichiers 0       │  
+  │SORTIE REÇUE · résultat non encore confirmé                                     ││PLAN                            │  
+  │                                                                                ││1. Inspecter le projet          │  
+  │Lecture de la configuration en cours…                                           ││2. Exécuter les tests           │  
+  │                                                                                ││                                │  
+  ╰────────────────────────────────────────────────────────────────────────────────╯╰────────────────────────────────╯  
+  running · read_file                                                                                                   
+   0 observations · 0 fichiers · 0 caractères reçus                                                                     
+   00:00  Outil en cours · read_file                                                                                    
+  ╭ Votre demande · Entrée envoyer · Alt+Entrée ligne ───────────────────────────────────────────────────────────────╮  
+  │Explique le résultat                                                                                              │  
+  ╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯  
+  F2 thèmes · F3 modèles · F4 vues · F5 état · Pg↑↓ journal · Ctrl+N nouveau · Ctrl+C arrêt · Ctrl+Q sortie             

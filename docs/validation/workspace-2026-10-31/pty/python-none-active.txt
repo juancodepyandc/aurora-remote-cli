@@ -1,0 +1,24 @@
+  o AURORA  /  Isobare                                      
+  Cible 127.0.0.1:36693 . flux recu . Diag 3 ms             
+  Session d3efddd2 . Mission mis_pty                        
+ 1 <Con>  2 Mod  3 Age  4 Bil  5 Jou  6 Fic                 
+  +     Une idee. Un cap.                                   
+++#++#  ISOBARE / ATELIER POLAIRE                           
+#++###             ??                                       
+                                                        ^   
+VOUS                                                        
+                                                            
+Garde cette mission ouverte                                 
+                                                            
+Execution sur le serveur . 127.0.0.1:36693                  
+                                                            
+SORTIE RECUE . resultat non encore confirme                 
+                                                            
+MISSION EN ATTENTE                                      v   
+ Activite observee . Mission acceptee . Preparation de l'~  
+ 00:00  Etat recu . running . 2 etapes . 0 preuves          
+ Demande . Entree envoyer . Alt+Entree ligne                
+|                                                           
+|                                                           
+ F2 Theme  F3 Modele  F4 Vue  F5 Diagnostic                 
+ Ctrl+C Arret . Ctrl+Q Sortie . Tab Defiler . / Aide        

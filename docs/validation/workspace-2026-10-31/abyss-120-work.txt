@@ -1,0 +1,30 @@
+  ◌ AURORA /  /  Bathysphère
+  Cible pc-maitre.example · flux reçu · Diag 24 ms
+  Session demo-42 · Mission mis_demo
+ 1 [Conversation]  2 Modules  3 Agents  4 Bilans  5 Journal  6 Fichiers
+Vous                                                                           ^                         ▀
+                                                                                              ▀   ▀▀▀▀▀
+Inspecte ce projet et vérifie les tests.                                                       ▀▀▀     ▀▀▀
+                                                                                             ▀▀   ▀▀▀▀▀   ▀▀
+Aurora                                                                                     ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+                                                                                           ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+Le plan est prêt. Je commence par le fichier d’entrée.                                        ▀▀   ▀▀▀   ▀▀
+                                                                                                ▀▀▀▀▀▀▀▀▀
+                                                                                             ▀            ▀
+ def ready():                                                                      Sous la surface.
+     return True                                                                   Mission · critères & preuves
+                                                                                  │ Mission · SAFE
+                                                                                  │ Critères 0/1 · Fichiers 0
+SORTIE REÇUE · résultat non encore confirmé                                       │ PLAN
+                                                                                  │ 1. Inspecter le projet
+Lecture de la configuration en cours…                                             │ 2. Exécuter les tests
+                                                                                  │
+                                                                               v  │ CRITÈRES
+ Activité observée · Mission acceptée · read_file
+ 0 observations · 0 fichiers · 0 caractères reçus
+ 00:00  Outil en cours · read_file
+ Demande · Entrée envoyer · Alt+Entrée ligne
+│ Explique le résultat
+│
+ F2 Thème  F3 Modèle  F4 Vue  F5 Diagnostic
+ Ctrl+C Arrêt · Ctrl+Q Sortie · Tab Défiler · / Aide

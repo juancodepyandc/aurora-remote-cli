@@ -1,0 +1,32 @@
+  ◇ AURORA  /  Isobare
+  Cible pc-maitre.example · flux reçu · Diag 24 ms
+  Session demo-42 · Mission mis_demo
+ 1 <Conv>  2 Modu  3 Agen  4 Bila  5 Jour  6 Fich
+  ▀     Une idée. Un cap.
+▀▀▀▀▀▀  ISOBARE / ATELIER POLAIRE
+▀▀▀▀▀▀             ╱╲
+Vous                                                                        ^
+
+Inspecte ce projet et vérifie les tests.
+
+Aurora
+
+Le plan est prêt. Je commence par le fichier d’entrée.
+
+
+ def ready():
+     return True
+
+
+SORTIE REÇUE · résultat non encore confirmé
+
+Lecture de la configuration en cours…
+                                                                            v
+ Activité observée · Mission acceptée · read_file
+ 0 observations · 0 fichiers · 0 caractères reçus
+ 00:00  Outil en cours · read_file
+ Demande · Entrée envoyer · Alt+Entrée ligne
+│ Explique le résultat
+│
+ F2 Thème  F3 Modèle  F4 Vue  F5 Diagnostic
+ Ctrl+C Arrêt · Ctrl+Q Sortie · Tab Défiler · / Aide
