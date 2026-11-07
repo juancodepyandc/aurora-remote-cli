@@ -1833,7 +1833,8 @@ def mcp_tools_cmd(workspace, as_json):
 @click.option("--arg", "kv_args", multiple=True, help="Tool argument in key=value format (repeatable).")
 @click.option("--json-args", default="", help="JSON object of arguments.")
 @click.option("--workspace", default="", help="Server workspace context.")
-def mcp_call_cmd(server, tool, kv_args, json_args, workspace):
+@click.option("--timeout", "timeout_seconds", type=click.FloatRange(1, 180), default=None, help="Explicit MCP execution budget, up to 180 seconds.")
+def mcp_call_cmd(server, tool, kv_args, json_args, workspace, timeout_seconds):
     """Invoke a tool on a bridge MCP server and print the result."""
     arguments = {}
     if json_args:
@@ -1854,10 +1855,15 @@ def mcp_call_cmd(server, tool, kv_args, json_args, workspace):
             arguments[k] = v
     client = _client()
     try:
-        result = _require_remote_ok(client.mcp_call(server, tool, arguments=arguments, workspace=workspace))
+        options = {"timeout_seconds": timeout_seconds} if timeout_seconds is not None else {}
+        result = _require_remote_ok(client.mcp_call(server, tool, arguments=arguments, workspace=workspace, **options))
     finally:
         client.close()
     click.echo(json.dumps(result.get("result", result), ensure_ascii=False, indent=2))
+
+
+from aurora_cli.mcp_commands import register_mcp_commands
+register_mcp_commands(mcp, lambda: _client(), lambda result: _require_remote_ok(result))
 
 
 @main.group()

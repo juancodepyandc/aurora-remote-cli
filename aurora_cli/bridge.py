@@ -356,11 +356,34 @@ class Bridge:
     def mcp_tools(self, workspace: str = "") -> dict:
         return self.get("/api/cli/mcp/tools", params={"workspace": workspace} if workspace else {})
 
-    def mcp_call(self, server: str, tool: str, arguments: dict | None = None, workspace: str = "") -> dict:
+    def mcp_call(self, server: str, tool: str, arguments: dict | None = None, workspace: str = "", timeout_seconds: float | None = None) -> dict:
         payload: dict[str, Any] = {"server": server, "tool": tool, "arguments": arguments or {}}
         if workspace:
             payload["workspace"] = workspace
-        return self.post("/api/cli/mcp/call", payload)
+        options = {}
+        if timeout_seconds is not None:
+            if isinstance(timeout_seconds, bool) or not isinstance(timeout_seconds, (int, float)) or not 1 <= timeout_seconds <= 180:
+                raise ValueError("MCP timeout must be between 1 and 180 seconds")
+            payload["timeout_seconds"] = timeout_seconds
+            options["timeout"] = httpx.Timeout(timeout_seconds + 10, connect=10)
+        return self.post("/api/cli/mcp/call", payload, **options)
+
+    def mcp_catalog(self, server: str, kind: str = "tools", *, cursor: str = "", workspace: str = "") -> dict:
+        params = {"server": server, "kind": kind}
+        if cursor:
+            params["cursor"] = cursor
+        if workspace:
+            params["workspace"] = workspace
+        return self.get("/api/cli/mcp/catalog", params=params)
+
+    def mcp_read_resource(self, server: str, uri: str, *, workspace: str = "") -> dict:
+        return self.post("/api/cli/mcp/resource", {"server": server, "uri": uri, **({"workspace": workspace} if workspace else {})})
+
+    def mcp_get_prompt(self, server: str, name: str, arguments: dict | None = None, *, workspace: str = "") -> dict:
+        return self.post("/api/cli/mcp/prompt", {"server": server, "name": name, "arguments": arguments or {}, **({"workspace": workspace} if workspace else {})})
+
+    def mcp_close(self, server: str, *, workspace: str = "") -> dict:
+        return self.post("/api/cli/mcp/close", {"server": server, **({"workspace": workspace} if workspace else {})})
 
     # --- Skills ---
 
