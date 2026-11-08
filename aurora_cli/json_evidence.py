@@ -6,15 +6,25 @@ import json
 import math
 import re
 
+# Keep the empty-root alternative outside the regex: local Ollama 0.31.1
+# silently ignored grouped optional/empty patterns in actual decoding probes.
+# This grammar constrains the prefix; _parts still validates escapes and size.
+POINTER_PATTERN = r'^/.*$'
+
+
+def _pointer_schema(description):
+    return {'description': description, 'anyOf': [
+        {'const': ''}, {'type': 'string', 'pattern': POINTER_PATTERN}]}
+
 BINDING_SCHEMA = {
     'type': 'object', 'additionalProperties': False,
     'properties': {
-        'path': {'type': 'string', 'description': 'RFC 6901 pointer in the saved output: /field or /items/0; empty means root. Never dot or bracket syntax.'},
+        'path': _pointer_schema('RFC 6901 pointer in the saved output: /field or /items/0; empty means root. Never dot or bracket syntax.'),
         'evidence_id': {'type': 'string', 'description': 'Actual successful receipt ID retained by this mission.'},
-        'source_pointer': {'type': 'string', 'description': 'RFC 6901 pointer from the complete receipt, including /result for native receipts or /output for local CLI receipts. Follow actual nested objects; never dot syntax.'},
+        'source_pointer': _pointer_schema('RFC 6901 pointer from the complete receipt, including /result for native receipts or /output for local CLI receipts. Follow actual nested objects; never dot syntax.'),
         'relation': {'type': 'string', 'enum': ['equals', 'text_in']},
         'decode_json': {'type': 'boolean'},
-        'value_pointer': {'type': 'string', 'description': 'RFC 6901 pointer within explicitly decoded source JSON text, e.g. /field or /items/0.'},
+        'value_pointer': _pointer_schema('RFC 6901 pointer within explicitly decoded source JSON text, e.g. /field or /items/0.'),
     },
     'required': ['path', 'evidence_id', 'source_pointer'],
 }

@@ -40,3 +40,5 @@ MCP (1.5.4) : `jobia mcp catalog SERVEUR --kind tools`, `resources SERVEUR`, `pr
 Preuves JSON (1.5.5) : les missions locales disposent de `verify_json_evidence`. Des pointeurs relient les champs du fichier sauvegardé aux reçus réussis de la même mission, avec égalité typée ou inclusion textuelle et décodage JSON explicite. Une contre-vérification échouée retire le crédit du critère. Ce contrôle couvre seulement les liaisons fournies : il ne garantit ni la vérité externe, ni la fraîcheur, ni la couverture entière de la demande. Les missions distantes utilisent `verify(kind="json_evidence")` du serveur compatible.
 
 La version 1.5.6 précise les erreurs de pointeurs JSON : `/field` et `/items/0`, depuis le reçu complet ; la notation pointée ou à crochets est refusée. Un champ absent indique les clés disponibles, sans afficher leurs valeurs.
+
+La version 1.5.7 demande aussi au décodage structuré une racine vide ou un préfixe `/`, avec une forme de schéma testée sur le moteur local. Le vérificateur contrôle encore la syntaxe complète et le contenu des reçus : un préfixe correct ne prouve pas que le chemin ou la donnée sont justes.

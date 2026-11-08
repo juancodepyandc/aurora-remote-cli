@@ -1032,7 +1032,7 @@ list_mcp_tools / call_mcp_tool: discover and invoke local MCP servers (.mcp.json
 read_file: inspect a real workspace file; returns its content and SHA-256.
 write_file: exact UTF-8 content; existing files require the SHA-256 actually observed in read_file.
 edit_file: surgical search-and-replace on an existing workspace file with automatic backup.
-verify_json_evidence: compare saved JSON fields with actual successful receipt IDs and JSON pointers; no invented expected constants.
+verify_json_evidence: compare saved JSON fields with actual successful receipt IDs and JSON pointers; no invented expected constants. Pointers use /field or /items/0, with /output followed by actual nesting for the whole local receipt; no dot or bracket notation.
 verify_file: compare real bytes with expected content or SHA-256; use an EXACT accepted criterion label.
 run_python: run an existing inspected Python script; attach an EXACT accepted criterion label when checking it.
 run_command: run a bounded non-shell command (argv list) in the workspace; attach an EXACT accepted criterion label when verifying.
