@@ -9,12 +9,12 @@ import re
 BINDING_SCHEMA = {
     'type': 'object', 'additionalProperties': False,
     'properties': {
-        'path': {'type': 'string', 'description': 'JSON pointer in the saved output.'},
+        'path': {'type': 'string', 'description': 'RFC 6901 pointer in the saved output: /field or /items/0; empty means root. Never dot or bracket syntax.'},
         'evidence_id': {'type': 'string', 'description': 'Actual successful receipt ID retained by this mission.'},
-        'source_pointer': {'type': 'string', 'description': 'JSON pointer starting at the complete tool receipt.'},
+        'source_pointer': {'type': 'string', 'description': 'RFC 6901 pointer from the complete receipt, including /result for native receipts or /output for local CLI receipts. Follow actual nested objects; never dot syntax.'},
         'relation': {'type': 'string', 'enum': ['equals', 'text_in']},
         'decode_json': {'type': 'boolean'},
-        'value_pointer': {'type': 'string', 'description': 'Pointer within explicitly decoded source JSON text.'},
+        'value_pointer': {'type': 'string', 'description': 'RFC 6901 pointer within explicitly decoded source JSON text, e.g. /field or /items/0.'},
     },
     'required': ['path', 'evidence_id', 'source_pointer'],
 }
@@ -22,7 +22,7 @@ BINDING_SCHEMA = {
 
 def _parts(path):
     if not isinstance(path, str) or len(path) > 4096 or (path and not path.startswith('/')):
-        raise ValueError('A bounded JSON pointer is required; empty means the document root')
+        raise ValueError('Use an RFC 6901 JSON pointer: "" for root, "/field" or "/items/0"; never dot or bracket syntax (maximum 4096 characters)')
     if path == '':
         return []
     keys = []
@@ -38,7 +38,8 @@ def pointer(value, path):
     for key in _parts(path):
         if isinstance(value, dict):
             if key not in value:
-                raise ValueError('JSON pointer field is absent')
+                keys = json.dumps(list(value)[:12], ensure_ascii=True)[:512]
+                raise ValueError('JSON pointer field is absent; keys at this level: '+keys)
             value = value[key]
         elif isinstance(value, list):
             if not re.fullmatch(r'0|[1-9][0-9]*', key) or int(key) >= len(value):
@@ -105,8 +106,11 @@ def validate_bindings(bindings):
             raise ValueError('Unsupported evidence relation or decode flag')
         if not binding['evidence_id'] or len(binding['evidence_id']) > 256:
             raise ValueError('A bounded actual evidence ID is required')
-        _parts(binding['path'])
-        _parts(binding['source_pointer'])
+        for field in ('path', 'source_pointer'):
+            try:
+                _parts(binding[field])
+            except ValueError as exc:
+                raise ValueError(f'Binding {field}: {exc}') from exc
         if 'value_pointer' in binding:
             if not binding.get('decode_json'):
                 raise ValueError('value_pointer requires explicit source JSON decoding')
