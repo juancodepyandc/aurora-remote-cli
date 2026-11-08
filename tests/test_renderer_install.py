@@ -68,3 +68,19 @@ def test_invalid_export_cannot_hide_installed_renderer(tmp_path,monkeypatch):
 
 def test_unknown_architecture_does_not_download():
     with pytest.raises(RuntimeError,match='non distribué'):native.target_triple('Linux','riscv64')
+
+
+def test_release_versions_match_before_building_native_assets():
+    try:
+        import tomllib
+    except ImportError:
+        import tomli as tomllib
+    root=Path(__file__).resolve().parents[1]
+    def load(name):
+        with (root/name).open('rb') as stream:
+            return tomllib.load(stream)
+    locked=[package['version'] for package in load('native/Cargo.lock')['package']
+            if package['name']=='aurora-native']
+    assert locked==[__version__]
+    assert load('native/Cargo.toml')['package']['version']==__version__
+    assert load('pyproject.toml')['project']['version']==__version__
