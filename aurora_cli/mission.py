@@ -84,12 +84,27 @@ def run_mission(client: Bridge, request: str, workspace: str = "", permissions: 
         return False
 
     actual_ws = workspace or os.getcwd()
-    display.header('MISSION DISTANTE', request)
+    # A resumed/watched mission keeps the server's original context. Client
+    # defaults were never sent on resume and must not be displayed as applied.
+    context = data
+    retained_mission = bool(resume_id or watch_id)
+    if resume_id:
+        try:
+            status = client.mission_status(mission_id)
+            context = status if isinstance(status, dict) and status.get('ok') else {}
+        except Exception:
+            context = {}
+    def observed_text(key, fallback):
+        value = context.get(key)
+        return value if isinstance(value, str) and value else fallback
+    permission_label = observed_text('permissions', 'conservées sur le serveur (non rapportées)' if retained_mission else permissions)
+    execution_label = observed_text('workspace', 'conservé sur le serveur (non rapporté)' if retained_mission else server_workspace or 'espace de travail du pont')
+    session_label = observed_text('session_id', 'session du serveur' if retained_mission else session_id or 'session du serveur')
+    display.header('MISSION DISTANTE', observed_text('request', request) if retained_mission else request)
     display.print(display.view.key_value_table('CONNEXION', [
         ('Cible', target_label(client.server_url)), ('Mission', mission_id),
-        ('Session', session_id or 'session du serveur'),
-        ('Permissions', permissions), ('Réception des fichiers', actual_ws),
-        ('Exécution', server_workspace or 'espace de travail du pont'),
+        ('Session', session_label), ('Permissions', permission_label),
+        ('Réception des fichiers', actual_ws), ('Exécution', execution_label),
     ]))
     display.info('Mission acceptée · attente du premier événement')
 

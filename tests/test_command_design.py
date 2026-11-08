@@ -160,3 +160,37 @@ def test_remote_repl_stream_is_literal_once_and_keeps_target_context(monkeypatch
     assert stream.getvalue().count('Exactly once [red]') == 1
     assert '\x1b' not in stream.getvalue()
     assert all('bridge.test' in line and 'session-ui' in line for line in toolbars)
+
+
+def test_resume_displays_retained_server_context_without_resubmission(monkeypatch, tmp_path):
+    from aurora_cli.mission import run_mission
+    stream = _capture_display(monkeypatch, width=100)
+    client = Mock(server_url='https://bridge.test')
+    client.mission_resume.return_value = {'ok':True, 'mission_id':'retained', 'cursor':7}
+    client.mission_status.return_value = {'ok':True, 'id':'retained', 'request':'Original diagnostic',
+        'workspace':'/server/project', 'permissions':'STANDARD', 'session_id':'server-session',
+        'stream_start_cursor':99}
+    client.mission_stream.return_value = iter([{'type':'mission_complete','status':'completed','result':'Done'}])
+    assert run_mission(client, 'Resume placeholder', workspace=str(tmp_path), permissions='FULL',
+                       server_workspace='/wrong-client-default', resume_id='retained')
+    output = stream.getvalue()
+    assert 'STANDARD' in output and '/server/project' in output and 'Original diagnostic' in output
+    assert 'FULL' not in output and '/wrong-client-default' not in output and 'Resume placeholder' not in output
+    client.mission_start.assert_not_called()
+    client.mission_resume.assert_called_once_with('retained', model='')
+    client.mission_stream.assert_called_once_with('retained', last_event_id=7)
+
+
+def test_resume_without_status_never_displays_client_defaults_as_applied(monkeypatch, tmp_path):
+    from aurora_cli.mission import run_mission
+    stream = _capture_display(monkeypatch, width=100)
+    client = Mock(server_url='https://bridge.test')
+    client.mission_resume.return_value = {'ok':True, 'mission_id':'retained'}
+    client.mission_status.side_effect = TimeoutError('status unavailable')
+    client.mission_stream.return_value = iter([{'type':'mission_complete','status':'completed','result':'Done'}])
+    assert run_mission(client, 'Resume', workspace=str(tmp_path), permissions='FULL',
+                       server_workspace='/wrong-client-default', resume_id='retained')
+    output = stream.getvalue()
+    assert 'FULL' not in output and '/wrong-client-default' not in output
+    assert 'serveur' in output
+    client.mission_start.assert_not_called()

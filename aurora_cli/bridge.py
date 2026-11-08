@@ -590,5 +590,9 @@ class Bridge:
     def missions_list(self) -> dict:
         return self.get("/api/cli/missions")
 
+    def mission_evidence(self, mission_id: str, *, evidence_id: str = "", pointer: str = "", tool: str = "", offset: int = 0, limit: int = 16) -> dict:
+        return self.get(f"/api/cli/mission/{mission_id}/evidence", params={
+            'evidence_id':evidence_id, 'pointer':pointer, 'tool':tool, 'offset':offset, 'limit':limit})
+
     def mission_resume(self, mission_id: str, model: str = "") -> dict:
         return self.post(f"/api/cli/mission/{mission_id}/resume", {"model": model})

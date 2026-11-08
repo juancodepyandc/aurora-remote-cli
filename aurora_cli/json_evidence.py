@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+from itertools import islice
 import json
 import math
 import re
@@ -136,7 +137,7 @@ def compare_evidence(actual, bindings, receipts):
         receipt = receipts.get(binding['evidence_id'])
         if not isinstance(receipt, dict) or receipt.get('ok') is not True:
             raise ValueError('Source must be an actual successful tool receipt in this mission')
-        if receipt.get('tool') in {'verify', 'verify_file', 'verify_json_evidence', 'write_file', 'set_plan', 'revise_plan', 'finish'}:
+        if receipt.get('tool') in {'verify', 'verify_file', 'verify_json_evidence', 'inspect_evidence', 'write_file', 'set_plan', 'revise_plan', 'finish'}:
             raise ValueError('A plan, assertion or saved output is not an observation source')
         observed = pointer(receipt, binding['source_pointer'])
         if binding.get('decode_json'):
@@ -157,3 +158,117 @@ def compare_evidence(actual, bindings, receipts):
                         'source_tool': receipt.get('tool')})
     return {'passed': all(item['passed'] for item in results), 'bindings': results,
             'scope': 'Saved JSON compared with retained successful tool receipts; not a fresh query or independent truth certificate'}
+
+
+def inspect_receipt(receipts, evidence_id='', pointer_path='', *, tool=None, offset=0, limit=16, max_chars=12000):
+    """Read only this mission's retained receipt, with real paths for bindings.
+
+    Traversal and response size are bounded. JSON text fields are indexed only
+    after strict decoding; returned hints still refer to the original receipt.
+    """
+    budget = max(512, min(int(max_chars), 16384))
+    if not isinstance(evidence_id, str) or len(evidence_id)>256:
+        raise ValueError('An actual bounded evidence ID is required')
+    if not evidence_id:
+        if pointer_path:
+            raise ValueError('Selecting a pointer requires an evidence_id')
+        if tool is not None and (not isinstance(tool,str) or not tool or len(tool)>256):
+            raise ValueError('Receipt tool filter must be bounded text')
+        if type(offset) is not int or offset<0 or type(limit) is not int or not 1<=limit<=64:
+            raise ValueError('Receipt index requires nonnegative offset and limit between 1 and 64')
+        # Excluding inspector calls makes pagination stable while the model
+        # inspects successive pages: these reads do not extend their own index.
+        matches = [r for r in receipts.values() if isinstance(r,dict)
+                   and r.get('tool')!='inspect_evidence' and (tool is None or r.get('tool')==tool)]
+        result = {'receipts':[], 'total':len(matches), 'offset':offset, 'next_offset':None,
+                  'scope':'Retained mission receipts in original order, excluding inspector reads. Historical, not fresh operations.'}
+        for receipt in matches[offset:offset+limit]:
+            item = {key:receipt.get(key) for key in ('id','tool','ok','action_number','elapsed_seconds') if key in receipt}
+            if len(json.dumps({**result,'receipts':result['receipts']+[item]},ensure_ascii=False))>budget-64:
+                if not result['receipts']:
+                    raise ValueError('Receipt metadata exceeds the inspection budget')
+                break
+            result['receipts'].append(item)
+        next_offset = offset+len(result['receipts'])
+        if next_offset<len(matches):
+            result['next_offset'] = next_offset
+        return result
+    receipt = receipts.get(evidence_id)
+    if not isinstance(receipt, dict):
+        raise ValueError('Evidence ID is not retained in this mission')
+    selected = pointer(receipt, pointer_path)
+    result = {'evidence_id':evidence_id, 'source_tool':receipt.get('tool'),
+              'source_ok':receipt.get('ok') is True, 'pointer':pointer_path,
+              'scope':'Historical retained receipt, not a fresh query. Bind the original evidence_id and field pointers, never this inspector receipt.',
+              'fields':[], 'truncated':False}
+
+    # iterencode stops after the excerpt budget instead of materializing an
+    # arbitrarily large serialization just to discover that it does not fit.
+    excerpt = ''
+    complete = True
+    for chunk in json.JSONEncoder(ensure_ascii=False, allow_nan=False).iterencode(selected):
+        room = budget//6 - len(excerpt)
+        if len(chunk)>room:
+            excerpt += chunk[:max(0,room)]
+            complete = False
+            break
+        excerpt += chunk
+    if complete:
+        result['value'] = json.loads(excerpt)
+    else:
+        result.update(value_excerpt=excerpt, value_complete=False, truncated=True)
+
+    def encoded_size(value):
+        return len(json.dumps(value, ensure_ascii=False, allow_nan=False))
+
+    stack = [(selected, pointer_path, None)]
+    visited = 0
+    while stack and visited<256 and len(result['fields'])<64:
+        value, source_path, decoded_path = stack.pop()
+        visited += 1
+        hint = {'source_pointer':source_path}
+        if decoded_path is not None:
+            hint.update(decode_json=True, value_pointer=decoded_path)
+        if isinstance(value, dict):
+            hint.update(type='object', keys=list(islice(value,12)))
+            children = list(islice(value.items(),64))
+        elif isinstance(value, list):
+            hint.update(type='array', length=len(value))
+            children = list(enumerate(value[:64]))
+        else:
+            hint['type'] = ('null' if value is None else 'boolean' if isinstance(value,bool)
+                            else 'number' if isinstance(value,(int,float)) else 'string')
+            hint['value'] = value[:160] if isinstance(value,str) else value
+            if isinstance(value,str) and len(value)>160:
+                hint['value_truncated'] = True
+            children = []
+            if (decoded_path is None and isinstance(value,str) and len(value)<=65536
+                    and value.lstrip().startswith(('{','['))):
+                try:
+                    decoded = strict_json_text(value)
+                except (ValueError, RecursionError):
+                    pass
+                else:
+                    stack.append((decoded, source_path, ''))
+        candidate = {**result, 'fields':result['fields']+[hint]}
+        if encoded_size(candidate)>budget:
+            result['truncated'] = True
+            break
+        result['fields'].append(hint)
+        for key, child in reversed(children):
+            token = str(key).replace('~','~0').replace('/','~1')
+            if decoded_path is None:
+                child_path = source_path+'/'+token
+                if len(child_path)<=4096:
+                    stack.append((child,child_path,None))
+            else:
+                child_path = decoded_path+'/'+token
+                if len(child_path)<=4096:
+                    stack.append((child,source_path,child_path))
+        if len(children)==64 and ((isinstance(value,dict) and len(value)>64)
+                                  or (isinstance(value,list) and len(value)>64)):
+            result['truncated'] = True
+    result['truncated'] = result['truncated'] or bool(stack)
+    if encoded_size(result)>budget:
+        raise ValueError('Selected receipt metadata exceeds the inspection budget')
+    return result

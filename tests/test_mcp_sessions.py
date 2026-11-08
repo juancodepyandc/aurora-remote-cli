@@ -148,3 +148,27 @@ def test_local_json_evidence_rejects_duplicate_keys_and_workspace_escape(tmp_pat
         assert not mission.tool('verify_json_evidence',{**args,'path':'../outside.json'})['ok']
     finally:
         mission.close()
+
+
+def test_safe_resumed_inspection_recovers_exact_paths_without_starting_a_process(tmp_path, monkeypatch):
+    mission = configured(tmp_path, 'mcp_catalog_server.py')
+    receipt = mission.tool('call_mcp_tool', {'server':'test','name':'pid'})
+    observed = receipt['output']['content'][0]['text']
+    mission.tool('write_file', {'path':'observed.json','content':json.dumps({'pid':observed})})
+    mid = mission.id
+    mission.close()
+    resumed = LocalMission('',tmp_path,'SAFE',resume_id=mid)
+    try:
+        monkeypatch.setattr('subprocess.Popen', Mock(side_effect=AssertionError('Inspection must not execute')))
+        index = resumed.tool('inspect_evidence', {'tool':'call_mcp_tool'})
+        assert [r['id'] for r in index['receipts']] == [receipt['id']]
+        inspected = resumed.tool('inspect_evidence', {'evidence_id':receipt['id']})
+        assert inspected['ok'] and inspected['source_ok']
+        field = next(f for f in inspected['fields'] if f['source_pointer']=='/output/content/0/text' and not f.get('decode_json'))
+        assert field['value'] == observed
+        check = {'path':'observed.json','criterion':'Observed result','bindings':[
+            {'path':'/pid','evidence_id':receipt['id'],'source_pointer':field['source_pointer']}]}
+        assert resumed.tool('verify_json_evidence',check)['ok']
+        assert not resumed.tool('inspect_evidence',{'evidence_id':'another-mission'})['ok']
+    finally:
+        resumed.close()

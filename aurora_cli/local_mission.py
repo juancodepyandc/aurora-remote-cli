@@ -17,7 +17,7 @@ import uuid
 
 from .core import locations
 from .core.security import is_forbidden
-from .json_evidence import BINDING_SCHEMA, compare_evidence, strict_json_text
+from .json_evidence import BINDING_SCHEMA, compare_evidence, strict_json_text, inspect_receipt
 
 
 import shlex
@@ -231,7 +231,7 @@ BUILTIN_MODULE_AGENTS = {
 
 class LocalMission:
     READ_ONLY_TOOLS = {
-        'inspect_runtime', 'list_files', 'find_files', 'search_code',
+        'inspect_runtime', 'inspect_evidence', 'list_files', 'find_files', 'search_code',
         'read_file', 'verify_file', 'verify_json_evidence', 'git_status', 'list_skills', 'read_skill',
         'list_mcp_tools', 'list_agents', 'search_web', 'fetch_url', 'test_hypothesis',
     }
@@ -485,7 +485,11 @@ class LocalMission:
             self.save()
         result = {'ok': True}
         try:
-            if name == 'inspect_runtime':
+            if name == 'inspect_evidence':
+                receipts = {entry['id']:entry for entry in self.state['evidence']}
+                result.update(inspect_receipt(receipts,args.get('evidence_id',''),args.get('pointer',''),
+                    tool=args.get('tool'),offset=args.get('offset',0),limit=args.get('limit',16)))
+            elif name == 'inspect_runtime':
                 from .epistemic import classify_problem_regime
                 skills = self._discover_local_skills()
                 mcp_servers = self._discover_local_mcp_servers()
@@ -1020,6 +1024,7 @@ Apply 3-Regime Adaptive Epistemic Intelligence:
 3. UNKNOWN_EXPLORATORY (Abductive Discovery): For unfamiliar problems, fuzzy requirements, 0-days, or mathematical conjectures, initiate competing falsifiable hypotheses and test them with test_hypothesis(mode="explore"|"math"|"cyber") / run_python / search_web / fetch_url, then capitalize proven discoveries with create_skill.
 set_plan: choose real steps and criteria derived from the original request.
 revise_plan: adapt remaining steps citing fresh evidence_ids and reason; criteria and verified proofs are preserved.
+inspect_evidence: list retained receipts with optional tool filter and offset/limit, or read a receipt by evidence_id and optional RFC 6901 pointer; returns actual binding paths. Historical, not a fresh operation. Use the original source evidence_id, never the inspector or your own output, for external observations.
 inspect_runtime: discover the actual interpreter, workspace, available skills, configured MCP servers, and epistemic_routing.
 list_files: list a workspace directory.
 find_files: recursively find files matching a glob pattern inside the workspace.
@@ -1049,7 +1054,7 @@ SAFE permits reads only. Do not announce unexecuted work as done. Repeated ident
                 snapshot = {k:v for k,v in self.state.items() if k != 'evidence'}
                 snapshot['evidence'] = self.state['evidence'][-6:]
                 tools = [
-                    'inspect_runtime', 'list_files', 'find_files', 'search_code',
+                    'inspect_runtime', 'inspect_evidence', 'list_files', 'find_files', 'search_code',
                     'git_status', 'list_skills', 'read_skill', 'create_skill',
                     'search_web', 'fetch_url', 'test_hypothesis',
                     'list_agents', 'create_agent',
@@ -1074,6 +1079,8 @@ SAFE permits reads only. Do not announce unexecuted work as done. Repeated ident
                                     'reason':{'type':'string'},
                                     'evidence_ids':{'type':'array','minItems':1,'items':{'type':'string'}}}, ['steps','reason','evidence_ids']),
                     'inspect_runtime':({}, []),
+                    'inspect_evidence':({'evidence_id':{'type':'string'},'pointer':{'type':'string'},'tool':{'type':'string'},
+                                         'offset':{'type':'integer','minimum':0},'limit':{'type':'integer','minimum':1,'maximum':64}}, []),
                     'list_files':({'path':{'type':'string'}}, ['path']),
                     'find_files':({'path':{'type':'string'},'pattern':{'type':'string'}}, []),
                     'search_code':({'query':{'type':'string'},'path':{'type':'string'},

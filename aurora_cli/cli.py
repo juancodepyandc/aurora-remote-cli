@@ -539,6 +539,21 @@ def missions_list_command(as_json):
             display.kv(item['id'], item['status']+' · '+item['request'][:100])
 
 
+@missions_command.command(name="evidence")
+@click.argument("mission_id")
+@click.option("--evidence-id", default="", help="Inspect one retained receipt by its actual ID.")
+@click.option("--pointer", default="", help="RFC 6901 pointer within that complete receipt.")
+@click.option("--tool", default="", help="Filter the retained receipt index by tool name.")
+@click.option("--offset", type=click.IntRange(min=0), default=0)
+@click.option("--limit", type=click.IntRange(1,64), default=16)
+def missions_evidence_command(mission_id, evidence_id, pointer, tool, offset, limit):
+    """Inspect retained observations and their actual JSON binding paths."""
+    with _client() as client:
+        result = _require_remote_ok(client.mission_evidence(mission_id,evidence_id=evidence_id,
+            pointer=pointer,tool=tool,offset=offset,limit=limit))
+    click.echo(json.dumps(result,ensure_ascii=False,indent=2))
+
+
 @missions_command.command(name="resume")
 @click.argument("mission_id")
 @click.option("--model", default="", help="Continue the same objective using another available model.")

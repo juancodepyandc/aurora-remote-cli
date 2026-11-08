@@ -216,3 +216,26 @@ def test_extended_agent_mcp_skills_and_mission_commands(monkeypatch):
     assert runner.invoke(cli.main, ["missions", "stop", "mis_1"]).exit_code == 0
     assert runner.invoke(cli.main, ["missions", "local", "--json"]).exit_code == 0
 
+
+
+def test_receipt_command_reads_actual_index_without_starting_or_resuming(monkeypatch):
+    from contextlib import nullcontext
+    client = Mock()
+    client.mission_evidence.return_value = {'ok':True,'receipts':[{'id':'observed','tool':'browser_action','ok':True}]}
+    monkeypatch.setattr(cli,'_client',lambda:nullcontext(client))
+    result = CliRunner().invoke(cli.main,['missions','evidence','mission','--tool','browser_action','--offset','2','--limit','4'])
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.output)['receipts'][0]['id']=='observed'
+    client.mission_evidence.assert_called_once_with('mission',evidence_id='',pointer='',tool='browser_action',offset=2,limit=4)
+    client.mission_start.assert_not_called()
+    client.mission_resume.assert_not_called()
+
+
+def test_receipt_command_propagates_missing_receipt_as_failure(monkeypatch):
+    from contextlib import nullcontext
+    client=Mock()
+    client.mission_evidence.return_value={'ok':False,'error':'Evidence ID is not retained in this mission'}
+    monkeypatch.setattr(cli,'_client',lambda:nullcontext(client))
+    result=CliRunner().invoke(cli.main,['missions','evidence','mission','--evidence-id','missing'])
+    assert result.exit_code != 0
+    assert 'not retained' in result.output
