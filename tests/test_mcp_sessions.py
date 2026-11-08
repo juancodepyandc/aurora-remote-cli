@@ -172,3 +172,44 @@ def test_safe_resumed_inspection_recovers_exact_paths_without_starting_a_process
         assert not resumed.tool('inspect_evidence',{'evidence_id':'another-mission'})['ok']
     finally:
         resumed.close()
+
+
+def test_local_model_schema_uses_actual_observed_ids_not_invented_references(tmp_path):
+    mission = configured(tmp_path, 'mcp_catalog_server.py')
+    receipt = mission.tool('call_mcp_tool', {'server':'test','name':'pid'})
+    received = []
+    class Runtime:
+        def complete(self, model, messages, **kwargs):
+            received.append(kwargs['response_format'])
+            return json.dumps({'tool':'inspect_evidence','args':{'evidence_id':receipt['id']}})
+    try:
+        with pytest.raises(RuntimeError,match='Budget de mission atteint'):
+            mission.run(Runtime(),'test:model',max_steps=1)
+        verify = next(b for b in received[0]['oneOf'] if b['properties']['tool']['const']=='verify_json_evidence')
+        ids = verify['properties']['args']['properties']['bindings']['items']['properties']['evidence_id']['enum']
+        assert ids == [receipt['id']]
+        inspect = next(b for b in received[0]['oneOf'] if b['properties']['tool']['const']=='inspect_evidence')
+        assert receipt['id'] in inspect['properties']['args']['properties']['evidence_id']['enum']
+        assert 'diagnostic_mcp_title' not in ids
+    finally:
+        mission.close()
+
+
+def test_local_grounding_and_saved_quantity_are_both_required(tmp_path):
+    mission=configured(tmp_path,'mcp_catalog_server.py')
+    try:
+        receipt=mission.tool('call_mcp_tool',{'server':'test','name':'pid'})
+        text=receipt['output']['content'][0]['text']
+        mission.tool('write_file',{'path':'items.json','content':json.dumps({'items':[text]})})
+        check={'path':'items.json','criterion':'Observed result','bindings':[
+            {'path':'/items/0','evidence_id':receipt['id'],'source_pointer':'/output/content/0/text'}],
+            'expressions':['len(data["items"]) == 2']}
+        assert not mission.tool('verify_json_evidence',check)['ok']
+        assert not mission.state['verified']
+        old=mission.tool('read_file',{'path':'items.json'})
+        mission.tool('write_file',{'path':'items.json','content':json.dumps({'items':[text,text]}),'expected_sha256':old['sha256']})
+        check['bindings'].append({**check['bindings'][0],'path':'/items/1'})
+        assert mission.tool('verify_json_evidence',check)['ok']
+        assert 'Observed result' in mission.state['verified']
+    finally:
+        mission.close()

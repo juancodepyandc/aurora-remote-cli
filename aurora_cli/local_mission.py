@@ -17,7 +17,7 @@ import uuid
 
 from .core import locations
 from .core.security import is_forbidden
-from .json_evidence import BINDING_SCHEMA, compare_evidence, strict_json_text, inspect_receipt
+from .json_evidence import BINDING_SCHEMA, compare_evidence, strict_json_text, inspect_receipt, observed_binding_schema
 
 
 import shlex
@@ -909,7 +909,7 @@ class LocalMission:
                     raise ValueError('JSON evidence verification exceeds its byte budget')
                 value = strict_json_text(raw.decode('utf-8'))
                 receipts = {entry['id']:entry for entry in self.state['evidence']}
-                checked = compare_evidence(value,args.get('bindings'),receipts)
+                checked = compare_evidence(value,args.get('bindings'),receipts,args.get('expressions',()))
                 result.update(checked,ok=checked['passed'],path=str(path),bytes=len(raw),sha256=_digest(raw))
             elif name in {'read_file', 'verify_file', 'write_file'}:
                 path = self.target(args.get('path'))
@@ -1037,7 +1037,7 @@ list_mcp_tools / call_mcp_tool: discover and invoke local MCP servers (.mcp.json
 read_file: inspect a real workspace file; returns its content and SHA-256.
 write_file: exact UTF-8 content; existing files require the SHA-256 actually observed in read_file.
 edit_file: surgical search-and-replace on an existing workspace file with automatic backup.
-verify_json_evidence: compare saved JSON fields with actual successful receipt IDs and JSON pointers; no invented expected constants. Pointers use /field or /items/0, with /output followed by actual nesting for the whole local receipt; no dot or bracket notation.
+verify_json_evidence: compare saved JSON fields with actual successful receipt IDs and JSON pointers; no invented expected constants. Pointers use /field or /items/0, with /output followed by actual nesting for the whole local receipt; no dot or bracket notation. equals compares complete typed values; text_in only matches nonempty saved string(s) inside an observed string, never numbers or objects. Optional expressions test saved values, arithmetic and len(data["items"]) for required quantities; no other function calls or attributes. Counts do not prove content or distinctness.
 verify_file: compare real bytes with expected content or SHA-256; use an EXACT accepted criterion label.
 run_python: run an existing inspected Python script; attach an EXACT accepted criterion label when checking it.
 run_command: run a bounded non-shell command (argv list) in the workspace; attach an EXACT accepted criterion label when verifying.
@@ -1072,6 +1072,7 @@ SAFE permits reads only. Do not announce unexecuted work as done. Repeated ident
                     instructions = '\n'.join(line for line in protocol.splitlines() if '"tool":"set_plan"' not in line)
                     instructions += '\nThe plan is ALREADY ACCEPTED. Continue from the observed files. '
                     instructions += 'Missing criteria: '+json.dumps(missing)
+                retained_ids = sorted({r['id'] for r in self.state['evidence'] if isinstance(r.get('id'),str) and 0<len(r['id'])<=256})
                 definitions = {
                     'set_plan':({'steps':{'type':'array','minItems':1,'items':{'type':'string'}},
                                  'criteria':{'type':'array','minItems':1,'items':{'type':'string'}}}, ['steps','criteria']),
@@ -1079,7 +1080,7 @@ SAFE permits reads only. Do not announce unexecuted work as done. Repeated ident
                                     'reason':{'type':'string'},
                                     'evidence_ids':{'type':'array','minItems':1,'items':{'type':'string'}}}, ['steps','reason','evidence_ids']),
                     'inspect_runtime':({}, []),
-                    'inspect_evidence':({'evidence_id':{'type':'string'},'pointer':{'type':'string'},'tool':{'type':'string'},
+                    'inspect_evidence':({'evidence_id':{'type':'string','enum':['',*retained_ids]},'pointer':{'type':'string'},'tool':{'type':'string'},
                                          'offset':{'type':'integer','minimum':0},'limit':{'type':'integer','minimum':1,'maximum':64}}, []),
                     'list_files':({'path':{'type':'string'}}, ['path']),
                     'find_files':({'path':{'type':'string'},'pattern':{'type':'string'}}, []),
@@ -1122,7 +1123,8 @@ SAFE permits reads only. Do not announce unexecuted work as done. Repeated ident
                     'edit_file':({'path':{'type':'string'},'old_string':{'type':'string'},
                                   'new_string':{'type':'string'},'expected_sha256':{'type':'string'},
                                   'replace_all':{'type':'boolean'}}, ['path','old_string','new_string']),
-                    'verify_json_evidence':({'path':{'type':'string'},'bindings':{'type':'array','minItems':1,'maxItems':64,'items':BINDING_SCHEMA},
+                    'verify_json_evidence':({'path':{'type':'string'},'bindings':{'type':'array','minItems':1,'maxItems':64,'items':observed_binding_schema(self.state['evidence'])},
+                                            'expressions':{'type':'array','items':{'type':'string'},'minItems':1,'maxItems':64},
                                             'criterion':{'type':'string','enum':self.state['criteria']}}, ['path','bindings','criterion']),
                     'verify_file':({'path':{'type':'string'},'content':{'type':'string'},'sha256':{'type':'string'},
                                     'criterion':{'type':'string','enum':self.state['criteria']}}, ['path','criterion']),

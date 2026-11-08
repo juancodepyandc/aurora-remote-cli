@@ -6,6 +6,11 @@ from itertools import islice
 import json
 import math
 import re
+from copy import deepcopy
+from .json_predicates import evaluate_json_expression, parse_json_expression
+
+NON_OBSERVATION_TOOLS = frozenset({'verify', 'verify_file', 'verify_json_evidence',
+    'inspect_evidence', 'write_file', 'set_plan', 'revise_plan', 'finish'})
 
 # Keep the empty-root alternative outside the regex: local Ollama 0.31.1
 # silently ignored grouped optional/empty patterns in actual decoding probes.
@@ -29,6 +34,83 @@ BINDING_SCHEMA = {
     },
     'required': ['path', 'evidence_id', 'source_pointer'],
 }
+
+
+def observed_binding_schema(receipts):
+    """Constrain model references to actual usable receipts when available.
+
+    The executor still validates the receipt, path and values. With no observed
+    source yet the legacy shape remains available and cannot prove a claim.
+    """
+    schema = deepcopy(BINDING_SCHEMA)
+    ids = sorted({r['id'] for r in receipts if isinstance(r,dict)
+                  and isinstance(r.get('id'),str) and 0<len(r['id'])<=256
+                  and r.get('ok') is True and r.get('tool') not in NON_OBSERVATION_TOOLS})
+    if ids:
+        schema['properties']['evidence_id'] = {'type':'string','enum':ids}
+    return schema
+
+
+def json_pointer_paths(value, *, max_chars=3000, max_nodes=256):
+    """Structural paths only: no candidate values become expected answers."""
+    paths, text_paths, stack, used = [], [], [('',value)], 0
+    truncated = False
+    while stack and len(paths)<max_nodes:
+        path, item = stack.pop()
+        text_match = ((isinstance(item,str) and bool(item)) or
+                      (isinstance(item,list) and bool(item) and all(isinstance(v,str) and v for v in item)))
+        cost = (len(path)+4)*(2 if text_match else 1)
+        if len(path)>4096 or used+cost>max_chars:
+            truncated = True
+            break
+        paths.append(path)
+        used += cost
+        if text_match:text_paths.append(path)
+        if isinstance(item,dict):
+            children = list(islice(item.items(),max_nodes+1))
+        elif isinstance(item,list):
+            children = list(enumerate(item[:max_nodes+1]))
+        else:
+            children = []
+        if len(children)>max_nodes:
+            truncated = True
+        for key, child in reversed(children[:max_nodes]):
+            token = str(key).replace('~','~0').replace('/','~1')
+            stack.append((path+'/'+token,child))
+    return {'paths':paths,'text_paths':text_paths,'truncated':truncated or bool(stack)}
+
+
+def operation_bindings(actual, receipts, paths, *, max_chars=3000):
+    """Match candidate identifiers to actual invocations, never catalog entries.
+
+    Only references are returned, without copying candidate values as answers.
+    These hints prove correspondence, not relevance or complete goal coverage.
+    """
+    names = {}
+    for receipt in receipts:
+        if not receipt.get('ok') or receipt.get('tool') in NON_OBSERVATION_TOOLS:
+            continue
+        tool = receipt.get('tool')
+        if isinstance(tool,str):
+            names[tool] = (receipt['id'],'/tool')
+        result = receipt.get('result',{})
+        if tool=='call_mcp_tool' and isinstance(result,dict):
+            rpc = result.get('result',{})
+            if isinstance(result.get('tool'),str) and isinstance(rpc,dict) and not rpc.get('isError'):
+                names[result['tool']] = (receipt['id'],'/result/tool')
+    result = {'bindings':[], 'truncated':False}
+    for path in paths:
+        value = pointer(actual,path)
+        if not isinstance(value,str) or value not in names:
+            continue
+        evidence_id, source_pointer = names[value]
+        binding = {'path':path,'evidence_id':evidence_id,'source_pointer':source_pointer,'relation':'equals'}
+        candidate = {**result,'bindings':result['bindings']+[binding]}
+        if len(json.dumps(candidate,ensure_ascii=False))>max_chars:
+            result['truncated'] = True
+            break
+        result['bindings'].append(binding)
+    return result
 
 
 def _parts(path):
@@ -128,16 +210,22 @@ def validate_bindings(bindings):
             _parts(binding['value_pointer'])
 
 
-def compare_evidence(actual, bindings, receipts):
+def compare_evidence(actual, bindings, receipts, expressions=()):
     """A receipt binding proves correspondence, never external truth or freshness."""
     validate_bindings(bindings)
+    if not isinstance(expressions,(list,tuple)) or len(expressions)>64:
+        raise ValueError('Provide at most 64 saved-value expressions')
+    for expression in expressions:
+        if not isinstance(expression,str) or len(expression)>65536:
+            raise ValueError('A bounded saved-value expression is required')
+        parse_json_expression(expression)
     results = []
     for binding in bindings:
         relation = binding.get('relation', 'equals')
         receipt = receipts.get(binding['evidence_id'])
         if not isinstance(receipt, dict) or receipt.get('ok') is not True:
             raise ValueError('Source must be an actual successful tool receipt in this mission')
-        if receipt.get('tool') in {'verify', 'verify_file', 'verify_json_evidence', 'inspect_evidence', 'write_file', 'set_plan', 'revise_plan', 'finish'}:
+        if receipt.get('tool') in NON_OBSERVATION_TOOLS:
             raise ValueError('A plan, assertion or saved output is not an observation source')
         observed = pointer(receipt, binding['source_pointer'])
         if binding.get('decode_json'):
@@ -150,14 +238,23 @@ def compare_evidence(actual, bindings, receipts):
         else:
             values = saved if isinstance(saved, list) else [saved]
             if not isinstance(observed, str) or not values or any(not isinstance(v, str) or not v for v in values):
-                raise ValueError('text_in requires nonempty saved text(s) and observed source text')
+                raise ValueError(f'Binding #{len(results)+1}: text_in requires nonempty saved text(s) and observed source text '
+                                 f'(saved {type(saved).__name__}, source {type(observed).__name__}); use equals for exact typed equality')
             passed = all(value in observed for value in values)
         canonical = json.dumps(observed, ensure_ascii=False, sort_keys=True, allow_nan=False).encode()
         results.append({**binding, 'relation': relation, 'passed': passed,
                         'observed_sha256': hashlib.sha256(canonical).hexdigest(),
                         'source_tool': receipt.get('tool')})
-    return {'passed': all(item['passed'] for item in results), 'bindings': results,
-            'scope': 'Saved JSON compared with retained successful tool receipts; not a fresh query or independent truth certificate'}
+    predicates = []
+    for expression in expressions:
+        try:
+            predicates.append({'expression':expression,'passed':evaluate_json_expression(expression,actual)})
+        except ValueError as exc:
+            predicates.append({'expression':expression,'passed':False,'error':str(exc)})
+    result = {'passed': all(item['passed'] for item in results) and all(p['passed'] for p in predicates), 'bindings': results,
+              'scope': 'Saved JSON compared with retained successful tool receipts; predicates cover only their stated conditions, not fresh external truth'}
+    if predicates:result['expression_results']=predicates
+    return result
 
 
 def inspect_receipt(receipts, evidence_id='', pointer_path='', *, tool=None, offset=0, limit=16, max_chars=12000):
