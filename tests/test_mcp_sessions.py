@@ -112,3 +112,39 @@ def test_mcp_timeout_is_forwarded_without_changing_default(monkeypatch):
     result=CliRunner().invoke(cli.main,['mcp','call','native','inspect','--timeout','120'])
     assert result.exit_code == 0, result.output
     assert client.mcp_call.call_args.kwargs['timeout_seconds'] == 120
+
+
+def test_local_json_evidence_compares_actual_stdio_receipt_and_rejects_fiction(tmp_path):
+    mission=configured(tmp_path,'mcp_catalog_server.py')
+    try:
+        receipt=mission.tool('call_mcp_tool',{'server':'test','name':'pid'})
+        observed=receipt['output']['content'][0]['text']
+        mission.tool('write_file',{'path':'observed.json','content':json.dumps({'pid':observed})})
+        check={'path':'observed.json','criterion':'Observed result','bindings':[
+            {'path':'/pid','evidence_id':receipt['id'],'source_pointer':'/output/content/0/text'}]}
+        assert mission.tool('verify_json_evidence',check)['ok']
+        assert 'Observed result' in mission.state['verified']
+        bad={**check,'bindings':[{**check['bindings'][0],'evidence_id':'missing'}]}
+        assert not mission.tool('verify_json_evidence',bad)['ok']
+        assert 'Observed result' not in mission.state['verified']
+        assert mission.tool('verify_json_evidence',check)['ok']
+        read=mission.tool('read_file',{'path':'observed.json'})
+        mission.tool('write_file',{'path':'observed.json','content':json.dumps({'pid':'invented'}),'expected_sha256':read['sha256']})
+        assert not mission.tool('verify_json_evidence',check)['ok']
+        assert not mission.state['verified']
+        check['bindings'][0]['evidence_id']='invented-receipt'
+        assert not mission.tool('verify_json_evidence',check)['ok']
+    finally:
+        mission.close()
+
+
+def test_local_json_evidence_rejects_duplicate_keys_and_workspace_escape(tmp_path):
+    mission=configured(tmp_path,'mcp_catalog_server.py')
+    try:
+        (tmp_path/'bad.json').write_text('{"x":1,"x":2}')
+        args={'path':'bad.json','criterion':'Observed result','bindings':[
+            {'path':'/x','evidence_id':'missing','source_pointer':'/result'}]}
+        assert not mission.tool('verify_json_evidence',args)['ok']
+        assert not mission.tool('verify_json_evidence',{**args,'path':'../outside.json'})['ok']
+    finally:
+        mission.close()

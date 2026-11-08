@@ -17,6 +17,7 @@ import uuid
 
 from .core import locations
 from .core.security import is_forbidden
+from .json_evidence import BINDING_SCHEMA, compare_evidence, strict_json_text
 
 
 import shlex
@@ -231,7 +232,7 @@ BUILTIN_MODULE_AGENTS = {
 class LocalMission:
     READ_ONLY_TOOLS = {
         'inspect_runtime', 'list_files', 'find_files', 'search_code',
-        'read_file', 'verify_file', 'git_status', 'list_skills', 'read_skill',
+        'read_file', 'verify_file', 'verify_json_evidence', 'git_status', 'list_skills', 'read_skill',
         'list_mcp_tools', 'list_agents', 'search_web', 'fetch_url', 'test_hypothesis',
     }
     EFFECT_TOOLS = {
@@ -423,10 +424,13 @@ class LocalMission:
         self.state['evidence'].append(evidence)
         # A criterion can only be verified by a current successful observation.
         criterion = args.get('criterion')
-        if result.get('ok') and tool in {'verify_file', 'run_python', 'run_command', 'call_mcp_tool', 'test_hypothesis', 'fetch_url'} and criterion:
+        if tool in {'verify_json_evidence', 'verify_file', 'run_python', 'run_command', 'call_mcp_tool', 'test_hypothesis', 'fetch_url'} and criterion:
             if criterion not in self.state['criteria']:
                 raise ValueError('Critère absent du plan accepté')
-            self.state['verified'][criterion] = evidence['id']
+            if result.get('ok'):
+                self.state['verified'][criterion] = evidence['id']
+            else:
+                self.state['verified'].pop(criterion, None)
         self.state['pending_action'] = None
         self.save()
         return evidence
@@ -891,6 +895,18 @@ class LocalMission:
                     sha256=digest,
                     replacements=count if replace_all else 1,
                 )
+            elif name == 'verify_json_evidence':
+                path = self.target(args.get('path'))
+                if not args.get('criterion'):
+                    raise ValueError('An exact accepted criterion is required')
+                with path.open('rb') as stream:
+                    raw = stream.read(65537)
+                if len(raw) > 65536:
+                    raise ValueError('JSON evidence verification exceeds its byte budget')
+                value = strict_json_text(raw.decode('utf-8'))
+                receipts = {entry['id']:entry for entry in self.state['evidence']}
+                checked = compare_evidence(value,args.get('bindings'),receipts)
+                result.update(checked,ok=checked['passed'],path=str(path),bytes=len(raw),sha256=_digest(raw))
             elif name in {'read_file', 'verify_file', 'write_file'}:
                 path = self.target(args.get('path'))
                 if name == 'write_file':
@@ -1016,11 +1032,12 @@ list_mcp_tools / call_mcp_tool: discover and invoke local MCP servers (.mcp.json
 read_file: inspect a real workspace file; returns its content and SHA-256.
 write_file: exact UTF-8 content; existing files require the SHA-256 actually observed in read_file.
 edit_file: surgical search-and-replace on an existing workspace file with automatic backup.
+verify_json_evidence: compare saved JSON fields with actual successful receipt IDs and JSON pointers; no invented expected constants.
 verify_file: compare real bytes with expected content or SHA-256; use an EXACT accepted criterion label.
 run_python: run an existing inspected Python script; attach an EXACT accepted criterion label when checking it.
 run_command: run a bounded non-shell command (argv list) in the workspace; attach an EXACT accepted criterion label when verifying.
 Accept ONE plan with criteria before writing or running. Never replace an accepted plan.
-Each criterion needs successful verify_file, run_python, run_command, call_mcp_tool, test_hypothesis, or fetch_url evidence.
+Each criterion needs successful verify_json_evidence, verify_file, run_python, run_command, call_mcp_tool, test_hypothesis, or fetch_url evidence.
 Writes/runs invalidate old verification; verify again after the last change.
 Paths are on THIS client, confined to the actual workspace. Discover files before guessing names.
 SAFE permits reads only. Do not announce unexecuted work as done. Repeated identical observations do not advance the task.'''
@@ -1037,7 +1054,7 @@ SAFE permits reads only. Do not announce unexecuted work as done. Repeated ident
                     'search_web', 'fetch_url', 'test_hypothesis',
                     'list_agents', 'create_agent',
                     'list_mcp_tools', 'call_mcp_tool', 'mcp_catalog', 'read_mcp_resource', 'get_mcp_prompt', 'close_mcp_session',
-                    'read_file', 'write_file', 'edit_file', 'verify_file',
+                    'read_file', 'write_file', 'edit_file', 'verify_file', 'verify_json_evidence',
                     'run_python', 'run_command',
                 ]
                 instructions = protocol
@@ -1098,6 +1115,8 @@ SAFE permits reads only. Do not announce unexecuted work as done. Repeated ident
                     'edit_file':({'path':{'type':'string'},'old_string':{'type':'string'},
                                   'new_string':{'type':'string'},'expected_sha256':{'type':'string'},
                                   'replace_all':{'type':'boolean'}}, ['path','old_string','new_string']),
+                    'verify_json_evidence':({'path':{'type':'string'},'bindings':{'type':'array','minItems':1,'maxItems':64,'items':BINDING_SCHEMA},
+                                            'criterion':{'type':'string','enum':self.state['criteria']}}, ['path','bindings','criterion']),
                     'verify_file':({'path':{'type':'string'},'content':{'type':'string'},'sha256':{'type':'string'},
                                     'criterion':{'type':'string','enum':self.state['criteria']}}, ['path','criterion']),
                     'run_python':({'path':{'type':'string'},'args':{'type':'array','items':{'type':'string'}},
