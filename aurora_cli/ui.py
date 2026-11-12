@@ -35,6 +35,7 @@ from .tui_design import RenderedLexer, TerminalInputProcessor, color_depth, fit,
 SLASH_COMMANDS_CATALOG: list[tuple[str, str, str, str]] = [
     ("/home", ">", "ACCUEIL", "Revoir le thème sans effacer la conversation"),
     ("/help", "?", "AIDE", "Commandes et raccourcis"),
+    ("/palette", ">", "PALETTE", "Tout chercher : commandes, skills, outils MCP, thèmes (Ctrl+K)"),
     ("/view", ">", "VUES", "Conversation, modules, agents, bilans, journal, fichiers"),
     ("/modules", ">", "MODULES", "Parcours disponibles ; moteurs à vérifier"),
     ("/chat", ">", "MODULE", "Conversation et rédaction"),
@@ -318,6 +319,7 @@ class WorkspaceApp:
         # Skills and MCP views: last observed inventories, loaded in background.
         self.skill_rows, self.remote_skill_rows, self.mcp_rows, self.remote_mcp_rows = [], [], [], []
         self.integrations_loaded = 0.0
+        self._palette = None  # {'items': [...], 'selected': int} while the palette is open
         self.transcript = ''.join(f"\n### {'VOUS' if m['role']=='user' else 'AURORA'}\n\n{plain(m['content'])}\n" for m in self.history)[-200000:]
         self.loop = None
         self.body_lexer = RenderedLexer()
@@ -331,7 +333,7 @@ class WorkspaceApp:
                                input_processors=[TerminalInputProcessor(lambda:display.view.caps.unicode)],
                                completer=SlashCommandCompleter(),
                                complete_while_typing=True, style='class:prompt')
-        self.sidebar = Window(FormattedTextControl(self.sidebar_text),
+        self.sidebar = Window(FormattedTextControl(self.sidebar_fragments),
                               width=lambda: display.view.theme.spacing.sidebar_width,
                               wrap_lines=True)
         bindings = KeyBindings()
@@ -424,6 +426,35 @@ class WorkspaceApp:
         def cancel_theme(event):
             self.finish_theme_preview(commit=False)
 
+        self.palette_input = TextArea(height=1, multiline=False, prompt='› ' if display.view.caps.unicode else '> ',
+                                      style='class:palette.input')
+        self.palette_input.buffer.on_text_changed += lambda _buffer: self._palette_moved(0, reset=True)
+        palette_open = Condition(lambda: self._palette is not None)
+
+        @bindings.add('c-k', eager=True)
+        def toggle_palette(event):
+            if self._palette is None:
+                self.open_palette()
+            else:
+                self.close_palette()
+
+        @bindings.add('escape', filter=palette_open, eager=True)
+        def close_palette(event):
+            self.close_palette()
+
+        @bindings.add('up', filter=palette_open, eager=True)
+        def palette_up(event):
+            self._palette_moved(-1)
+
+        @bindings.add('down', filter=palette_open, eager=True)
+        @bindings.add('tab', filter=palette_open, eager=True)
+        def palette_down(event):
+            self._palette_moved(1)
+
+        @bindings.add('enter', filter=palette_open, eager=True)
+        def palette_run(event):
+            self.run_palette_selection()
+
         header = Window(FormattedTextControl(self.header),height=3,style='class:header')
         companion = lambda stacked: Window(FormattedTextControl(lambda:self.companion_text(stacked)),
                                             height=self.companion_height)
@@ -450,9 +481,25 @@ class WorkspaceApp:
         theme_panel = ConditionalContainer(
             HorizonFrame(Window(FormattedTextControl(self.theme_picker_text),style='class:dialog.body',wrap_lines=True),
                          title='Thèmes · aperçu immédiat'),theme_open)
+        toast_panel = ConditionalContainer(
+            Window(FormattedTextControl(self.toast_fragments), style='class:toast', wrap_lines=True,
+                   width=self.toast_width, height=self.toast_height),
+            Condition(lambda: self.active_toast() is not None and self._palette is None and self.pairing_visible() is False))
+        pairing_panel = ConditionalContainer(
+            Window(FormattedTextControl(self.pairing_fragments), style='class:overlay', width=48, height=11),
+            Condition(lambda: self.pairing_visible() and self._palette is None))
+        palette_panel = ConditionalContainer(
+            HSplit([Window(FormattedTextControl(self.palette_title), height=1, style='class:overlay'),
+                    self.palette_input,
+                    Window(FormattedTextControl(self.palette_fragments), style='class:overlay')],
+                   style='class:overlay'), palette_open)
         layout = FloatContainer(content=root, floats=[
             Float(xcursor=True,ycursor=True,content=CompletionsMenu(max_height=8,scroll_offset=1)),
-            Float(content=theme_panel,width=lambda:min(68,self.app.output.get_size().columns-4),height=15)])
+            Float(content=theme_panel,width=lambda:min(68,self.app.output.get_size().columns-4),height=15),
+            Float(top=4,right=2,content=toast_panel),
+            Float(content=pairing_panel),
+            Float(top=3,content=palette_panel,width=lambda:min(86,self.app.output.get_size().columns-4),
+                  height=lambda:max(6,min(20,self.app.output.get_size().rows-6)))])
         self.app = Application(layout=Layout(layout,focused_element=self.prompt),key_bindings=bindings,
                                full_screen=True,mouse_support=True,style=self.style(),
                                color_depth=color_depth(display.view.caps),
@@ -489,13 +536,29 @@ class WorkspaceApp:
         return [fragment for index,line in enumerate(lines)
                 for fragment in ([('', '\n')] if index else [])+line]
 
+    def unpaired(self):
+        return not config.is_configured() and config.get('mode', 'auto') != 'local'
+
     def welcome_text(self):
+        extra = ('  \n**/connect** Associer le PC Aurora' if self.unpaired() else '')
         return ('# Un horizon ouvert.\n\n'
                 'Décrivez le résultat attendu.\n\n'
                 '**/modules** Explorer  \n'
                 '**/missions** Reprendre  \n'
                 '**/theme** Changer d’univers  \n'
-                '**/help** Commandes')
+                '**/help** Commandes  \n'
+                '**Ctrl+K** Palette · **/skills** · **/mcp**' + extra)
+
+    def welcome_semantic(self):
+        theme = display.view.theme
+        rows = [(theme.components.headline, 'primary', True), ('', 'text', False),
+                ('Décrivez le résultat attendu.', 'text', False), ('', 'text', False),
+                ('/modules   Explorer', 'accent', False), ('/missions  Reprendre', 'accent', False),
+                ('/theme     Changer d’univers', 'accent', False), ('/help      Commandes', 'accent', False),
+                ('Ctrl+K     Palette · /skills · /mcp', 'secondary', False)]
+        if self.unpaired():
+            rows.append(('/connect   Associer le PC Aurora', 'warning', True))
+        return rows
 
     def prompt_title(self):
         prefix = f'{self.active_module} · ' if self.active_module else ''
@@ -503,14 +566,25 @@ class WorkspaceApp:
 
     def tabs(self):
         width = self.app.output.get_size().columns
-        theme = display.view.theme
-        items = []
+        unicode = display.view.caps.unicode
+        counts = {'skills': len(self.skill_rows) + len(self.remote_skill_rows),
+                  'mcp': len(self.mcp_rows) + len(self.remote_mcp_rows), 'fichiers': len(self.state.files)}
+        items = [('', ' ')]
+        compact = {'conversation': 'Chat', 'modules': 'Mod', 'agents': 'Agt', 'skills': 'Skill', 'mcp': 'MCP',
+                   'avant_apres': 'Bil', 'journal': 'Jrnl', 'fichiers': 'Fich'}
         for index, (page, label) in enumerate(PAGE_LABELS.items(), 1):
-            short = label if width >= 90 else label[:3] if width < 70 else label[:4]
+            short = label if width >= 110 else compact.get(page, label[:4])
+            count = counts.get(page)
+            suffix = f' {count}' if count and width >= 96 else ''
+            text = f' {index} {short}{suffix} '
             if page == self.page:
-                short = theme.components.tab_open+short+theme.components.tab_close
-            items.append(('class:tab.active' if page == self.page else 'class:footer', f' {index} {short} '))
-        return [(style, safe_text(text, unicode=display.view.caps.unicode)) for style,text in items]
+                items.append(('class:tab.selected', safe_text(text, unicode=unicode)))
+            elif width >= 70:
+                items.append(('class:tab.inactive', safe_text(text, unicode=unicode)))
+            items.append(('', ' '))
+        if width < 70:
+            items.append(('class:footer', safe_text(' F4 vues · Ctrl+K palette', unicode=unicode)))
+        return items
 
     def slash_dock_text(self):
         raw = self.prompt.text.lstrip()
@@ -828,9 +902,14 @@ class WorkspaceApp:
             return Style.from_dict({'header':'bold', 'frame.label':'bold', 'frame.border':'',
                                     'success':'bold', 'warning':'bold', 'failure':'bold',
                                     'tab.active':'bold reverse', 'completion-menu.completion.current':'reverse',
-                                    'button.focused':'reverse','radio-selected':'reverse','radio-checked':'bold'})
+                                    'button.focused':'reverse','radio-selected':'reverse','radio-checked':'bold',
+                                    'band.title':'bold','tab.selected':'bold reverse','keycap':'reverse',
+                                    'palette.selected':'reverse','overlay.title':'bold','overlay.code':'bold',
+                                    'pill.success':'bold','pill.warning':'bold','pill.error':'bold reverse',
+                                    'section':'bold','spinner':'bold'})
         palette = view.theme.palette
         base = dict(view.theme.prompt_toolkit_style(view.caps))
+        raised = 'bg:'+palette.raised+' '
         base.update({'':'bg:'+palette.surface+' '+palette.text,
                      'header':'bold '+palette.primary,'footer':palette.muted,
                      'frame.border':palette.border,'frame.label':'bold '+palette.secondary,
@@ -838,7 +917,27 @@ class WorkspaceApp:
                      'status':palette.accent,'prompt':palette.text,
                      'activity':palette.info,'success':palette.success,
                      'warning':palette.warning,'failure':'bold '+palette.error,
-                     'tab.active':'bold '+palette.primary,'dock':'bg:'+palette.raised+' '+palette.text})
+                     'tab.active':'bold '+palette.primary,'dock':raised+palette.text,
+                     # Visual chrome: band, pills, segmented tabs, keycaps, overlays.
+                     'band':raised+palette.text,'band.title':raised+'bold '+palette.primary,
+                     'band.muted':raised+palette.muted,
+                     'pill.success':raised+'bold '+palette.success,'pill.warning':raised+'bold '+palette.warning,
+                     'pill.error':raised+'bold '+palette.error,'pill.info':raised+'bold '+palette.info,
+                     'pill.accent':raised+'bold '+palette.accent,
+                     'tab.selected':'bg:'+palette.primary+' bold '+palette.surface,
+                     'tab.inactive':palette.muted,'tab.count':palette.secondary,
+                     'keycap':raised+'bold '+palette.text,
+                     'toast':raised+palette.text,'toast.success':raised+'bold '+palette.success,
+                     'toast.warning':raised+'bold '+palette.warning,'toast.error':raised+'bold '+palette.error,
+                     'toast.info':raised+'bold '+palette.info,'toast.accent':raised+'bold '+palette.accent,
+                     'overlay':raised+palette.text,'overlay.title':raised+'bold '+palette.primary,
+                     'overlay.muted':raised+palette.muted,'overlay.code':raised+'bold '+palette.accent,
+                     'palette.selected':'bg:'+palette.primary+' bold '+palette.surface,
+                     'palette.kind':raised+palette.secondary,'palette.input':raised+'bold '+palette.text,
+                     'progress.done':palette.primary,'progress.todo':palette.border,
+                     'section':'bold '+palette.secondary,'spinner':'bold '+palette.accent,
+                     'scrollbar.background':'bg:'+palette.raised,'scrollbar.button':'bg:'+palette.border,
+                     'scrollbar.arrow':palette.muted})
         return Style.from_dict(base)
 
     def target(self):
@@ -851,6 +950,179 @@ class WorkspaceApp:
     def session(self):
         return str(getattr(self.history, 'session_id', 'temporaire'))[:8]
 
+    # --- Overlays: notices, pairing card, command palette ---------------------
+
+    def toast_width(self):
+        toast = self.active_toast()
+        columns = self.app.output.get_size().columns
+        return max(20, min(columns - 4, 64, len(toast['text']) + 6 if toast else 20))
+
+    def toast_height(self):
+        toast = self.active_toast()
+        if not toast:
+            return 1
+        return max(1, min(4, -(-(len(toast['text']) + 4) // max(1, self.toast_width()))))
+
+    def toast_fragments(self):
+        toast = self.active_toast()
+        if not toast:
+            return []
+        unicode = display.view.caps.unicode
+        icon = {'success': '✓', 'warning': '!', 'error': '×', 'accent': '◆'}.get(toast['tone'], '›')
+        bar = '▌' if unicode else '|'
+        return [('class:toast.'+toast['tone'], bar+' '+(icon if unicode else '*')+' '),
+                ('class:toast', safe_text(toast['text'], unicode=unicode))]
+
+    def pairing_visible(self):
+        return bool(self.pairing and self.pairing.get('code'))
+
+    def pairing_fragments(self):
+        from . import visuals
+        if not self.pairing_visible():
+            return []
+        unicode = display.view.caps.unicode
+        remaining = ''
+        if self.pairing.get('expires_at'):
+            left = max(0, int(self.pairing['expires_at'] - time.monotonic()))
+            remaining = f'Expire dans {left//60}:{left%60:02d} · '
+        rows = [('class:overlay.title', safe_text('  ◎ Associer cet ordinateur au PC Aurora', unicode=unicode)+'\n'),
+                ('class:overlay.muted', '  '+safe_text(self.pairing.get('target', ''), unicode=unicode)+'\n\n')]
+        for line in visuals.big_code(self.pairing['code'], unicode):
+            rows.append(('class:overlay.code', '    '+line+'\n'))
+        rows += [('', '\n'),
+                 ('class:overlay', safe_text('  Saisissez ce code dans la fenêtre du PC.', unicode=unicode)+'\n'),
+                 ('class:overlay.muted', (safe_text('  '+self.pairing.get('status', ''), unicode=unicode)[:46]
+                                          if 'Saisissez' not in self.pairing.get('status', '') else '')+'\n'),
+                 ('class:overlay.muted', safe_text(f'  {remaining}Ctrl+C annule', unicode=unicode))]
+        return rows
+
+    def open_palette(self):
+        from . import visuals
+        try:
+            self.load_integrations(remote=False)
+        except Exception:
+            pass
+        self._palette = {'items': visuals.palette_items(self), 'selected': 0}
+        self.palette_input.text = ''
+        try:
+            self.app.layout.focus(self.palette_input)
+        except ValueError:
+            pass
+        self.app.invalidate()
+
+    def close_palette(self):
+        self._palette = None
+        try:
+            self.app.layout.focus(self.prompt)
+        except ValueError:
+            pass
+        self.app.invalidate()
+
+    def palette_matches(self):
+        from . import fuzzy
+        if self._palette is None:
+            return []
+        query = self.palette_input.text.strip()
+        items = self._palette['items']
+        if not query:
+            return items[:80]
+        return [item for _, item in fuzzy.rank(query, items, lambda i: [(i['label'], 3.0), (i['kind'], 1.2),
+                                                                        (i.get('hint', ''), 1.0)], limit=80)]
+
+    def _palette_moved(self, delta, *, reset=False):
+        if self._palette is None:
+            return
+        count = len(self.palette_matches())
+        self._palette['selected'] = 0 if reset or not count else (self._palette['selected'] + delta) % count
+        self.app.invalidate()
+
+    def palette_title(self):
+        unicode = display.view.caps.unicode
+        count = len(self.palette_matches())
+        return [('class:overlay.title', safe_text(' Palette · commandes, vues, thèmes, skills, outils MCP, modèles', unicode=unicode)),
+                ('class:overlay.muted', f'  {count}')]
+
+    def palette_fragments(self):
+        from . import visuals
+        if self._palette is None:
+            return []
+        unicode = display.view.caps.unicode
+        matches = self.palette_matches()
+        width = min(86, self.app.output.get_size().columns-4) - 2
+        rows = max(3, min(20, self.app.output.get_size().rows-6) - 3)
+        selected = min(self._palette['selected'], max(0, len(matches)-1))
+        start = max(0, min(selected - rows // 2, len(matches) - rows))
+        fragments = []
+        for index, item in enumerate(matches[start:start+rows], start):
+            icon = visuals.KIND_ICONS.get(item['kind'], ('›', '>'))[0 if unicode else 1]
+            label = f" {icon} {item['label']}"
+            tail = f"  {item['kind']} · {item.get('hint', '')}"
+            line = fit(label + tail, width, unicode)
+            style = 'class:palette.selected' if index == selected else 'class:overlay'
+            fragments += [(style, safe_text(line, unicode=unicode).ljust(width)), ('', '\n')]
+        if not matches:
+            fragments.append(('class:overlay.muted', safe_text(' Aucun résultat · Échap ferme', unicode=unicode)))
+        else:
+            fragments.append(('class:overlay.muted', safe_text(' ↑↓ choisir · Entrée exécuter · Échap fermer', unicode=unicode)))
+        return fragments
+
+    def run_palette_selection(self):
+        matches = self.palette_matches()
+        if self._palette is None or not matches:
+            self.close_palette()
+            return
+        item = matches[min(self._palette['selected'], len(matches)-1)]
+        self.close_palette()
+        action, value = item['action'], item['value']
+        if action == 'insert':
+            self.prompt.text = value
+            self.prompt.buffer.cursor_position = len(value)
+        elif action == 'view':
+            self.page, self.home_open = value, False
+            self.refresh_body()
+            if value in {'skills', 'mcp'}:
+                self.app.create_background_task(self.refresh_integrations())
+        elif action == 'theme':
+            display.view.use_theme(value)
+            config.set('theme', display.view.theme.id)
+            self.app.style = self.style()
+            self.refresh_body()
+        elif action == 'model':
+            if self.busy:
+                self.note('Le modèle de la mission active reste inchangé.')
+            else:
+                config.set('default_model', value)
+                self.show_toast('Modèle choisi : ' + value, 'success')
+        elif action == 'submit':
+            if self.busy and not presentation_command(value):
+                self.note('Une mission est active. Ctrl+C demande son arrêt ; la commande reste disponible ensuite.')
+                return
+            task = self.app.create_background_task(self.submit(value))
+            if not self.busy and not presentation_command(value):
+                self.task = task
+        self.app.invalidate()
+
+    def elapsed(self):
+        """One clock for every animated element of the screen."""
+        return time.monotonic() - self.animation_epoch
+
+    def animation_mode(self):
+        caps = display.view.caps
+        return caps.animation if caps.animate and caps.color else 'none'
+
+    def connection_badge(self):
+        from . import visuals
+        caps, theme = display.view.caps, display.view.theme
+        glyph, tone = visuals.badge(self.connection_state(), unicode=caps.unicode, animation=self.animation_mode(),
+                                    elapsed=self.elapsed(), spinner_kind=theme.components.spinner)
+        label = self.connection
+        if self.pairing and self.pairing.get('code'):
+            label = 'appairage · code ' + self.pairing['code'][:3] + ' ' + self.pairing['code'][3:]
+        countdown = self.reconnect_in()
+        if countdown is not None:
+            label += f' · essai dans {countdown}s'
+        return glyph, label, tone
+
     def header(self):
         width = self.app.output.get_size().columns-2
         caps, theme = display.view.caps, display.view.theme
@@ -861,12 +1133,20 @@ class WorkspaceApp:
         identities = {'horizon':'A U R O R A', 'tidal':'≈ AURORA ≈', 'orbital':'◌ AURORA /',
                       'sunset':'▰ A U R O R A', 'terminal':'> AURORA_', 'facet':'◇ AURORA',
                       'block':'[ AURORA ]', 'editorial':'Aurora.'}
-        heading = '  '+identities.get(theme.components.header,'AURORA')+'  /  '+theme.label
-        first = fit(heading,width,caps.unicode)
-        target = fit(self.target(), max(8,width-len(self.connection)-len(latency)-20),caps.unicode)
-        second = fit(f'  Cible {target} · {self.connection} · Diag {latency}',width,caps.unicode)
-        third = fit(f'  Session {self.session()} · Mission {mission}',width,caps.unicode)
-        return [('class:header',first+'\n'),('class:status',second+'\n'),('class:footer',third)]
+        glyph, label, tone = self.connection_badge()
+        pill = f' {glyph} {label} · {latency} '
+        heading = '  '+identities.get(theme.components.header,'AURORA')+'  ·  '+theme.label+' '
+        pill = fit(pill, max(12, width-12), caps.unicode)
+        heading = fit(heading, max(1, width-len(pill)), caps.unicode)
+        gap = ' '*max(0, width-len(heading)-len(pill))
+        target = fit(self.target(), max(8,width-len(mission)-30),caps.unicode)
+        second = fit(f'  Cible {target}  ·  Mission {mission}',width,caps.unicode)
+        skills = ' · Skills '+', '.join(self.active_skills) if self.active_skills else ''
+        model = config.get('default_model','') or 'modèle du serveur'
+        third = fit(f'  Session {self.session()}  ·  {model}{skills}',width,caps.unicode)
+        return [('class:band.title',safe_text(heading,unicode=caps.unicode)),('class:band',gap),
+                ('class:pill.'+tone,safe_text(pill,unicode=caps.unicode)),('', '\n'),
+                ('class:status',second+'\n'),('class:footer',third)]
 
     @property
     def recovery_notices(self):
@@ -901,8 +1181,27 @@ class WorkspaceApp:
                      'permission':'Autorisation requise','completed':'Mission terminée','failed':'Mission en échec',
                      'interrupted':'Mission interrompue','stopped':'Mission arrêtée'}.get(state.status,state.status)
             style = 'failure' if state.status in {'failed','interrupted'} else 'activity'
+            if not active and state.status not in {'failed','interrupted'}:
+                connection = self.connection_state()
+                if connection in {'offline', 'reconnecting'}:
+                    label, style = 'PC Aurora injoignable · reconnexion automatique (nouvelle adresse comprise)', 'warning'
+                elif connection == 'pairing':
+                    label, style = 'Appairage · en attente de validation sur le PC', 'warning'
+                elif self.connection == 'diagnostic':
+                    label = 'Connexion au PC Aurora…'
         width = self.app.output.get_size().columns-2
-        rows = [('class:'+style,fit(' Activité observée · '+label,width,display.view.caps.unicode)+'\n')]
+        from . import visuals
+        caps = display.view.caps
+        if self.ticking():
+            glyph = visuals.spinner(display.view.theme.components.spinner, unicode=caps.unicode,
+                                    animation=self.animation_mode(), elapsed=self.elapsed())
+            elapsed = max(0, int(time.monotonic()-state.started)) if state.started and active else None
+            if elapsed is not None and 'depuis' not in label:
+                label += f' · {elapsed//60:02d}:{elapsed%60:02d}'
+
+        else:
+            glyph = '·' if caps.unicode else '-'
+        rows = [('class:spinner', ' '+glyph), ('class:'+style,fit(' Activité observée · '+label,width-2,caps.unicode)+'\n')]
         if self.is_welcome() and self.recovery_notices:
             if len(self.recovery_notices)==1 and self.activity_height()==3:
                 rows.append(('class:footer',' Historique conservé · /view conversation\n'))
@@ -923,10 +1222,19 @@ class WorkspaceApp:
 
     def footer(self):
         width = self.app.output.get_size().columns-2
-        actions = ' F2 Thème  F3 Modèle  F4 Vue  F5 Diagnostic'
-        status = ' Ctrl+C Arrêt · Ctrl+Q Sortie · Tab Défiler · / Aide'
-        return [('class:footer',fit(actions,width,display.view.caps.unicode)+'\n'),
-                ('class:footer',fit(status,width,display.view.caps.unicode))]
+        unicode = display.view.caps.unicode
+        keys = [('Ctrl+K','Palette'),('F2','Thème'),('F3','Modèle'),('F4','Vue'),('F5','Diagnostic'),
+                ('Ctrl+C','Arrêt'),('Ctrl+Q','Sortie')]
+        fragments, used = [('', ' ')], 1
+        for key, label in keys:
+            cap = f' {key} ' if unicode else f'[{key}]'
+            piece = len(cap) + len(label) + 3
+            if used + piece > width:
+                break
+            fragments += [('class:keycap', cap), ('class:footer', safe_text(f' {label}  ', unicode=unicode))]
+            used += piece
+        hint = ' / commandes · Tab compléter · Alt+Entrée nouvelle ligne'
+        return fragments + [('', '\n'), ('class:footer', fit(hint, width, unicode))]
 
     def sidebar_text(self):
         state = self.state
@@ -942,12 +1250,11 @@ class WorkspaceApp:
         lines.extend((ok if c in state.verified else pending)+plain(c) for c in state.criteria)
 
         if state.criteria:
+            from . import visuals
             done_cnt = len([c for c in state.criteria if c in state.verified])
             pct = int((done_cnt / len(state.criteria)) * 100)
-            bar_len = 10
-            filled = int(bar_len * (pct / 100))
-            bar = "#" * filled + "-" * (bar_len - filled)
-            lines.extend(["", f"PROGRESSION : [{bar}] {pct}%"])
+            full, empty = visuals.progress_cells(done_cnt, len(state.criteria), 12, display.view.caps.unicode)
+            lines.extend(["", f"PROGRESSION {full}{empty} {pct}%"])
 
         lines.extend(['','OBJECTIF',plain(state.goal),'','OBSERVATIONS'])
         lines.extend((ok if e.get('ok') else failed)+e.get('tool','')+' · '+e.get('id','')+
@@ -956,6 +1263,27 @@ class WorkspaceApp:
             lines.extend(['',f"Débit observé : {state.metrics['tokens_per_second']:.1f} tokens/s"])
         lines.append(f'Fichiers disponibles : {len(state.files)}')
         return safe_text('\n'.join(lines), unicode=display.view.caps.unicode)
+
+    def sidebar_fragments(self):
+        """The mission panel with sections, check marks and a coloured gauge."""
+        fragments = []
+        sections = {'PLAN', 'CRITÈRES', 'OBJECTIF', 'OBSERVATIONS'}
+        for line in self.sidebar_text().split('\n'):
+            if line in sections:
+                fragments.append(('class:section', line+'\n'))
+            elif line.startswith('PROGRESSION '):
+                head, _, rest = line.partition(' ')
+                bar, _, pct = rest.rpartition(' ')
+                done = len(bar.rstrip('░-'))
+                fragments += [('class:section', head+' '), ('class:progress.done', bar[:done]),
+                              ('class:progress.todo', bar[done:]), ('class:status', ' '+pct+'\n')]
+            elif line[:2] in {'✓ ', '+ '}:
+                fragments.append(('class:success', line+'\n'))
+            elif line[:2] in {'× ', 'x '}:
+                fragments.append(('class:failure', line+'\n'))
+            else:
+                fragments.append(('', line+'\n'))
+        return fragments
 
     def avant_apres_text(self):
         lines = ['# Bilans & mesures', '',
@@ -1011,7 +1339,8 @@ class WorkspaceApp:
             follow = self.app.layout.has_focus(self.prompt)
             if self.is_welcome():
                 from .welcome import render_welcome
-                text,lines = render_welcome(width,height,display.view.theme,display.view.caps)
+                text,lines = render_welcome(width,height,display.view.theme,display.view.caps,
+                                            semantic=self.welcome_semantic())
             else:
                 text,lines = render_document(source,width,display.view.theme,display.view.caps,journal=self.page=='journal')
             self.body_lexer.lines = lines
@@ -1271,7 +1600,8 @@ class WorkspaceApp:
         self.loop = asyncio.get_running_loop()
         while True:
             delay = self._monitor_delay()
-            if self.connection_state() in {'offline', 'reconnecting'}:
+            # A mission stream reconnects by itself; the countdown is the monitor's.
+            if self.connection_state() in {'offline', 'reconnecting'} and not self.busy:
                 self.reconnect_at = time.monotonic() + delay
                 self.ensure_clock()
             await asyncio.sleep(delay)
@@ -1578,6 +1908,9 @@ class WorkspaceApp:
             if cmd in {'/skill', '/skills', '/mcp'}:
                 await self.integrations_command(cmd, arg)
                 return
+            if cmd == '/palette':
+                self.open_palette()
+                return
             if cmd in {'/avant-apres', '/gains'}:
                 self.page = 'avant_apres'
                 self.note(self.avant_apres_text())
@@ -1827,8 +2160,10 @@ class WorkspaceApp:
                 self._clock_handle = None
             return
         if self._clock_handle is None:
+            from .visuals import FRAME_SECONDS
+            interval = FRAME_SECONDS.get(self.animation_mode(), 1.0)
             try:
-                self._clock_handle = asyncio.get_running_loop().call_later(1,self._clock_tick)
+                self._clock_handle = asyncio.get_running_loop().call_later(interval,self._clock_tick)
             except RuntimeError:
                 pass
 

@@ -152,6 +152,12 @@ impl Drop for Engine {
 fn key(ui: &mut Ui, event: Event) -> (Option<String>, bool) {
     match event {
         Event::Resize(_, _) => (None, true),
+        Event::Paste(text) if ui.modal.as_ref().map(|m| m.kind) == Some(ModalKind::Palette) => {
+            for ch in text.chars().filter(|c| !c.is_control()).take(200) {
+                ui.palette_input(Some(ch));
+            }
+            (None, true)
+        }
         Event::Paste(text) => {
             for ch in text
                 .chars()
@@ -170,6 +176,31 @@ fn key(ui: &mut Ui, event: Event) -> (Option<String>, bool) {
             }
             if ctrl && k.code == KeyCode::Char('c') {
                 return (Some(command("stop", "")), true);
+            }
+            if ctrl && k.code == KeyCode::Char('k') {
+                if ui.modal.as_ref().map(|m| m.kind) == Some(ModalKind::Palette) {
+                    return (ui.close_modal(false), true);
+                }
+                if ui.modal.is_none() {
+                    return (ui.open_modal(ModalKind::Palette), true);
+                }
+            }
+            if ui.modal.as_ref().map(|m| m.kind) == Some(ModalKind::Palette) {
+                return match k.code {
+                    KeyCode::Up => (ui.move_modal(-1), true),
+                    KeyCode::Down | KeyCode::Tab => (ui.move_modal(1), true),
+                    KeyCode::Enter => (ui.close_modal(true), true),
+                    KeyCode::Esc => (ui.close_modal(false), true),
+                    KeyCode::Backspace => {
+                        ui.palette_input(None);
+                        (None, true)
+                    }
+                    KeyCode::Char(ch) if !ctrl => {
+                        ui.palette_input(Some(ch));
+                        (None, true)
+                    }
+                    _ => (None, false),
+                };
             }
             if ui.modal.is_some() {
                 return match k.code {
@@ -318,6 +349,8 @@ fn process(ui: &mut Ui, msg: Message, engine: &mut Engine) -> bool {
                     ui.open_modal(ModalKind::Theme);
                 } else if picker == "model" {
                     ui.open_modal(ModalKind::Model);
+                } else if picker == "palette" && ui.palette_requested {
+                    ui.open_modal(ModalKind::Palette);
                 }
             }
         }
@@ -431,6 +464,13 @@ fn snapshot(args: &[String]) -> io::Result<()> {
         .map_err(io::Error::other)?;
     let mut ui = Ui::default();
     ui.update(state);
+    if ui.state["picker"].as_str() == Some("palette") {
+        ui.open_modal(ModalKind::Palette);
+        if let (Some(modal), Some(query)) = (ui.modal.as_mut(), ui.state["palette_query"].as_str())
+        {
+            modal.query = query.to_owned();
+        }
+    }
     // Snapshot fixtures can include a draft; the live input remains locally owned.
     ui.input.text = ui.state["prompt"].as_str().unwrap_or("").chars().collect();
     ui.input.cursor = ui.input.text.len();

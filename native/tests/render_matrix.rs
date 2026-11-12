@@ -377,3 +377,67 @@ fn active_work_keeps_theme_art_with_conversation_and_tool_feedback() {
         }
     }
 }
+
+#[test]
+fn palette_filters_locally_and_closes_before_running_its_action() {
+    let mut ui = Ui::default();
+    let mut state = fixture("otter");
+    state["palette"] = json!([
+        {"kind":"commande","label":"/skills","hint":"Voir","action":"submit","value":"/skills"},
+        {"kind":"skill","label":"tableurs","hint":"activer","action":"submit","value":"/skill tableurs"},
+        {"kind":"outil MCP","label":"catalogue:first","hint":"JSON","action":"insert","value":"/mcp appel catalogue first {}"},
+        {"kind":"thème","label":"Glacier","hint":"froid","action":"theme","value":"glacier"}
+    ]);
+    ui.update(state);
+    assert!(ui.open_modal(ModalKind::Palette).is_none());
+    for ch in "tabl".chars() {
+        ui.palette_input(Some(ch));
+    }
+    let matches = ui.palette_matches();
+    assert_eq!(matches[0]["label"], "tableurs");
+    let sent = ui.close_modal(true).unwrap();
+    let lines = sent.lines().collect::<Vec<_>>();
+    assert!(lines[0].contains("picker_cancel") && lines[1].contains("/skill tableurs"));
+    assert!(ui.modal.is_none());
+
+    ui.open_modal(ModalKind::Palette);
+    for ch in "catalogue".chars() {
+        ui.palette_input(Some(ch));
+    }
+    assert!(ui.close_modal(true).unwrap().contains("picker_cancel"));
+    assert_eq!(ui.input.value(), "/mcp appel catalogue first {}");
+}
+
+#[test]
+fn palette_without_items_asks_the_engine_first() {
+    let mut ui = Ui::default();
+    ui.update(fixture("jobia"));
+    let request = ui.open_modal(ModalKind::Palette).unwrap();
+    assert!(request.contains("\"command\":\"palette\"") && ui.palette_requested);
+}
+
+#[test]
+fn pairing_code_toast_and_live_badge_are_drawn() {
+    let mut ui = Ui::default();
+    let mut state = fixture("synthwave");
+    state["connection_state"] = json!("pairing");
+    state["connection_label"] = json!("appairage · code 482 913");
+    state["pairing"] = json!({"code":"482913","target":"x.trycloudflare.com","expires_in":90});
+    state["toast"] = json!({"text":"Appareil autorisé","tone":"success"});
+    state["ticking"] = json!(true);
+    state["animate"] = json!(true);
+    state["animation"] = json!("full");
+    ui.update(state);
+    let (text, _) = render(&mut ui, 120);
+    assert!(text.contains("Associer cet ordinateur"));
+    assert!(text.contains("█▀█") || text.contains("▀▀█"));
+    assert!(text.contains("Expire dans 1:30"));
+    assert!(text.contains("appairage"));
+    assert_eq!(
+        ui.motion_interval(),
+        Some(std::time::Duration::from_millis(100))
+    );
+    let mut idle = Ui::default();
+    idle.update(fixture("synthwave"));
+    assert_eq!(idle.motion_interval(), None);
+}

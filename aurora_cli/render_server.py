@@ -22,6 +22,7 @@ from prompt_toolkit.output import DummyOutput
 from . import config, display, themes
 from .terminal import safe_text
 from .ui import INTERACTIVE_COMMANDS, PAGE_LABELS, SLASH_COMMANDS_CATALOG, WorkspaceApp, presentation_command
+from .visuals import palette_items
 
 VERSION = 1
 MAX_COMMAND_BYTES = 262144
@@ -38,7 +39,8 @@ def snapshot(app, *, picker=''):
     """An explicitly bounded view, not the persisted conversation or config."""
     caps = display.view.caps
     clean = lambda value: safe_text(value, unicode=caps.unicode)
-    activity = [clean(text).rstrip('\n') for _, text in app.activity_text()]
+    # Fragments (spinner, label…) are joined back into the visible lines.
+    activity = [clean(line) for line in ''.join(text for _, text in app.activity_text()).split('\n') if line.strip()]
     return {'version': VERSION, 'type': 'state', 'state': {
         'title': 'Aurora', 'target': clean(app.target()),
         'latency': f'{app.latency_ms:.0f} ms' if app.latency_ms is not None else 'n/d',
@@ -52,12 +54,20 @@ def snapshot(app, *, picker=''):
         'commands':[{'name':command,'description':clean(description)} for command,_,_,description in SLASH_COMMANDS_CATALOG],
         'body': clean(app.body_source()), 'activity': activity,
         'sidebar': app.sidebar_text().splitlines(),
-        'footer': clean('F2 Thèmes · F3 Modèles · F4 Vues · F5 Diagnostic · Ctrl+C Arrêt · Ctrl+Q Sortie'),
+        'footer': clean('Ctrl+K Palette · F2 Thèmes · F3 Modèles · F4 Vues · F5 Diagnostic · Ctrl+C Arrêt · Ctrl+Q Sortie'),
         'prompt': clean(app.prompt.text), 'model': clean(config.get('default_model','')),
         'draft_restore': ({'revision':app.draft_restore['revision'],
                            'text':safe_text(app.draft_restore['text'])} if app.draft_restore else None),
         'theme': theme_record(display.view.theme), 'themes': [theme_record(t) for t in themes.all_themes()],
         'connection_state': app.connection_state(), 'reconnect_in': app.reconnect_in(),
+        'connection_label': clean(app.connection_badge()[1]), 'ticking': app.ticking(),
+        'active_skills': [clean(name) for name in app.active_skills],
+        'tab_counts': {'skills': len(app.skill_rows) + len(app.remote_skill_rows),
+                       'mcp': len(app.mcp_rows) + len(app.remote_mcp_rows), 'fichiers': len(app.state.files)},
+        'progress': ({'done': len([c for c in app.state.criteria if c in app.state.verified]),
+                      'total': len(app.state.criteria)} if app.state.criteria else None),
+        'palette': ([{key: clean(str(value)) for key, value in item.items()} for item in palette_items(app)]
+                    if picker == 'palette' else None),
         'toast': ({'text': clean((app.active_toast() or {}).get('text', '')),
                    'tone': (app.active_toast() or {}).get('tone', 'info')} if app.active_toast() else None),
         'pairing': ({'code': app.pairing.get('code', ''), 'target': clean(app.pairing.get('target', '')),
@@ -81,6 +91,9 @@ class RenderServer:
         app.app.invalidate = self.changed
         app.choose_theme = self.choose_theme
         app.choose_model = self.choose_model
+        # The native renderer animates locally from `ticking`; Python only sends
+        # state changes and a one-second clock (countdowns, elapsed time).
+        app.animation_mode = lambda: 'none'
 
     def write(self, value):
         self.output.write(json.dumps(value,ensure_ascii=False,separators=(',',':'))+'\n')
@@ -188,6 +201,13 @@ class RenderServer:
             self.app.refresh_body()
         elif command in {'picker_cancel','model_cancel'}:
             self.picker = ''
+        elif command == 'palette':
+            # Local inventories are read once per opening; filtering is native.
+            try:
+                await asyncio.to_thread(self.app.load_integrations, remote=False)
+            except Exception:
+                pass
+            self.picker = 'palette'
         elif command == 'doctor':
             self.spawn(self.app.discover())
         elif command == 'stop':
