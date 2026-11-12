@@ -57,6 +57,14 @@ def snapshot(app, *, picker=''):
         'draft_restore': ({'revision':app.draft_restore['revision'],
                            'text':safe_text(app.draft_restore['text'])} if app.draft_restore else None),
         'theme': theme_record(display.view.theme), 'themes': [theme_record(t) for t in themes.all_themes()],
+        'connection_state': app.connection_state(), 'reconnect_in': app.reconnect_in(),
+        'toast': ({'text': clean((app.active_toast() or {}).get('text', '')),
+                   'tone': (app.active_toast() or {}).get('tone', 'info')} if app.active_toast() else None),
+        'pairing': ({'code': app.pairing.get('code', ''), 'target': clean(app.pairing.get('target', '')),
+                     'status': clean(app.pairing.get('status', '')),
+                     'expires_in': (max(0, int(app.pairing['expires_at'] - __import__('time').monotonic()))
+                                    if app.pairing.get('expires_at') else None)}
+                    if app.pairing else None),
         'models': list(app.models), 'picker': picker, 'unicode': caps.unicode,
         'color_depth': caps.color_depth, 'animation': caps.animation, 'animate': caps.animate,
     }}
@@ -137,7 +145,7 @@ class RenderServer:
             if was_busy and not presentation_command(raw):
                 self.app.note('Une mission est active. Ctrl+C demande son arrêt ; le brouillon est conservé.')
                 return
-            self.spawn(self.app.submit(raw),mission=not was_busy)
+            self.spawn(self.app.submit(raw),mission=not was_busy and not presentation_command(raw))
         elif command in {'theme_preview','theme_commit','theme_cancel'}:
             if command == 'theme_cancel':
                 if self._preview_original:
@@ -185,6 +193,8 @@ class RenderServer:
         elif command == 'stop':
             if self.app.busy:
                 self.spawn(self.app.stop())
+            elif self.app.cancel_pairing():
+                self.app.note('Appairage annulé.')
             else:
                 self.app.note('Aucune mission active à arrêter.')
         elif command == 'new':
@@ -234,6 +244,7 @@ async def serve(input_stream, output_stream):
         app.show_recovery_notices()
         server.emit()
         server.spawn(app.discover())
+        server.spawn(app.monitor())
         threading.Thread(target=read_commands,name='aurora-render-input',daemon=True).start()
         try:
             while not server.closed:

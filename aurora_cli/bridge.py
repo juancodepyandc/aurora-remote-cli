@@ -5,6 +5,7 @@ import json
 import time
 import base64
 import hashlib
+from uuid import uuid4
 from pathlib import Path
 import re
 import os
@@ -73,34 +74,78 @@ def _request_failure(exc: httpx.RequestError, method: str, path: str, timeout) -
     return failure
 
 
+_MISSION_PREFIX = "/api/cli/mission/"
+#: Cloudflare answered for a bridge that never received the request.
+_UNDELIVERED_STATUS = frozenset({502, 530})
+#: The bridge or its tunnel is unavailable; delivery may be unknown (503/504).
+_UNREACHABLE_STATUS = frozenset({502, 503, 504, 530})
+_UNDELIVERED_ERRORS = frozenset({"ConnectError", "ConnectTimeout", "UnsupportedProtocol", "LocalProtocolError"})
+_SAFE_POSTS = re.compile(r"^/api/cli/(auth|inputs|mission/[^/]+/stop|mcp/catalog)$")
+
+
+def failure_kind(result: dict) -> str:
+    """``undelivered``: the bridge never saw the request; ``unreachable``:
+    the bridge or tunnel is unavailable and delivery is unknown; ``''`` else."""
+    if not isinstance(result, dict) or result.get("ok"):
+        return ""
+    status = result.get("http_status")
+    if result.get("error_type") in _UNDELIVERED_ERRORS or status in _UNDELIVERED_STATUS:
+        return "undelivered"
+    if result.get("error_kind") in {"connection", "timeout"} or status in _UNREACHABLE_STATUS:
+        return "unreachable"
+    return ""
+
+
 class Bridge:
     """HTTP and SSE client for the remote bridge server.
 
     Every path is relative to the configured ``server_url``; the bridge owns
     all inference, so this class never loads a model itself.
+
+    The Aurora PC gets a new quick-tunnel address each time it restarts. When
+    the current address stops answering, any request (reads, writes, mission
+    streams) re-reads the published address, checks that an Aurora bridge
+    answers there and continues on it, then remembers it. Replays stay exact:
+    reads are replayed freely, a mission start keeps its idempotency key (the
+    bridge returns the same mission), and other writes are replayed only when
+    the bridge provably never received them (no TCP/TLS connection, or a
+    Cloudflare 502/530 for a missing origin). An accepted mission follows the
+    server only after the new address confirms that it knows that mission.
     """
 
+    #: Attempts and wall-clock window granted to a mission stream to survive
+    #: a PC restart (the new tunnel is usually published within a minute).
+    reconnect_attempts = 30
+    reconnect_window = 300.0
 
     def __init__(self, server_url: str = "", api_key: str = "", timeout: float = 30.0):
         cfg = config.load()
+        explicit = bool(server_url or os.environ.get(brand.env('server_url'))
+                        or os.environ.get(brand.env_legacy('server_url')))
         self.server_url = config.resolve_server_url(server_url, cfg)
         self.api_key = api_key or config.get("api_key", "")
         self.timeout = timeout
         self._mission_hosts: dict[str, str] = {}
-        self._discoverable = (not server_url and not os.environ.get(brand.env('server_url'))
-                              and not os.environ.get(brand.env_legacy('server_url'))
-                              and (urlsplit(self.server_url).hostname or '').endswith('.trycloudflare.com'))
-        
-        # Expert mode: Robust connection transport with retries
-        transport = httpx.HTTPTransport(retries=3)
-        self._client = httpx.Client(
+        # A saved (or missing) address follows the publication. An explicit
+        # address does too when it is an ephemeral quick tunnel: such a
+        # hostname is dead for good once its PC restarted.
+        from . import tunnel
+        self._discoverable = not explicit or tunnel.is_ephemeral(self.server_url)
+        #: Optional ``callback(old_url, new_url)`` used by interfaces.
+        self.on_relocate = None
+        self._client = self._make_client(self.server_url)
+
+    def _make_client(self, base_url: str, *, retries: int = 3, timeout=None) -> httpx.Client:
+        # Robust transport: connection-level retries before any recovery.
+        transport = httpx.HTTPTransport(retries=retries)
+        budget = self.timeout if timeout is None else timeout
+        return httpx.Client(
             transport=transport,
-            base_url=self.server_url,
+            base_url=base_url,
             headers={"Authorization": f"Bearer {self.api_key}"},
-            timeout=httpx.Timeout(timeout, connect=min(10.0,timeout)),
+            timeout=httpx.Timeout(budget, connect=min(10.0, budget)),
             follow_redirects=True,
         )
-
 
     def close(self) -> None:
         self._client.close()
@@ -113,65 +158,162 @@ class Bridge:
 
     # --- Low-level ---
 
-    def get(self, path: str, **kwargs: Any) -> dict:
-        result = self._get_once(path, **kwargs)
-        # Shared, pre-dispatch metadata only. Accepted mission IDs, downloads,
-        # streams and all writes remain bound to their original host.
-        if path in {'/api/cli/doctor', '/api/cli/status', '/api/cli/version',
-                    '/api/cli/tools', '/api/cli/models'}:
-            return self._refresh_metadata(path, result, **kwargs)
-        return result
+    @staticmethod
+    def _mission_id(path: str) -> str:
+        if path.startswith(_MISSION_PREFIX):
+            mid = path[len(_MISSION_PREFIX):].split('/', 1)[0].split('?', 1)[0]
+            if mid and mid != 'start':
+                return mid
+        return ''
 
     def _mission_path(self, path: str) -> str:
-        prefix = '/api/cli/mission/'
-        if path.startswith(prefix):
-            mid = path[len(prefix):].split('/', 1)[0]
-            if mid in self._mission_hosts:
-                return self._mission_hosts[mid].rstrip('/') + path
+        mid = self._mission_id(path)
+        if mid in self._mission_hosts:
+            return self._mission_hosts[mid].rstrip('/') + path
         return path
 
-    def _get_once(self, path: str, **kwargs: Any) -> dict:
+    def _send(self, method: str, path: str, data: dict | None = None, **kwargs: Any) -> dict:
+        target = (self.server_url.rstrip('/') + path if path == '/api/cli/mission/start'
+                  else self._mission_path(path))
         try:
-            r = self._client.get(self._mission_path(path), **kwargs)
+            if method in {'POST', 'PUT', 'PATCH'}:
+                kwargs = {'json': data or {}, **kwargs}
+            r = self._client.request(method, target, **kwargs)
             r.raise_for_status()
             return _decode_json(r)
         except httpx.RequestError as e:
-            return _request_failure(e, "GET", path, kwargs.get("timeout", self._client.timeout))
+            return _request_failure(e, method, path, kwargs.get("timeout", self._client.timeout))
         except httpx.HTTPStatusError as e:
             payload = _decode_json(e.response)
             payload.update(ok=False, http_status=e.response.status_code)
             payload.setdefault("error", f"HTTP error {e.response.status_code}")
             return payload
+
+    def _replay_safe(self, method: str, path: str, data: dict | None) -> bool:
+        if method in {'GET', 'HEAD'}:
+            return True
+        if method == 'POST' and path == '/api/cli/mission/start':
+            return bool((data or {}).get('idempotency_key'))
+        return method == 'POST' and bool(_SAFE_POSTS.match(path))
+
+    def request(self, method: str, path: str, data: dict | None = None, **kwargs: Any) -> dict:
+        """One request, continued on the PC's new address when it moved."""
+        method = method.upper()
+        result = self._send(method, path, data, **kwargs)
+        kind = failure_kind(result)
+        if not kind or (kind == 'unreachable' and not self._replay_safe(method, path, data)):
+            return result
+        moved = self._follow(path)
+        if not moved:
+            return result
+        retried = self._send(method, path, data, **kwargs)
+        self._remember(retried)
+        if retried.get('ok') or not failure_kind(retried):
+            retried.setdefault('relocated_to', moved)
+        return retried
+
+    def get(self, path: str, **kwargs: Any) -> dict:
+        return self.request('GET', path, **kwargs)
 
     def post(self, path: str, data: dict | None = None, **kwargs: Any) -> dict:
-        try:
-            dispatch_host = self.server_url
-            target = (dispatch_host.rstrip('/') + path if path == '/api/cli/mission/start'
-                      else self._mission_path(path))
-            r = self._client.post(target, json=data or {}, **kwargs)
-            r.raise_for_status()
-            result = _decode_json(r)
-            mid = result.get('mission_id')
-            if path == '/api/cli/mission/start' and result.get('ok') and isinstance(mid, str) and mid and '/' not in mid:
-                self._mission_hosts[mid] = dispatch_host
-            return result
-        except httpx.RequestError as e:
-            return _request_failure(e, "POST", path, kwargs.get("timeout", self._client.timeout))
-        except httpx.HTTPStatusError as e:
-            payload = _decode_json(e.response)
-            payload.update(ok=False, http_status=e.response.status_code)
-            payload.setdefault("error", f"HTTP error {e.response.status_code}")
-            return payload
+        result = self.request('POST', path, data, **kwargs)
+        mid = result.get('mission_id')
+        if (path == '/api/cli/mission/start' and result.get('ok') and isinstance(mid, str)
+                and mid and '/' not in mid):
+            self._mission_hosts[mid] = self.server_url
+        return result
 
     def delete(self, path: str, **kwargs: Any) -> dict:
+        return self.request('DELETE', path, **kwargs)
+
+    # --- Following the PC to its new address ---
+
+    def _probe(self, url: str) -> bool:
+        """Is an Aurora bridge answering at ``url``? (public health route)"""
         try:
-            r = self._client.delete(self._mission_path(path), **kwargs)
-            r.raise_for_status()
-            return _decode_json(r)
-        except httpx.RequestError as e:
-            return _request_failure(e, "DELETE", path, kwargs.get("timeout", self._client.timeout))
-        except httpx.HTTPStatusError as e:
-            return {"ok": False, "error": f"HTTP error {e.response.status_code}"}
+            with httpx.Client(transport=httpx.HTTPTransport(retries=1), follow_redirects=True,
+                              timeout=httpx.Timeout(8.0, connect=6.0)) as client:
+                for health_path in ('/api/health', '/api/ping'):
+                    response = client.get(url.rstrip('/') + health_path)
+                    if response.status_code in _UNREACHABLE_STATUS:
+                        return False
+                    try:
+                        payload = response.json()
+                    except ValueError:
+                        continue
+                    if (response.status_code == 200 and isinstance(payload, dict)
+                            and payload.get('service') == 'aurora-bridge'):
+                        return True
+        except (httpx.HTTPError, OSError):
+            return False
+        return False
+
+    def alive(self) -> dict:
+        """Cheap public reachability of the current address, with its latency."""
+        started = time.perf_counter()
+        ok = bool(self.server_url) and self._probe(self.server_url)
+        return {'ok': ok, 'latency_ms': (time.perf_counter() - started) * 1000}
+
+    def relocate(self) -> str:
+        """Re-read the published address; switch to it when a bridge answers.
+
+        Returns the new address, or ``''`` when the PC did not move (or cannot
+        be reached yet). Explicit non-tunnel addresses never move.
+        """
+        if not self._discoverable:
+            return ''
+        from .connect import discover_tunnel
+        try:
+            fresh = discover_tunnel().rstrip('/')
+        except (httpx.HTTPError, ValueError, KeyError, OSError):
+            return ''
+        if not fresh or fresh == self.server_url.rstrip('/') or not self._probe(fresh):
+            return ''
+        old, self.server_url = self.server_url, fresh
+        self._client.base_url = fresh
+        callback = self.on_relocate
+        if callback is not None:
+            try:
+                callback(old, fresh)
+            except Exception:
+                pass
+        return fresh
+
+    def _follow(self, path: str) -> str:
+        """Move the request target; accepted missions need proof on arrival."""
+        mid = self._mission_id(path)
+        pinned = self._mission_hosts.get(mid, '').rstrip('/') if mid else ''
+        if pinned and pinned != self.server_url.rstrip('/'):
+            moved = self.server_url  # Another request already followed the PC.
+        else:
+            moved = self.relocate()
+        if not moved:
+            return ''
+        if pinned:
+            if not self._known_mission(moved, mid):
+                return ''
+            self._mission_hosts[mid] = moved
+        return moved
+
+    def _known_mission(self, base: str, mid: str) -> bool:
+        try:
+            response = self._client.get(base.rstrip('/') + f'{_MISSION_PREFIX}{mid}/status',
+                                        timeout=httpx.Timeout(15.0, connect=8.0))
+            payload = response.json() if response.status_code == 200 else {}
+        except (httpx.HTTPError, ValueError):
+            return False
+        return (isinstance(payload, dict) and payload.get('ok') is True
+                and payload.get('id', mid) == mid)
+
+    def _remember(self, result: dict) -> None:
+        """Persist a followed address once the bridge accepted our identity."""
+        if failure_kind(result) or result.get('http_status') in {401, 403}:
+            return
+        try:
+            if config.resolve_server_url() != self.server_url:
+                config.set_key('server_url', self.server_url)
+        except OSError:
+            pass
 
     def stream_sse(self, path: str, data: dict | None = None, method: str = "POST",
                    *, resume: bool = False, last_event_id: int = 0) -> Generator[dict, None, None]:
@@ -181,6 +323,7 @@ class Bridge:
         if type(last_event_id) is not int or last_event_id < 0:
             raise ValueError("Mission cursor must be a non-negative integer")
         retries = 0
+        deadline = None
         stream_timeout = httpx.Timeout(600.0, connect=10.0)
         while True:
             headers = {"Last-Event-ID": str(last_event_id)} if resume else {}
@@ -204,6 +347,8 @@ class Bridge:
                             if cursor != last_event_id + 1:
                                 raise ValueError("Missing mission events; refusing an incomplete result")
                             last_event_id = cursor
+                            retries = 0
+                            deadline = None
                         yield event
                         if resume and event.get("type") in ("mission_complete", "error", "mission_interrupted"):
                             return
@@ -226,14 +371,19 @@ class Bridge:
                 yield {"type": "error", "error": f"Invalid SSE stream: {exc}",
                        "error_kind": "invalid_stream", "last_event_id": last_event_id}
                 return
-            if not resume or retries >= 3:
+            if deadline is None:
+                deadline = time.monotonic() + self.reconnect_window
+            if not resume or retries >= self.reconnect_attempts or time.monotonic() >= deadline:
                 yield {"type": "error", "error": error, "error_kind": error_kind,
                        "last_event_id": last_event_id}
                 return
             retries += 1
+            moved = self._follow(path) if error_kind != "interrupted_stream" else ''
             yield {"type": "reconnecting", "attempt": retries,
-                   "last_event_id": last_event_id, "message": error, "error_kind": error_kind}
-            time.sleep(min(2 ** (retries - 1), 4))
+                   "last_event_id": last_event_id, "message": error, "error_kind": error_kind,
+                   **({"relocated_to": moved} if moved else {})}
+            if not moved:
+                time.sleep(min(2 ** (retries - 1), 10))
 
     # --- Authentication ---
 
@@ -254,26 +404,6 @@ class Bridge:
 
     def doctor(self) -> dict:
         return self.get('/api/cli/doctor')
-
-    def _refresh_metadata(self, path: str, result: dict, **kwargs: Any) -> dict:
-        unavailable = result.get('error_kind') in {'connection', 'timeout'} or result.get('http_status') in {502, 503, 504, 530}
-        if not self._discoverable or not unavailable:
-            return result
-        from .connect import discover_tunnel
-        try:
-            refreshed = discover_tunnel()
-            if refreshed == self.server_url:
-                return result
-            with Bridge(server_url=refreshed, api_key=self.api_key, timeout=self.timeout) as candidate:
-                diagnostic = candidate._get_once('/api/cli/doctor')
-            if not diagnostic.get('ok'):
-                return result
-            config.set_key('server_url', refreshed)
-            self._client.base_url = refreshed
-            self.server_url = refreshed
-            return diagnostic if path == '/api/cli/doctor' else self._get_once(path, **kwargs)
-        except (httpx.HTTPError, ValueError, KeyError, OSError):
-            return result
 
     def version(self) -> dict:
         return self.get("/api/cli/version")
@@ -506,10 +636,12 @@ class Bridge:
     def mission_start(self, request: str, workspace: str = "", permissions: str = "AUTONOMOUS",
                       session_id: str = "", model: str = "", idempotency_key: str = "", history: list | None = None,
                       context_tokens: int | None = None, references: list | None = None) -> dict:
+        # A key is always sent: the bridge then returns the same mission for
+        # a replayed start, which makes reconnection after a restart exact.
         payload = {
             "request": request, "workspace": workspace, "permissions": permissions,
             "session_id": session_id, "model": model,
-            "idempotency_key": idempotency_key,
+            "idempotency_key": idempotency_key or uuid4().hex,
         }
         if history is not None:
             payload['history'] = history
@@ -535,6 +667,7 @@ class Bridge:
         if type(last_event_id) is not int or last_event_id < 0:
             raise ValueError('Mission cursor must be a non-negative integer')
         retries = 0
+        deadline = None
         while True:
             result = self.get(f'/api/cli/mission/{mission_id}/events',
                               headers={'Last-Event-ID':str(last_event_id)},
@@ -542,14 +675,17 @@ class Bridge:
             if not result.get('ok'):
                 status = result.get('http_status')
                 retryable = status in (500,502,503,504,530) or result.get('error_kind') in ('timeout','connection')
-                if not retryable or retries >= 3:
+                if deadline is None:
+                    deadline = time.monotonic() + self.reconnect_window
+                if not retryable or retries >= self.reconnect_attempts or time.monotonic() >= deadline:
                     yield {'type':'error','error':result.get('error','Mission polling failed; update the bridge'),
                            'error_kind':result.get('error_kind','http'),'last_event_id':last_event_id}
                     return
                 retries += 1
                 yield {'type':'reconnecting','attempt':retries,'last_event_id':last_event_id,
-                       'message':result.get('error','Mission polling unavailable')}
-                time.sleep(min(2 ** (retries-1),4))
+                       'message':result.get('error','Mission polling unavailable'),
+                       'error_kind':result.get('error_kind','http')}
+                time.sleep(min(2 ** (retries-1),10))
                 continue
             try:
                 rows = result['events']
@@ -569,6 +705,7 @@ class Bridge:
                 yield {'type':'error','error':str(exc),'error_kind':'invalid_stream','last_event_id':last_event_id}
                 return
             retries = 0
+            deadline = None
             for event in accepted:
                 last_event_id += 1
                 yield event

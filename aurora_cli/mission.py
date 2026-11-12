@@ -35,6 +35,17 @@ def _safe_target(root: Path, raw: str, for_write: bool = False) -> Path | None:
     return resolved
 
 
+def _same_server(retained: str, current: str) -> bool:
+    """Quick tunnels of the published PC are one server under rotating names.
+
+    A retained start is replayed with its idempotency key, so the bridge
+    returns the original mission instead of creating a second one.
+    """
+    from .tunnel import is_ephemeral
+    retained, current = (retained or '').rstrip('/'), (current or '').rstrip('/')
+    return retained == current or (is_ephemeral(retained) and is_ephemeral(current))
+
+
 def run_mission(client: Bridge, request: str, workspace: str = "", permissions: str = "AUTONOMOUS", model: str = "", session_id: str = "", *, server_workspace: str | None = None, resume_id: str = "", watch_id: str = "", context_tokens: int | None = None, dispatch_state=None, input_files=()) -> bool:
     """Start and monitor an autonomous mission."""
     if server_workspace is None:
@@ -49,7 +60,7 @@ def run_mission(client: Bridge, request: str, workspace: str = "", permissions: 
             pending = retained.get('pending_request')
             active = retained.get('active_mission_id')
             if pending or active:
-                if retained.get('mission_server_url') != client.server_url:
+                if not _same_server(retained.get('mission_server_url', ''), client.server_url):
                     raise ValueError('Serveur différent pour une acceptation retenue ; aucune nouvelle mission créée')
                 original = pending or retained.get('accepted_request', {})
                 if original.get('request') != request:
@@ -72,7 +83,8 @@ def run_mission(client: Bridge, request: str, workspace: str = "", permissions: 
             data.update(mission_id=watch_id,cursor=data.get("stream_start_cursor",0))
         mission_id = data.get("mission_id")
         if mission_id and isinstance(retained, dict):
-            retained.update(active_mission_id=mission_id, accepted_request=payload)
+            retained.update(active_mission_id=mission_id, accepted_request=payload,
+                            mission_server_url=client.server_url)
             retained.pop('pending_request', None)
             dispatch_state.save()
         if not mission_id:

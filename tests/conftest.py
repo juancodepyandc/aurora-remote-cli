@@ -21,6 +21,12 @@ def isolated_config(tmp_path, monkeypatch):
     config_dir.mkdir()
     monkeypatch.setenv("JOBIA_CONFIG_DIR", str(config_dir))
     monkeypatch.setenv("JOBIA_DATA_DIR", str(tmp_path / "data"))
+    # Skills and MCP imports read and write under the home directory
+    # (~/.aurora/skills, ~/.claude.json, ~/.cursor…): never the real one.
+    home = tmp_path / "home"
+    home.mkdir(exist_ok=True)
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))
     # Keep the developer's real terminal from changing results.
     monkeypatch.setenv("JOBIA_COLOR", "truecolor")
     monkeypatch.setenv("JOBIA_ANIM", "none")
@@ -33,6 +39,20 @@ def isolated_config(tmp_path, monkeypatch):
     # credentials and then dispatch a supposedly isolated test to its server.
     monkeypatch.setattr(locations,'legacy_config_files',lambda: [])
 
+    # Tunnel discovery reads a public repository and then probes the real PC.
+    # Tests must never do either: a test that needs a publication patches
+    # ``connect.discover_tunnel`` or passes its own client to ``tunnel``.
+    from aurora_cli import tunnel
+    import httpx
+
+    def offline_publication(*args, client_factory=None, **kwargs):
+        if client_factory is not None:
+            return real_read_publication(*args, client_factory=client_factory, **kwargs)
+        raise httpx.ConnectError('Discovery disabled in tests')
+
+    real_read_publication = tunnel.read_publication
+    monkeypatch.setattr(tunnel, 'read_publication', offline_publication)
+    tunnel.forget()
     # locations reads the env vars at call time, so no cache to clear.
     assert locations.config_dir() == config_dir
     assert locations.data_dir() == tmp_path / "data"

@@ -45,6 +45,9 @@ SLASH_COMMANDS_CATALOG: list[tuple[str, str, str, str]] = [
     ("/business", ">", "MODULE", "Analyse économique et données"),
     ("/academy", ">", "MODULE", "Apprentissage et sciences"),
     ("/voice", ">", "MODULE", "Transcription et synthèse vocale"),
+    ("/skills", ">", "SKILLS", "Voir, chercher, importer : /skills chercher TEXTE · /skills import SOURCE"),
+    ("/skill", ">", "SKILLS", "Activer/désactiver un skill pour les demandes : /skill NOM"),
+    ("/mcp", ">", "MCP", "Serveurs et outils : /mcp chercher · /mcp import · /mcp install NOM"),
     ("/missions", ">", "SUIVI", "Retrouver les missions du serveur"),
     ("/resume", ">", "REPRISE", "Reprendre un objectif : /resume ID"),
     ("/attach", ">", "SUIVI", "Suivre sans relancer : /attach ID"),
@@ -53,6 +56,7 @@ SLASH_COMMANDS_CATALOG: list[tuple[str, str, str, str]] = [
     ("/theme", ">", "THÈME", "Prévisualiser puis choisir un univers (F2)"),
     ("/mode", ">", "EXÉCUTION", "auto, local ou remote"),
     ("/permissions", ">", "ACCÈS", "SAFE, STANDARD, AUTONOMOUS ou FULL"),
+    ("/connect", ">", "CONNEXION", "Associer ce PC : code à valider sur Aurora, sans clé"),
     ("/doctor", ">", "CONNEXION", "Diagnostic du pont et des moteurs (F5)"),
     ("/new", ">", "SESSION", "Nouvelle conversation (Ctrl+N)"),
     ("/clear", ">", "SESSION", "Archiver et vider les conversations de ce dossier"),
@@ -77,6 +81,7 @@ STUDIO_MODULES_META = {
 
 PAGE_LABELS = {
     'conversation': 'Conversation', 'modules': 'Modules', 'agents': 'Agents',
+    'skills': 'Skills', 'mcp': 'MCP',
     'avant_apres': 'Bilans', 'journal': 'Journal', 'fichiers': 'Fichiers',
 }
 
@@ -263,7 +268,8 @@ GlassFrame = HorizonFrame
 
 
 INTERACTIVE_COMMANDS = frozenset({'/help', '/theme', '/view', '/modules',
-                                  '/avant-apres', '/gains', '/doctor', '/missions'})
+                                  '/avant-apres', '/gains', '/doctor', '/missions',
+                                  '/skills', '/skill', '/mcp', '/connect', '/pair', '/home', '/palette'})
 
 
 def presentation_command(raw):
@@ -273,7 +279,7 @@ def presentation_command(raw):
 
 
 class WorkspaceApp:
-    PAGES = ['conversation', 'modules', 'agents', 'avant_apres', 'journal', 'fichiers']
+    PAGES = list(PAGE_LABELS)
 
     def __init__(self, *, bridge_factory=None, history=None, input=None, output=None):
         from .bridge import Bridge
@@ -300,6 +306,18 @@ class WorkspaceApp:
         self._last_connection_warning = ''
         self._recovery_notices_shown = False
         self.draft_restore = None
+        # Live connection: transient notices, pairing in progress, backoff.
+        self.toast = None
+        self.pairing = None
+        self._pairing_cancel = None
+        self._pairing_attempted = False
+        self._backoff = 0
+        self.reconnect_at = None
+        self.publication_hint = ''
+        self.animation_epoch = time.monotonic()
+        # Skills and MCP views: last observed inventories, loaded in background.
+        self.skill_rows, self.remote_skill_rows, self.mcp_rows, self.remote_mcp_rows = [], [], [], []
+        self.integrations_loaded = 0.0
         self.transcript = ''.join(f"\n### {'VOUS' if m['role']=='user' else 'AURORA'}\n\n{plain(m['content'])}\n" for m in self.history)[-200000:]
         self.loop = None
         self.body_lexer = RenderedLexer()
@@ -324,7 +342,7 @@ class WorkspaceApp:
             if raw and (not was_busy or presentation_command(raw)):
                 self.prompt.text = ''
                 task = event.app.create_background_task(self.submit(raw))
-                if not was_busy:
+                if not was_busy and not presentation_command(raw):
                     self.task = task
             elif raw:
                 self.note('Une mission est active. Ctrl+C demande son arrêt ; ton brouillon est conservé.')
@@ -341,7 +359,7 @@ class WorkspaceApp:
         def stop(event):
             if self.busy:
                 event.app.create_background_task(self.stop())
-            else:
+            elif not self.cancel_pairing():
                 self.prompt.text = ''
         @bindings.add('tab')
         def focus(event):
@@ -382,6 +400,7 @@ class WorkspaceApp:
             bindings.add('escape', str(idx))(_make_jump(p_name))
         @bindings.add('f5')
         def refresh(event):
+            self._backoff = 0
             event.app.create_background_task(self.discover())
         @bindings.add('c-n')
         def fresh(event):
@@ -537,6 +556,267 @@ class WorkspaceApp:
             lines += ['Aucune action observée pour cette session.', '',
                       'Le registre distant est consultable avec `jobia agents list`.']
         return '\n'.join(lines)
+
+    # --- Skills and MCP -------------------------------------------------------
+
+    @property
+    def active_skills(self):
+        names = getattr(self.history, 'state', {}).get('active_skills', []) if hasattr(self.history, 'state') else \
+            getattr(self, '_active_skills', [])
+        return [n for n in names if isinstance(n, str)]
+
+    def _set_active_skills(self, names):
+        if hasattr(self.history, 'state'):
+            self.history.state['active_skills'] = list(names)
+            if hasattr(self.history, 'save'):
+                self.history.save()
+        else:
+            self._active_skills = list(names)
+
+    def request_text(self, raw):
+        """The request sent to an engine: activated skills travel with it."""
+        names = self.active_skills
+        if not names:
+            return raw
+        from . import skills as library
+        block = library.context_block(names)
+        return (block + '\n\n[DEMANDE]\n' + raw) if block else raw
+
+    def load_integrations(self, *, remote=True):
+        """Local inventories (instant) and the bridge's (when paired)."""
+        from . import mcp_registry, skills as library
+        rows = library.discover(include_disabled=True)
+        self.skill_rows = [s.to_dict() for s in rows]
+        cache = mcp_registry.load_cache()
+        self.mcp_rows = [{'name': name, 'describe': mcp_registry.describe(cfg), 'scope': cfg.get('scope', ''),
+                          'disabled': bool(cfg.get('disabled')),
+                          'tools': [t.get('name', '') for t in cache.get(name, {}).get('tools', [])],
+                          'error': cache.get(name, {}).get('error', '')}
+                         for name, cfg in mcp_registry.servers(include_disabled=True).items()]
+        if remote and config.is_configured() and config.get('mode', 'auto') != 'local':
+            try:
+                with self.bridge_factory(timeout=15) as client:
+                    listed = client.skills_list() if hasattr(client, 'skills_list') else {}
+                    servers = client.mcp_list() if hasattr(client, 'mcp_list') else {}
+                if listed.get('ok'):
+                    self.remote_skill_rows = [r for r in listed.get('skills', []) if isinstance(r, dict)]
+                if servers.get('ok'):
+                    self.remote_mcp_rows = [r for r in servers.get('servers', []) if isinstance(r, dict)]
+            except Exception:
+                pass
+        self.integrations_loaded = time.monotonic()
+
+    async def refresh_integrations(self, *, remote=True):
+        await asyncio.to_thread(self.load_integrations, remote=remote)
+        self.refresh_body()
+
+    def skills_view_text(self):
+        active = set(self.active_skills)
+        lines = ['# Skills', '',
+                 'Instructions réutilisables. **/skill NOM** les active pour vos prochaines demandes '
+                 '(local et PC Aurora) ; **Ctrl+K** cherche partout.', '']
+        if active:
+            lines += ['### Actifs pour cette conversation', '', *(f'- ● **{plain(n)}**' for n in sorted(active)), '']
+        lines += ['### Sur cet ordinateur', '']
+        if self.skill_rows:
+            for row in self.skill_rows:
+                mark = '●' if row['name'] in active else '○' if row.get('enabled', True) else '×'
+                state = '' if row.get('enabled', True) else ' · désactivé'
+                lines.append(f"- {mark} **{plain(row['name'])}** · {plain(row.get('level', ''))}{state}  \n"
+                             f"  {plain(row.get('description', ''))[:180]}")
+        else:
+            lines.append('Aucun skill local. **/skills import anthropics/skills** ajoute un catalogue public.')
+        if self.remote_skill_rows:
+            lines += ['', '### Sur le PC Aurora', '']
+            lines += [f"- **{plain(r.get('name', '?'))}** · {plain(r.get('description', ''))[:160]}"
+                      for r in self.remote_skill_rows[:60]]
+        lines += ['', '**/skills chercher TEXTE** · **/skills import SOURCE** (dossier, .zip, URL, owner/repo GitHub)']
+        return '\n'.join(lines)
+
+    def mcp_view_text(self):
+        lines = ['# MCP', '', 'Serveurs d’outils. Ceux de cet ordinateur servent aux missions locales ; '
+                 'ceux du PC Aurora aux missions distantes.', '', '### Sur cet ordinateur', '']
+        if self.mcp_rows:
+            for row in self.mcp_rows:
+                state = 'désactivé' if row['disabled'] else (f"{len(row['tools'])} outils" if row['tools'] else
+                                                              'catalogue à lire · /mcp refresh')
+                if row.get('error'):
+                    state = 'erreur · ' + plain(row['error'])[:80]
+                lines.append(f"- **{plain(row['name'])}** · {state}  \n  {plain(row['describe'])[:160]}")
+                if row['tools']:
+                    lines.append('  ' + ' · '.join(plain(t) for t in row['tools'][:8])
+                                 + (' …' if len(row['tools']) > 8 else ''))
+        else:
+            lines.append('Aucun serveur local. **/mcp import** reprend ceux de Claude, Cursor, VS Code, Windsurf, '
+                         'Gemini ou Codex ; **/mcp chercher TEXTE** interroge aussi le registre officiel.')
+        if self.remote_mcp_rows:
+            lines += ['', '### Sur le PC Aurora', '']
+            lines += [f"- **{plain(r.get('name', '?'))}** · {plain(r.get('description', '') or r.get('status', ''))[:160]}"
+                      for r in self.remote_mcp_rows[:40]]
+        lines += ['', '**/mcp import** · **/mcp refresh** · **/mcp install NOM** · '
+                  '**/mcp appel SERVEUR OUTIL {json}**']
+        return '\n'.join(lines)
+
+    async def integrations_command(self, cmd, arg):
+        """/skill, /skills and /mcp; long work runs off the interface thread."""
+        from . import mcp_registry, skills as library
+        words = arg.split(maxsplit=1)
+        action = words[0].lower() if words else ''
+        rest = words[1].strip() if len(words) > 1 else ''
+        if cmd == '/skill':
+            if not arg:
+                self.note('Skills actifs : ' + (', '.join(self.active_skills) or 'aucun') +
+                          '\n/skill NOM active ou retire un skill.')
+                return
+            skill = await asyncio.to_thread(library.get, arg)
+            if skill is None:
+                hits = await asyncio.to_thread(library.search, arg, limit=5)
+                self.note('Skill introuvable : ' + plain(arg) + (
+                    '\nProches : ' + ', '.join(s.name for _, s in hits) if hits else
+                    '\n/skills chercher TEXTE --catalog pour en trouver.'))
+                return
+            names = self.active_skills
+            if skill.name in names:
+                names.remove(skill.name)
+                self.show_toast(f'Skill retiré : {skill.name}', 'info')
+            else:
+                names.append(skill.name)
+                self.show_toast(f'Skill actif : {skill.name} · joint à vos prochaines demandes', 'success')
+            self._set_active_skills(names)
+            self.refresh_body()
+            return
+        if cmd == '/skills':
+            if action in {'chercher', 'search', 'cherche', 'find'} and rest:
+                local = await asyncio.to_thread(library.search, rest, limit=8)
+                lines = [f'### Skills · « {plain(rest)} »', '']
+                lines += [f'- **{s.name}** · {s.level} · {plain(s.description)[:160]}' for _, s in local]
+                if len(local) < 3:
+                    self.show_toast('Recherche dans les catalogues publics…', 'info')
+                    try:
+                        hits, errors = await asyncio.to_thread(library.catalog_search, rest, limit=6)
+                    except Exception as exc:
+                        hits, errors = [], [str(exc)]
+                    lines += [f'- **{s.name}** · catalogue {s.source} · /skills import {s.source} {s.name}  \n'
+                              f'  {plain(s.description)[:160]}' for _, s in hits]
+                    lines += [f'- catalogue indisponible : {plain(e)}' for e in errors]
+                if len(lines) == 2:
+                    lines.append('Aucun résultat.')
+                self.note('\n'.join(lines))
+                return
+            if action == 'import' and rest:
+                source, *names = rest.split()
+                self.show_toast('Import de skills · ' + source, 'info', None)
+                try:
+                    report = await asyncio.to_thread(library.import_skills, source, names=names)
+                except Exception as exc:
+                    self.show_toast('Import impossible', 'warning')
+                    self.note('Import impossible : ' + plain(exc))
+                    return
+                self.show_toast(f'{len(report.imported)} skill(s) importé(s)', 'success')
+                self.note('### Skills importés\n\n' + (', '.join(report.imported) or 'aucun nouveau')
+                          + (f"\n\nDéjà présents : {', '.join(report.skipped)}" if report.skipped else '')
+                          + ('\n\nDisponibles dans la source : ' + ', '.join(report.available[:40])
+                             if not report.imported and report.available else ''))
+                await self.refresh_integrations(remote=False)
+                return
+            self.page, self.home_open = 'skills', False
+            self.refresh_body()
+            await self.refresh_integrations()
+            return
+        # /mcp
+        if action in {'chercher', 'search', 'cherche', 'find'} and rest:
+            local = await asyncio.to_thread(mcp_registry.search, rest, limit=10)
+            lines = [f'### MCP · « {plain(rest)} »', '']
+            lines += [f"- **{h['server']}:{h['name']}** · {h['kind']} · {plain(h['description'])[:140]}"
+                      if h['kind'] != 'serveur' else f"- **{h['name']}** · serveur · {plain(h['description'])[:140]}"
+                      for h in local]
+            try:
+                registry = await asyncio.to_thread(mcp_registry.registry_search, rest, limit=6)
+            except Exception as exc:
+                registry = []
+                lines.append('Registre officiel indisponible : ' + plain(exc))
+            if registry:
+                lines += ['', '#### Registre officiel MCP', '']
+                lines += [f"- **{r['name']}** {r['version']} · {plain(r['description'])[:140]}  \n"
+                          f"  /mcp install {r['name']}" for r in registry]
+            if len(lines) == 2:
+                lines.append('Aucun résultat.')
+            self.note('\n'.join(lines))
+            return
+        if action == 'import':
+            def run_import():
+                if rest:
+                    found = mcp_registry.load_source(rest)
+                else:
+                    found = {}
+                    for row in mcp_registry.scan_clients():
+                        found.setdefault(row['name'], row['config'])
+                return mcp_registry.import_servers(found, origin=rest or 'import')
+            try:
+                imported, skipped = await asyncio.to_thread(run_import)
+            except Exception as exc:
+                self.note('Import MCP impossible : ' + plain(exc))
+                return
+            self.show_toast(f'{len(imported)} serveur(s) MCP importé(s)', 'success' if imported else 'info')
+            self.note('### MCP importés\n\n' + (', '.join(imported) or 'rien de nouveau')
+                      + (f"\n\nConflits gardés : {', '.join(skipped)}" if skipped else ''))
+            if imported:
+                await asyncio.to_thread(mcp_registry.refresh, set(imported))
+            await self.refresh_integrations(remote=False)
+            return
+        if action == 'refresh':
+            self.show_toast('Lecture des catalogues MCP…', 'info', None)
+            await asyncio.to_thread(mcp_registry.refresh)
+            self.show_toast('Catalogues MCP à jour', 'success')
+            await self.refresh_integrations(remote=False)
+            return
+        if action == 'install' and rest:
+            name = rest.split()[0]
+            try:
+                rows = await asyncio.to_thread(mcp_registry.registry_search, name, limit=20)
+                entry = next((r for r in rows if r['name'] == name), None) or (rows[0] if len(rows) == 1 else None)
+                if entry is None:
+                    raise ValueError('nom exact introuvable dans le registre officiel')
+                alias = mcp_registry.default_alias(entry['name'])
+                saved = mcp_registry.add(alias, mcp_registry.install_config(entry), overwrite=True)
+            except Exception as exc:
+                self.note('Installation MCP impossible : ' + plain(exc))
+                return
+            missing = mcp_registry.missing_values(saved)
+            self.show_toast(f'MCP installé : {alias}', 'success')
+            self.note(f'### MCP installé : {alias}\n\n{mcp_registry.describe(saved)}'
+                      + ('\n\nÀ renseigner : ' + ', '.join(missing) if missing else ''))
+            await self.refresh_integrations(remote=False)
+            return
+        if action in {'appel', 'call'} and rest:
+            parts = rest.split(maxsplit=2)
+            if len(parts) < 2:
+                self.note('Usage : /mcp appel SERVEUR OUTIL {"argument": "valeur"}')
+                return
+            server, tool = parts[0], parts[1]
+            try:
+                arguments = json.loads(parts[2]) if len(parts) > 2 else {}
+                if not isinstance(arguments, dict):
+                    raise ValueError('objet JSON attendu')
+            except ValueError as exc:
+                self.note('Arguments JSON invalides : ' + plain(exc))
+                return
+            cfg = mcp_registry.servers().get(server)
+            if cfg is not None:
+                response, error = await asyncio.to_thread(
+                    mcp_registry.call, cfg, 'tools/call', {'name': tool, 'arguments': arguments}, timeout=60)
+                result = {'error': error} if error else response['result']
+            else:
+                def remote_call():
+                    with self.bridge_factory(timeout=70) as client:
+                        return client.mcp_call(server, tool, arguments=arguments)
+                result = await asyncio.to_thread(remote_call)
+            self.note(f'### MCP · {plain(server)}:{plain(tool)}\n\n```json\n'
+                      + plain(json.dumps(result, ensure_ascii=False, indent=2))[:12000] + '\n```')
+            return
+        self.page, self.home_open = 'mcp', False
+        self.refresh_body()
+        await self.refresh_integrations()
 
     @property
     def busy(self):
@@ -700,6 +980,10 @@ class WorkspaceApp:
             text = self.modules_cockpit_text()
         elif self.page == 'agents':
             text = self.agents_matrix_text()
+        elif self.page == 'skills':
+            text = self.skills_view_text()
+        elif self.page == 'mcp':
+            text = self.mcp_view_text()
         elif self.page == 'avant_apres':
             text = self.avant_apres_text()
         elif self.page == 'journal':
@@ -800,9 +1084,52 @@ class WorkspaceApp:
                 self.note(label+'\n'+detail)
         self.schedule_refresh()
 
-    async def discover(self):
+    def connection_state(self) -> str:
+        """Normalised connection state shared by both renderers."""
+        return {'connecté': 'online', 'flux reçu': 'online', 'dégradé': 'degraded',
+                'reconnexion': 'reconnecting', 'hors ligne': 'offline', 'local': 'local',
+                'autorisation requise': 'unpaired', 'non configuré': 'unpaired',
+                'appairage': 'pairing'}.get(self.connection, 'checking')
+
+    def reconnect_in(self):
+        if self.reconnect_at is None or self.connection_state() not in {'offline', 'reconnecting'}:
+            return None
+        return max(0, int(round(self.reconnect_at - time.monotonic())))
+
+    def show_toast(self, text, tone='info', seconds=6.0):
+        """A transient notice; ``seconds=None`` keeps it until replaced."""
+        self.toast = {'text': plain(text), 'tone': tone,
+                      'until': None if seconds is None else time.monotonic() + seconds}
+        try:
+            loop = asyncio.get_running_loop()
+            if seconds is not None:
+                loop.call_later(seconds + .05, self.app.invalidate)
+        except RuntimeError:
+            pass
+        self.app.invalidate()
+
+    def active_toast(self):
+        toast = self.toast
+        if toast is None:
+            return None
+        if toast['until'] is not None and time.monotonic() >= toast['until']:
+            self.toast = None
+            return None
+        return toast
+
+    async def discover(self, *, quiet=False):
+        previous_url = config.resolve_server_url()
         try:
             self.connection = 'diagnostic'
+            self.app.invalidate()
+            mode = config.get('mode', 'auto')
+            if not config.is_configured() and config.get('api_key') and mode != 'local':
+                # A remembered authorisation without address: find the PC.
+                from .connect import discover_tunnel
+                try:
+                    config.set_key('server_url', await asyncio.to_thread(discover_tunnel))
+                except Exception:
+                    pass
             if config.is_configured():
                 def remote():
                     # Doctor checks several services; its response can take
@@ -813,13 +1140,28 @@ class WorkspaceApp:
                         doctor = client.doctor()
                         latency = (time.monotonic()-started)*1000
                         t_models = time.monotonic()
-                        models = client.models()
+                        models = client.models() if doctor.get('ok') else {}
                         if getattr(client, 'server_url', '') != initial_url:
                             latency = (time.monotonic()-t_models)*1000
                     return doctor,models,latency
                 doctor,models,self.latency_ms = await asyncio.to_thread(remote)
+                from .bridge import failure_kind
                 ready = doctor.get('ok') and doctor.get('ready', True)
+                if doctor.get('http_status') in (401, 403):
+                    self.connection = 'autorisation requise'
+                    self.health = ('Autorisation refusée par le PC · /connect affiche un code à valider sur le PC · '
+                                   + target_label(config.resolve_server_url()))
+                    self.latency_ms = None
+                    if not self._pairing_attempted and self.pairing is None and mode != 'local':
+                        self._pairing_attempted = True
+                        asyncio.get_running_loop().create_task(self.start_pairing())
+                    self.app.invalidate()
+                    return
+                if not doctor.get('ok') and failure_kind(doctor):
+                    raise ConnectionError(doctor.get('error') or 'PC Aurora injoignable')
                 self.connection = 'connecté' if ready else 'dégradé'
+                self._backoff = 0
+                self.reconnect_at = None
                 unavailable = [check['name'] for check in doctor.get('checks', [])
                                if check.get('name') in {'GPU', 'ComfyUI'} and check.get('ok') is False]
                 if doctor.get('gpu_ready') is False and 'GPU' not in unavailable:
@@ -837,8 +1179,11 @@ class WorkspaceApp:
                         for c in doctor.get('checks', []) if c.get('ok') is False
                     )
                     self.health += ' · '+plain(reason or 'jobia doctor --remote')
-                if config.get('mode', 'auto') == 'local':
+                if mode == 'local':
                     self.health += ' · Mode local actif : les demandes sont exécutées sur cet ordinateur'
+                current_url = config.resolve_server_url()
+                if previous_url and current_url != previous_url:
+                    self.show_toast('Aurora a changé d’adresse · reconnecté à '+target_label(current_url), 'success')
                 self.models = [m.get('name','') for m in models.get('models',[]) if isinstance(m,dict) and m.get('name')]
                 selected = config.get('default_model', '') or doctor.get('default_model', '')
                 selected_info = next((m for m in doctor.get('models', models.get('models', []))
@@ -858,21 +1203,174 @@ class WorkspaceApp:
                 from .core.discovery import scan
                 result = await asyncio.to_thread(scan,deep=False)
                 self.models = [m.name for provider in result.providers if provider.healthy for m in provider.models]
-                self.health = f'{len(self.models)} modèle(s) servi(s) localement · jobia connect pour le pont'
+                self.health = f'{len(self.models)} modèle(s) servi(s) localement · /connect associe le PC Aurora'
                 self.connection = 'local'
                 self._active_target = 'cet ordinateur'
+                if mode != 'local' and not self.publication_hint:
+                    asyncio.get_running_loop().create_task(self._publication_hint())
         except Exception as exc:
             self.connection = 'hors ligne'
             self.latency_ms = None
-            self.health = 'Diagnostic : '+plain(exc)
-        if self.connection in {'dégradé','hors ligne'}:
+            self.health = 'PC Aurora injoignable · '+plain(exc)+' · nouvel essai automatique'
+        if self.connection in {'dégradé','hors ligne'} and not quiet:
             if self.health != self._last_connection_warning:
                 self.note('### Connexion à rétablir\n\n'+self.health+
-                          '\n\nF5 réessayer · `jobia connect` pour vérifier l’appairage.')
+                          '\n\nReconnexion automatique dès que le PC répond (nouvelle adresse comprise) · F5 réessayer maintenant.')
                 self._last_connection_warning = self.health
-        else:
+        elif self.connection not in {'dégradé','hors ligne'}:
             self._last_connection_warning = ''
+        self.ensure_clock()
         self.app.invalidate()
+
+    async def _publication_hint(self):
+        """Without pairing, tell the user when the PC is online and ready to pair."""
+        from .connect import discover_tunnel
+        try:
+            await asyncio.to_thread(discover_tunnel)
+        except Exception:
+            return
+        if not config.is_configured() and self.pairing is None:
+            self.publication_hint = 'PC Aurora en ligne · /connect pour associer cet ordinateur'
+            self.show_toast(self.publication_hint, 'info', 12)
+
+    def _alive(self):
+        with self.bridge_factory(timeout=8) as client:
+            alive = getattr(client, 'alive', None)
+            return alive() if callable(alive) else {'ok': True}
+
+    def _monitor_delay(self):
+        state = self.connection_state()
+        if state in {'offline', 'reconnecting'}:
+            return (2, 4, 8, 15, 30, 30)[min(self._backoff, 5)]
+        return 20.0
+
+    async def monitor_once(self):
+        """One observation of the connection; returns the delay before the next."""
+        mode = config.get('mode', 'auto')
+        if self.pairing is not None or mode == 'local' or not config.is_configured():
+            return 30.0
+        if self.busy and self.local_process is None:
+            return 15.0  # A remote mission stream reconnects by itself.
+        state = self.connection_state()
+        if state in {'online', 'degraded'}:
+            alive = await asyncio.to_thread(self._alive)
+            if alive.get('ok'):
+                return 20.0
+            self.connection = 'reconnexion'
+            self.app.invalidate()
+        await self.discover(quiet=state in {'offline', 'reconnecting'})
+        if self.connection_state() in {'online', 'degraded'}:
+            if state in {'offline', 'reconnecting'}:
+                self.show_toast('Aurora est de nouveau joignable', 'success')
+            return 20.0
+        self._backoff = min(self._backoff + 1, 5)
+        return self._monitor_delay()
+
+    async def monitor(self):
+        """Watch the connection while the interface is open (idle-friendly)."""
+        self.loop = asyncio.get_running_loop()
+        while True:
+            delay = self._monitor_delay()
+            if self.connection_state() in {'offline', 'reconnecting'}:
+                self.reconnect_at = time.monotonic() + delay
+                self.ensure_clock()
+            await asyncio.sleep(delay)
+            self.reconnect_at = None
+            try:
+                await self.monitor_once()
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                self.health = 'Surveillance de connexion : '+plain(exc)
+                self._backoff = min(self._backoff + 1, 5)
+
+    async def start_pairing(self, url=''):
+        """Show a pairing code here; the PC approves it in its own window."""
+        if self.pairing is not None:
+            self.note('Appairage déjà en cours · code '+(self.pairing.get('code') or 'en attente'))
+            return
+        import threading
+        from . import tunnel
+        from .connect import discover_tunnel, _register
+        self.loop = asyncio.get_running_loop()
+        target = (url or config.resolve_server_url() or '').rstrip('/')
+        if not url and (not target or tunnel.is_ephemeral(target)):
+            try:
+                target = await asyncio.to_thread(discover_tunnel)
+            except Exception as exc:
+                if not target:
+                    self.note('### PC Aurora introuvable\n\n'+plain(exc)+
+                              '\n\nAllumez Aurora sur le PC : la connexion se fera dès que son adresse sera publiée.'
+                              ' Adresse manuelle : /connect https://ADRESSE')
+                    return
+        try:
+            tunnel.valid_url(target)
+        except ValueError as exc:
+            self.note('Adresse invalide : '+plain(exc))
+            return
+        cancel = threading.Event()
+        self._pairing_cancel = cancel
+        self.pairing = {'code': '', 'target': target_label(target), 'expires_at': None,
+                        'status': 'Demande envoyée au PC…'}
+        self.connection = 'appairage'
+        self.show_toast('Appairage · demande envoyée à '+target_label(target), 'info', None)
+
+        def on_code(code, seconds):
+            self.post(self._pairing_code, code, seconds)
+
+        def on_status(kind, message):
+            self.post(self._pairing_status, kind, message)
+
+        def work():
+            from .device_pairing import pair_device
+            credential = pair_device(target, on_code=on_code, on_status=on_status, cancel=cancel)
+            response = _register(target, credential)
+            response.raise_for_status()
+            if not response.json().get('ok'):
+                raise ValueError('Le PC a refusé l’enregistrement de cet appareil.')
+            config.set_key('server_url', target)
+            config.set_key('api_key', credential)
+
+        try:
+            await asyncio.to_thread(work)
+        except Exception as exc:
+            self.pairing = None
+            self._pairing_cancel = None
+            self.connection = 'non configuré' if not config.is_configured() else 'autorisation requise'
+            self.show_toast('Appairage interrompu · /connect pour réessayer', 'warning', 10)
+            self.note('Appairage interrompu : '+plain(exc)+'\n\n/connect relance la demande.')
+            return
+        self.pairing = None
+        self._pairing_cancel = None
+        self.publication_hint = ''
+        self._active_target = ''
+        self.show_toast('Appareil autorisé · connexion établie', 'success')
+        self.note('### Connecté\n\nCet ordinateur est autorisé par le PC Aurora. '
+                  'Il retrouvera seul la nouvelle adresse après chaque redémarrage.')
+        await self.discover()
+
+    def _pairing_code(self, code, seconds):
+        if self.pairing is None:
+            return
+        self.pairing.update(code=code, expires_at=time.monotonic()+seconds,
+                            status='Saisissez ce code sur le PC Aurora')
+        spaced = code[:3]+' '+code[3:]
+        self.show_toast(f'Code de connexion {spaced} · à saisir sur le PC Aurora', 'accent', None)
+        self.note(f'### Code de connexion : {spaced}\n\n'
+                  'Sur le PC Aurora, saisissez ce code dans la fenêtre de connexion. '
+                  'Aucune clé à copier ; Ctrl+C annule la demande.')
+        self.ensure_clock()
+
+    def _pairing_status(self, kind, message):
+        if self.pairing is not None:
+            self.pairing['status'] = plain(message)
+        self.app.invalidate()
+
+    def cancel_pairing(self):
+        if self._pairing_cancel is not None:
+            self._pairing_cancel.set()
+            return True
+        return False
 
     async def choose_theme(self):
         if self._theme_selection is not None:
@@ -957,7 +1455,7 @@ class WorkspaceApp:
             else:
                 from urllib.parse import urlsplit
                 local_server = urlsplit(client.server_url).hostname in {'127.0.0.1','localhost','::1'}
-                payload = pending or {'request':raw,'workspace':str(Path.cwd()) if local_server else '',
+                payload = pending or {'request':self.request_text(raw),'workspace':str(Path.cwd()) if local_server else '',
                     'permissions':config.get('default_permissions','SAFE'),'model':config.get('default_model',''),
                     'idempotency_key':uuid4().hex}
                 if 'references' not in payload and isinstance(client, Bridge):
@@ -1070,8 +1568,15 @@ class WorkspaceApp:
                     config.set(field,selected)
                 return
             if cmd=='/doctor':
+                self._backoff = 0
                 await self.discover()
                 self.note('Diagnostic mis à jour : ' + self.health)
+                return
+            if cmd in {'/connect', '/pair'}:
+                await self.start_pairing(arg)
+                return
+            if cmd in {'/skill', '/skills', '/mcp'}:
+                await self.integrations_command(cmd, arg)
                 return
             if cmd in {'/avant-apres', '/gains'}:
                 self.page = 'avant_apres'
@@ -1155,6 +1660,16 @@ class WorkspaceApp:
         self.state.record('Connexion · attente du serveur')
         self.ensure_clock()
         self.note('\n### VOUS\n\n'+raw)
+        if self.active_skills and not resume and not attach:
+            self.state.record('Skills joints · '+', '.join(self.active_skills))
+        elif not resume and not attach and not pending:
+            try:
+                from . import skills as library
+                hint = library.suggest(raw)
+            except Exception:
+                hint = None
+            if hint is not None:
+                self.show_toast(f'Skill pertinent : {hint.name} · /skill {hint.name} pour l’activer', 'accent', 10)
         if not resume and not attach and not pending:
             self.history.append({'role':'user','content':raw})
             if hasattr(self.history,'save'):
@@ -1175,7 +1690,7 @@ class WorkspaceApp:
                 if not attach and not resume and not pending:
                     from urllib.parse import urlsplit
                     local_server = urlsplit(config.resolve_server_url()).hostname in {'127.0.0.1','localhost','::1'}
-                    pending = {'request':raw,'workspace':str(Path.cwd()) if local_server else '',
+                    pending = {'request':self.request_text(raw),'workspace':str(Path.cwd()) if local_server else '',
                                'permissions':config.get('default_permissions','SAFE'),
                                'model':config.get('default_model',''),'idempotency_key':uuid4().hex,
                                'history':[{'role':m['role'],'content':m['content'][:3000]+('\n[historique tronqué]' if len(m['content'])>3000 else '')}
@@ -1207,7 +1722,7 @@ class WorkspaceApp:
             self.history.save()
         env = os.environ.copy()
         env.update(PYTHONUNBUFFERED='1',JOBIA_COLOR='never',JOBIA_ANIMATION='none')
-        payload = {'request':raw,'history':list(self.history[:-1]),'model':config.get('default_model',''),
+        payload = {'request':self.request_text(raw),'history':list(self.history[:-1]),'model':config.get('default_model',''),
                    'allow_model_selection':automatic}
         options = dict(stdin=asyncio.subprocess.PIPE,stdout=asyncio.subprocess.PIPE,stderr=asyncio.subprocess.STDOUT,
                        env=env,start_new_session=os.name=='posix')
@@ -1290,6 +1805,7 @@ class WorkspaceApp:
         self.show_recovery_notices()
         def start():
             self.app.create_background_task(self.discover())
+            self.app.create_background_task(self.monitor())
             self.ensure_clock()
         try:
             await self.app.run_async(pre_run=start)
@@ -1298,9 +1814,14 @@ class WorkspaceApp:
                 if handle is not None:
                     handle.cancel()
 
+    def ticking(self):
+        """Real activity worth a live clock: a mission, a reconnection, a pairing."""
+        return (self.state.status in {'starting','running','queued','permission'}
+                or self.connection in {'diagnostic','reconnexion','hors ligne','appairage'})
+
     def ensure_clock(self):
-        """A one-second status clock exists only while a mission is active."""
-        if self.state.status not in {'starting','running','queued','permission'}:
+        """A one-second status clock exists only while something really happens."""
+        if not self.ticking():
             if self._clock_handle is not None:
                 self._clock_handle.cancel()
                 self._clock_handle = None
@@ -1313,7 +1834,7 @@ class WorkspaceApp:
 
     def _clock_tick(self):
         self._clock_handle = None
-        if self.state.status in {'starting','running','queued','permission'}:
+        if self.ticking():
             self.app.invalidate()
             self.ensure_clock()
 

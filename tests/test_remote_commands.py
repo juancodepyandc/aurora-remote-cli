@@ -95,6 +95,9 @@ def test_connect_command_reaches_registration_and_reports_failures(monkeypatch, 
 @pytest.mark.parametrize("command", [["agents", "list"], ["agents", "disable", "reviewer"], ["mcp", "list"], ["skills", "list"]])
 def test_remote_management_uses_real_bridge_methods_and_closes(monkeypatch, command):
     from aurora_cli.bridge import Bridge
+    # Remote MCP servers are listed beside local ones once a bridge is paired.
+    config.set("server_url", "https://bridge.test")
+    config.set("api_key", "fixture")
     client = Mock(spec=Bridge)
     for method in ("agents_official", "agents_dynamic", "agent_disable", "mcp_list", "mcp_tools", "skills_list"):
         getattr(client, method).return_value = {"ok": True, "agents": [], "servers": [], "tools": [], "skills": []}

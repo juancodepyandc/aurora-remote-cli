@@ -101,6 +101,7 @@ def test_reconnect_is_bounded_and_retains_last_complete_cursor(monkeypatch):
         requests.append(request)
         return httpx.Response(200, stream=BrokenStream(record(1, {'type': 'step_start'})))
     with client_with(handler) as client:
+        client.reconnect_attempts = 3
         events = list(client.mission_stream('mis_original'))
     assert len(requests) == 4
     assert sum(event['type'] == 'step_start' for event in events) == 1

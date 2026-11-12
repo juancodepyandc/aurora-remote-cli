@@ -20,51 +20,11 @@ from pathlib import Path
 
 import click
 
+from aurora_cli import resolver as _resolver
 
-def _patched_getaddrinfo(host, port, family=0, type=0, proto=0, flags=0):
-    """Resolve ``*.trycloudflare.com`` through DNS-over-HTTPS.
-
-    Short lived tunnel hostnames sometimes sit in a resolver cache that has
-    not picked up the new record yet, which makes a freshly opened tunnel look
-    like a dead server. Falling back to a public DoH resolver fixes that
-    without touching the resolution of any other host.
-    """
-    try:
-        return _ORIGINAL_GETADDRINFO(host, port, family, type, proto, flags)
-    except socket.gaierror:
-        if not host or "trycloudflare" not in host:
-            raise
-        import httpx
-
-        for endpoint in (
-            "https://1.1.1.1/dns-query",
-            "https://dns.google/resolve",
-        ):
-            try:
-                response = httpx.get(
-                    endpoint,
-                    params={"name": host, "type": "A"},
-                    headers={"accept": "application/dns-json"},
-                    timeout=5.0,
-                    verify=True,
-                )
-                answers = [
-                    item["data"]
-                    for item in response.json().get("Answer", [])
-                    if item.get("type") in (1, 5)
-                ]
-            except Exception:
-                continue
-            if answers:
-                return _ORIGINAL_GETADDRINFO(answers[0], port, family, type, proto, flags)
-        raise
-
-
-_ORIGINAL_GETADDRINFO = socket.getaddrinfo
-socket.getaddrinfo = _patched_getaddrinfo
-
-
-import click  # noqa: E402,F811  (re-imported after the resolver shim on purpose)
+# Fresh quick-tunnel hostnames can be missing from a resolver cache for a few
+# seconds; the shared fallback asks DNS-over-HTTPS for those hostnames only.
+_resolver.install()
 
 from aurora_cli import __version__, brand, config, display, themes  # noqa: E402
 from aurora_cli.core import capabilities, locations  # noqa: E402
@@ -370,9 +330,16 @@ def doctor(remote, as_json):
                    "Interface Python ; jobia renderer install installe le natif sans Cargo."})
     remote_data = None
     if remote:
+        from aurora_cli.terminal import target_label
         client = _client()
         try:
             remote_data = client.doctor()
+            followed = remote_data.get("relocated_to")
+            address = getattr(client, "server_url", "")
+            checks.append({"name": "Adresse", "status": "ok" if remote_data.get("ok") else "warn",
+                           "ok": bool(remote_data.get("ok")),
+                           "detail": (target_label(address) if isinstance(address, str) else "non observée")
+                           + (" · nouvelle adresse du PC retrouvée et enregistrée" if followed else "")})
         finally:
             client.close()
         checks.extend(remote_data.get("checks", []))
@@ -1806,157 +1773,26 @@ def agents_delete(agent_id):
 
 @main.group()
 def mcp():
-    """Manage the bridge's MCP servers."""
+    """MCP : serveurs de cet ordinateur (import, recherche, installation) et du PC Aurora."""
 
 
-@mcp.command(name="list")
-def mcp_list():
-    """List MCP servers and their tools."""
-    client = _client()
-    try:
-        servers = _require_remote_ok(client.mcp_list())
-        tools = _require_remote_ok(client.mcp_tools())
-        display.mcp_table(servers.get("servers", []), tools.get("tools", []))
-    finally:
-        client.close()
-
-
-@mcp.command(name="tools")
-@click.option("--workspace", default="", help="Server workspace to inspect for MCP configurations.")
-@click.option("--json", "as_json", is_flag=True)
-def mcp_tools_cmd(workspace, as_json):
-    """Probe MCP servers and list their live tools and schemas."""
-    client = _client()
-    try:
-        result = _require_remote_ok(client.mcp_tools(workspace=workspace))
-    finally:
-        client.close()
-    if as_json:
-        click.echo(json.dumps(result, ensure_ascii=False, indent=2))
-        return
-    if not result.get("tools"):
-        display.hint("Aucun outil MCP disponible.")
-    for tool in result.get("tools", []):
-        display.kv(f"{tool.get('server', '?')}:{tool.get('name', '?')}", tool.get("description", ""))
-    for err in result.get("errors", []):
-        display.warning(f"{err.get('server', '?')} : {err.get('error', 'erreur')}")
-
-
-@mcp.command(name="call")
-@click.argument("server")
-@click.argument("tool")
-@click.option("--arg", "kv_args", multiple=True, help="Tool argument in key=value format (repeatable).")
-@click.option("--json-args", default="", help="JSON object of arguments.")
-@click.option("--workspace", default="", help="Server workspace context.")
-@click.option("--timeout", "timeout_seconds", type=click.FloatRange(1, 180), default=None, help="Explicit MCP execution budget, up to 180 seconds.")
-def mcp_call_cmd(server, tool, kv_args, json_args, workspace, timeout_seconds):
-    """Invoke a tool on a bridge MCP server and print the result."""
-    arguments = {}
-    if json_args:
-        try:
-            parsed = json.loads(json_args)
-            if not isinstance(parsed, dict):
-                raise ValueError("JSON arguments must be an object")
-            arguments.update(parsed)
-        except ValueError as exc:
-            raise click.ClickException(f"Arguments JSON invalides : {exc}") from exc
-    for item in kv_args:
-        if "=" not in item:
-            raise click.ClickException(f"Argument invalide '{item}' (attendu clé=valeur).")
-        k, v = item.split("=", 1)
-        try:
-            arguments[k] = json.loads(v)
-        except ValueError:
-            arguments[k] = v
-    client = _client()
-    try:
-        options = {"timeout_seconds": timeout_seconds} if timeout_seconds is not None else {}
-        result = _require_remote_ok(client.mcp_call(server, tool, arguments=arguments, workspace=workspace, **options))
-    finally:
-        client.close()
-    click.echo(json.dumps(result.get("result", result), ensure_ascii=False, indent=2))
-
-
-from aurora_cli.mcp_commands import register_mcp_commands
+from aurora_cli.mcp_commands import register_mcp_commands  # noqa: E402
 register_mcp_commands(mcp, lambda: _client(), lambda result: _require_remote_ok(result))
 
 
 @main.group()
 def skills():
-    """Manage the bridge's skills."""
-
-
-@skills.command(name="list")
-def skills_list():
-    """List skills exposed by the bridge."""
-    client = _client()
-    try:
-        result = _require_remote_ok(client.skills_list())
-        display.skills_table(result.get("skills", []))
-    finally:
-        client.close()
-
-
-@skills.command(name="read")
-@click.argument("name")
-@click.option("--workspace", default="", help="Server workspace to search.")
-def skills_read_cmd(name, workspace):
-    """Read the full SKILL.md instructions for a bridge skill."""
-    client = _client()
-    try:
-        result = _require_remote_ok(client.skills_read(name, workspace=workspace))
-    finally:
-        client.close()
-    if display.view.caps.is_tty:
-        display.print(display.view.markdown(result.get('content', ''), title=name))
-    else:
-        display.view.stream(result.get('content', '')+'\n')
-
-
-@skills.command(name="create")
-@click.argument("name")
-@click.option("--description", required=True, help="Short description of when to use this skill.")
-@click.option("--instructions", default="", help="Markdown body of the skill.")
-@click.option("--level", default="user", type=click.Choice(["user", "project"]))
-@click.option("--trigger", "triggers", multiple=True, help="Trigger keyword (repeatable).")
-@click.option("--workspace", default="", help="Target project workspace on the bridge.")
-def skills_create_cmd(name, description, instructions, level, triggers, workspace):
-    """Create a reusable skill on the bridge."""
-    client = _client()
-    try:
-        result = _require_remote_ok(client.skills_create(
-            name,
-            description=description,
-            level=level,
-            triggers=list(triggers),
-            instructions=instructions,
-            workspace=workspace,
-        ))
-        display.success(f"Skill créé : {result.get('file', name)}")
-    finally:
-        client.close()
-
-
-@skills.command(name="discover")
-@click.option("--workspace", default="", help="Server workspace to scan.")
-@click.option("--json", "as_json", is_flag=True)
-def skills_discover_cmd(workspace, as_json):
-    """Discover skills across project, user, and global bridge paths."""
-    client = _client()
-    try:
-        result = _require_remote_ok(client.skills_discover(workspace=workspace))
-    finally:
-        client.close()
-    if as_json:
-        click.echo(json.dumps(result, ensure_ascii=False, indent=2))
-        return
-    display.skills_table(result.get("skills", []))
+    """Skills : bibliothèque locale (import, recherche, création) et skills du PC Aurora."""
 
 
 def _require_remote_ok(result: dict) -> dict:
     if not result.get("ok"):
         raise click.ClickException(result.get("error") or "Le bridge n'a pas confirmé l'opération.")
     return result
+
+
+from aurora_cli.skills_commands import register_skills_commands  # noqa: E402
+register_skills_commands(skills, lambda: _client(), lambda result: _require_remote_ok(result))
 
 
 @main.command(name="prepare")

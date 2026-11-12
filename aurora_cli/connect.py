@@ -1,78 +1,35 @@
 """Pairing flow for the remote bridge.
 
 Discovery is intentionally narrow: the only automatic source of a server URL
-is the ``tunnel.txt`` file published by the bridge host, and whatever it
-contains is validated before it is trusted. Anything typed by hand or coming
-from the environment has to satisfy the same checks.
+is the ``tunnel.txt`` file published by the bridge host (see
+:mod:`aurora_cli.tunnel`), and whatever it contains is validated before it is
+trusted. Anything typed by hand or coming from the environment has to satisfy
+the same checks.
 """
 from __future__ import annotations
 
-import base64
 import os
-import re
 import socket
 import time
-from urllib.parse import urlsplit
 
 import httpx
 
-from aurora_cli import brand, config, display
+from aurora_cli import brand, config, display, tunnel
 from aurora_cli.terminal import target_label
 
-TUNNEL_SOURCE = (
-    "https://api.github.com/repos/juancodepyandc/aurora-live/contents/tunnel.txt"
-)
-TUNNEL_RAW_SOURCE = "https://raw.githubusercontent.com/juancodepyandc/aurora-live/main/tunnel.txt"
-ALLOWED_SCHEMES = ("http", "https")
-
-
-def _valid_url(url: str, *, tunnel_only: bool = False) -> str:
-    """Return ``url`` if it is an acceptable bridge address, else raise."""
-    parsed = urlsplit(url)
-    if parsed.scheme not in ALLOWED_SCHEMES or not parsed.hostname:
-        raise ValueError("Adresse de pont invalide")
-    if parsed.username or parsed.password:
-        raise ValueError("Identifiants dans l'URL non autorisés")
-    if tunnel_only and not re.fullmatch(r"https://[a-z0-9-]+\.trycloudflare\.com", url):
-        raise ValueError("Seuls les tunnels trycloudflare sont publiés")
-    if tunnel_only and (parsed.port not in (None, 443) or parsed.path
-                        or parsed.query or parsed.fragment):
-        raise ValueError("Adresse de tunnel publiée invalide")
-    return url
+TUNNEL_SOURCE = tunnel.api_source(tunnel.DEFAULT_PUBLISHER)
+TUNNEL_RAW_SOURCE = tunnel.raw_source(tunnel.DEFAULT_PUBLISHER, tunnel.DEFAULT_BRANCH)
+ALLOWED_SCHEMES = tunnel.ALLOWED_SCHEMES
+_valid_url = tunnel.valid_url
 
 
 def discover_tunnel() -> str:
-    """Read the current bridge address from its published file."""
-    request = dict(params={"_t": str(time.time_ns())},
-                   headers={"Cache-Control": "no-cache", "Accept": "application/vnd.github.v3+json"},
-                   timeout=10.0)
-    try:
-        response = httpx.get(TUNNEL_SOURCE, **request)
-        response.raise_for_status()
-    except httpx.HTTPError as exc:
-        # Same publisher, alternate reader. An authoritative empty or invalid
-        # API result never falls back to potentially stale CDN content.
-        if isinstance(exc, httpx.HTTPStatusError) and exc.response.status_code not in {403, 429, 500, 502, 503, 504}:
-            raise
-        response = httpx.get(TUNNEL_RAW_SOURCE, params=request['params'],
-                             headers={"Cache-Control": "no-cache"}, timeout=10.0)
-        response.raise_for_status()
-        if len(response.content) > 2048:
-            raise ValueError("Réponse de découverte trop volumineuse")
-        published = response.text.strip().rstrip("/")
-    else:
-        if len(response.content) > 16384:
-            raise ValueError("Réponse de découverte trop volumineuse")
-        metadata = response.json()
-        if (not isinstance(metadata, dict) or metadata.get("encoding") != "base64"
-                or not isinstance(metadata.get("content"), str)):
-            raise ValueError("Réponse de découverte invalide")
-        content = ''.join(metadata['content'].split())
-        published = base64.b64decode(content, validate=True).decode("utf-8").strip().rstrip("/")
-    if not published:
-        raise ValueError("Le pont distant semble éteint ou son tunnel n'est pas encore publié.")
-    _valid_url(published, tunnel_only=True)
-    return published
+    """Read the current bridge address from its freshest publication.
+
+    Concurrent failures within a few seconds share one read. An empty
+    publication means the PC is off (``TunnelOffline``, a ``ValueError``).
+    """
+    return tunnel.current_address(max_age=8.0)
 
 
 def _register(url: str, key: str) -> httpx.Response:
@@ -87,9 +44,12 @@ def _register(url: str, key: str) -> httpx.Response:
 def connect(server: str = "", api_key: str = "", *, then_interactive: bool = True) -> bool:
     """Register this device against a bridge and remember the credentials."""
     try:
-        auto_discover = (not server and not os.environ.get(brand.env("server_url"))
-                         and not os.environ.get(brand.env_legacy("server_url")))
+        explicit = (server or os.environ.get(brand.env("server_url"))
+                    or os.environ.get(brand.env_legacy("server_url")) or "")
         url = (server or config.resolve_server_url() or discover_tunnel()).rstrip("/")
+        # Saved addresses and ephemeral quick tunnels follow the publication:
+        # a quick-tunnel hostname is dead for good once its PC restarted.
+        auto_discover = not explicit or tunnel.is_ephemeral(url)
         _valid_url(url)
         display.header('CONNEXION', 'Appairage avec le PC Aurora')
         display.kv('Cible', target_label(url))

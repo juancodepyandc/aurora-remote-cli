@@ -303,6 +303,22 @@ class LocalMission:
         return resolved
 
     def _discover_local_skills(self) -> list[dict]:
+        # One library for the CLI, its interface and its missions: project and
+        # user folders, Claude-compatible folders, imported catalogues.
+        try:
+            from . import skills as library
+            found = []
+            for skill in library.discover(self.root):
+                try:
+                    content = skill.file.read_text(encoding='utf-8')
+                except (OSError, UnicodeError):
+                    continue
+                found.append({'name': skill.name, 'description': skill.description,
+                              'level': 'project' if skill.level == 'projet' else 'user',
+                              'file': str(skill.file), 'content': content})
+            return found
+        except Exception:
+            pass
         bases = [
             ('project', self.root / '.aurora' / 'skills'),
             ('project', self.root.parent / '.aurora' / 'skills'),
@@ -371,13 +387,33 @@ class LocalMission:
                         'persistent': srv_cfg.get('persistent') is True,
                         'tools': srv_cfg.get('tools') if isinstance(srv_cfg.get('tools'), list) else [],
                     }
+        # Servers imported or installed with `jobia mcp` (stdio or HTTP) are
+        # available to local missions too; project definitions keep priority.
+        try:
+            from . import mcp_registry
+            registered = mcp_registry.servers(self.root)
+            switched_off = mcp_registry.disabled_names()
+        except Exception:
+            registered, switched_off = {}, set()
+        for srv_name in switched_off:
+            servers.pop(srv_name, None)
+        for srv_name, srv_cfg in registered.items():
+            if srv_name in seen or srv_name in servers:
+                continue
+            entry = {k: v for k, v in srv_cfg.items() if k not in ('scope', 'origin', 'description', 'registry_name')}
+            entry.update(source=srv_cfg.get('origin', ''), tools=[])
+            servers[srv_name] = entry
         return servers
 
     def _query_mcp_server(self, server_name: str, cfg: dict, method: str, params: dict | None = None, *, timeout_seconds=15) -> dict:
         from .mcp_transport import call_stdio
         if isinstance(timeout_seconds, bool) or not isinstance(timeout_seconds, (int, float)) or not 1 <= timeout_seconds <= 180:
             raise ValueError('MCP timeout must be between 1 and 180 seconds')
-        response, error = call_stdio(cfg, method, params or {}, cwd=str(self.root), timeout=timeout_seconds)
+        if cfg.get('url'):
+            from .mcp_registry import call
+            response, error = call(cfg, method, params or {}, cwd=str(self.root), timeout=timeout_seconds)
+        else:
+            response, error = call_stdio(cfg, method, params or {}, cwd=str(self.root), timeout=timeout_seconds)
         if error:
             if method == 'tools/call' and 'session preserved' not in error and 'request was not sent' not in error:
                 raise MCPOutcomeUnknown(error)
