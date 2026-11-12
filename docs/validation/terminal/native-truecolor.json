@@ -1,16 +1,23 @@
 {
   "renderer": "native",
   "depth": "truecolor",
-  "first_frame_ms": 314.792,
+  "first_frame_ms": 240.741,
   "idle_cpu_percent": 0.0,
   "idle_output_bytes": 0,
-  "peak_tree_rss_mib": 48.699,
+  "peak_tree_rss_mib": 55.098,
   "exit": 0,
   "sse_cursors": [
     "0",
-    "1"
+    "1",
+    "0"
   ],
-  "mission_posts": 1,
+  "mission_posts": 2,
+  "stop_posts": 1,
   "resize": true,
-  "theme_preview": true
+  "theme_preview": true,
+  "busy_controls": true,
+  "restored_startup": true,
+  "bare_launcher": false,
+  "active_identity": true,
+  "control_stream_hidden": true
 }

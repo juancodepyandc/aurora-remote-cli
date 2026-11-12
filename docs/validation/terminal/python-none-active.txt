@@ -1,0 +1,24 @@
+  o AURORA  .  Isobare                 * flux recu . 6 ms   
+  Cible 127.0.0.1:44753  .  Mission mis_pty                 
+  Session 1a3a7e53  .  modele du serveur                    
+  1 Chat          F4 vues . Ctrl+K palette                  
+  +     Une idee. Un cap.                                   
+++#++#  ISOBARE / ATELIER POLAIRE                           
+#++###             ??                                       
+                                                        ^   
+VOUS                                                        
+                                                            
+Garde cette mission ouverte                                 
+                                                            
+Execution sur le serveur . 127.0.0.1:44753                  
+                                                            
+SORTIE RECUE . resultat non encore confirme                 
+                                                            
+MISSION EN ATTENTE                                      v   
+ - Activite observee . Mission acceptee . Preparation de ~  
+ 00:00  Etat recu . running . 2 etapes . 0 preuves          
+ Demande . Entree envoyer . Alt+Entree ligne                
+|                                                           
+|                                                           
+ [Ctrl+K] Palette  [F2] Theme  [F3] Modele  [F4] Vue        
+ / commandes . Tab completer . Alt+Entree nouvelle ligne    

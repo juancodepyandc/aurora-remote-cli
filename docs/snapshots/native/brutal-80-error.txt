@@ -1,11 +1,11 @@
- ■ Aurora                                                 Connexion : flux reçu 
- Cible pc-maitre.example                                            Diag. 24 ms 
- Session demo-42                                               Mission mis_demo 
- failed                                                                  brutal 
-  [1 Conversation]   F4 : changer de vue                                        
+  ■ Aurora · BLOC                                          ● flux reçu · 24 ms  
+  Cible pc-maitre.example                                     Mission mis_demo  
+  Session demo-42                                                       failed  
+   1 Chat   2 Mod   3 Agt   4 Skill   5 MCP   6 Bil   7 Jrnl   8 Fich           
+ ▀▀   ▀  FAITES PLACE.                                                          
+ ▀▀▀▀▀▀  BLOC / HAUT CONTRASTE                                                  
+ ▀▀▀▀▀▀  ██████████████████████████████                                         
  ┏ conversation ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓ 
- ┃Vous                                                                        ┃ 
- ┃Inspecte ce projet et vérifie les tests.                                    ┃ 
  ┃                                                                            ┃ 
  ┃Aurora                                                                      ┃ 
  ┃Le plan est prêt. Je commence par le fichier d’entrée.                      ┃ 
@@ -23,10 +23,10 @@
  ┃                                                                            ┃ 
  ┃Lecture de la configuration en cours…                                       ┃ 
  ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛ 
- failed · failed                                                                
+ · failed · failed                                                              
   0 observations · 0 fichiers · 0 caractères reçus                              
   00:00  Accès refusé : autorisation nécessaire                                 
  ┏ Votre demande · Entrée envoyer · Alt+Entrée ligne ━━━━━━━━━━━━━━━━━━━━━━━━━┓ 
  ┃Explique le résultat                                                        ┃ 
  ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛ 
- F2 thèmes · F3 modèles · F4 vues · F5 état · ^C arrêt · ^Q sortie              
+  Ctrl+K  palette   F2  thèmes   F3  modèles   F4  vues   F5  état              

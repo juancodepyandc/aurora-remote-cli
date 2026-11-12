@@ -1,8 +1,10 @@
-  ≈ Aurora                           Connexion : flux reçu  
-  Cible pc-maitre.example                      Diag. 24 ms  
-  Session demo-42                         Mission mis_demo  
-  read_file                                          otter  
-   [1 Conversation]   F4 : changer de vue                   
+   ≈ Aurora · Marée · Loutre          ● flux reçu · 24 ms   
+   Cible pc-maitre.example               Mission mis_demo   
+   Session demo-42                              read_file   
+    1 Chat    F4 vues · Ctrl+K palette                      
+   ▀▀▀▀   À votre rythme.                                   
+   ▀▀▀▀   MARÉE / ATELIER DISTANT                           
+   ▀▀▀▀▀     ⣀⣀⣀⡠⠤⠤⠤⠤⠔⠊⠁    ⣀⣀⣀                             
   ╭ conversation ────────────────────────────────────────╮  
   │Vous                                                  │  
   │Inspecte ce projet et vérifie les tests.              │  
@@ -20,13 +22,11 @@
   │                                                      │  
   │Lecture de la configuration en cours…                 │  
   │                                                      │  
-  │                                                      │  
-  │                                                      │  
   ╰──────────────────────────────────────────────────────╯  
-  running · read_file                                       
+  ▁ running · read_file                                     
    0 observations · 0 fichiers · 0 caractères reçus         
    00:00  Outil en cours · read_file                        
   ╭ Votre demande · Entrée envoyer · Alt+Entrée ligne ───╮  
   │Explique le résultat                                  │  
   ╰──────────────────────────────────────────────────────╯  
-  F2 thème · F3 modèle · F4 vue · ^C arrêt · ^Q sortie      
+   ^K  palette   F2  thème   F4  vue   ^C  arrêt            

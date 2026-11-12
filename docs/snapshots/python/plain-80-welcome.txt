@@ -1,32 +1,32 @@
-  Aurora.  /  Édition
-  Cible pc-maitre.example · connecté · Diag 24 ms
-  Session demo-42 · Mission aucune
- 1 [Conv]  2 Modu  3 Agen  4 Bila  5 Jour  6 Fich
+  Aurora.  ·  Édition                                      ● connecté · 24 ms
+  Cible pc-maitre.example  ·  Mission aucune
+  Session demo-42  ·  modele-observe
+  1 Chat   2 Mod   3 Agt   4 Skill   5 MCP   6 Bil   7 Jrnl   8 Fich
 
-                                                                            ^
-  AURORA.
-  ─────────────────────
-  Un objectif. Des preuves.
+ ÉDITION / CORRESPONDANCE
+
+ A U R O R A
+
+ ──────────────────────────────
+
+ L’espace des possibles.
+                                                    ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+ Décrivez le résultat attendu.                      ▀▀ ▀▀▀▀▀▀▀     ▀▀▀▀
+                                                    ▀▀ ▀▀▀▀▀▀▀     ▀▀▀▀▀
+ /modules   Explorer                                ▀▀ ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀ ▀
+ /missions  Reprendre                               ▀▀ ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀ ▀
+ /theme     Changer d’univers                       ▀▀                 ▀
+ /help      Commandes                               ▀▀ ▀▀▀▀▀▀▀▀▀       ▀
+ Ctrl+K     Palette · /skills · /mcp                ▀▀ ▀▀▀▀▀▀▀         ▀
+                                                    ▀▀ ▀▀▀▀▀▀▀         ▀
+                                                    ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
 
 
-                             Un horizon ouvert.
-
-Décrivez le résultat que vous voulez obtenir. Le plan, les outils et les
-preuves apparaîtront pendant la mission.
-
-/modules explorer les parcours   /missions reprendre un travail
-
-/theme choisir votre univers   /help toutes les commandes
-
-La cible et la session restent visibles en haut de l’écran.
-
-
-                                                                            v
- Activité observée · Prêt · aucun travail en cours
+ · Activité observée · Prêt · aucun travail en cours
  0 observations · 0 fichiers · 0 caractères reçus
  Le plan et les outils apparaîtront ici.
  Demande · Entrée envoyer · Alt+Entrée ligne
 │
 │
- F2 Thème  F3 Modèle  F4 Vue  F5 Diagnostic
- Ctrl+C Arrêt · Ctrl+Q Sortie · Tab Défiler · / Aide
+  Ctrl+K  Palette   F2  Thème   F3  Modèle   F4  Vue   F5  Diagnostic
+ / commandes · Tab compléter · Alt+Entrée nouvelle ligne

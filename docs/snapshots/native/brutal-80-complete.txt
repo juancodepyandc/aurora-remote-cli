@@ -1,8 +1,10 @@
- ■ Aurora                                                 Connexion : flux reçu 
- Cible pc-maitre.example                                            Diag. 24 ms 
- Session demo-42                                               Mission mis_demo 
- completed                                                               brutal 
-  [1 Conversation]   F4 : changer de vue                                        
+  ■ Aurora · BLOC                                          ● flux reçu · 24 ms  
+  Cible pc-maitre.example                                     Mission mis_demo  
+  Session demo-42                                                    completed  
+   1 Chat   2 Mod   3 Agt   4 Skill   5 MCP   6 Bil   7 Jrnl   8 Fich           
+ ▀▀   ▀  FAITES PLACE.                                                          
+ ▀▀▀▀▀▀  BLOC / HAUT CONTRASTE                                                  
+ ▀▀▀▀▀▀  ██████████████████████████████                                         
  ┏ conversation ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓ 
  ┃Vous                                                                        ┃ 
  ┃Inspecte ce projet et vérifie les tests.                                    ┃ 
@@ -20,13 +22,11 @@
  ┃                                                                            ┃ 
  ┃Vérification terminée                                                       ┃ 
  ┃Les tests demandés ont réussi.                                              ┃ 
- ┃                                                                            ┃ 
- ┃                                                                            ┃ 
  ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛ 
- completed · completed                                                          
+ · completed · completed                                                        
   0 observations · 0 fichiers · 0 caractères reçus                              
   00:00  Mission · completed                                                    
  ┏ Votre demande · Entrée envoyer · Alt+Entrée ligne ━━━━━━━━━━━━━━━━━━━━━━━━━┓ 
  ┃Explique le résultat                                                        ┃ 
  ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛ 
- F2 thèmes · F3 modèles · F4 vues · F5 état · ^C arrêt · ^Q sortie              
+  Ctrl+K  palette   F2  thèmes   F3  modèles   F4  vues   F5  état              

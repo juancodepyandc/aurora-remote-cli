@@ -1,0 +1,32 @@
+  Aurora.  .  Edition                                       * connecte . 6 ms   
+  Cible 127.0.0.1:44753  .  Mission aucune                                      
+  Session 1a3a7e53  .  modele du serveur                                        
+  1 Chat   2 Mod   3 Agt   4 Skill   5 MCP   6 Bil   7 Jrnl   8 Fich            
+                                                                                
+ EDITION / CORRESPONDANCE                                                       
+                                                                                
+ A U R O R A                                                                    
+                                                                                
+ ------------------------------                                                 
+                                                                                
+ L'espace des possibles.                                                        
+                                                    #################           
+ Decrivez le resultat attendu.                      ## +++++++     ##++         
+                                                    ## +++++++     ++++#        
+ /modules   Explorer                                ## +++++++++++++++ #        
+ /missions  Reprendre                               ## +++++++++++++++ #        
+ /theme     Changer d'univers                       ##                 #        
+ /help      Commandes                               ## +++++++++       #        
+ Ctrl+K     Palette . /skills . /mcp                ## +++++++         #        
+                                                    ## +++++++         #        
+                                                    ++++++++++++++++++++        
+                                                                                
+                                                                                
+ - Activite observee . Pret . aucun travail en cours                            
+ Mission conservee . /missions pour la retrouver                                
+ Reprise incomplete . /retry pour recuperer le texte                            
+ Demande . Entree envoyer . Alt+Entree ligne                                    
+|                                                                               
+|                                                                               
+ [Ctrl+K] Palette  [F2] Theme  [F3] Modele  [F4] Vue  [F5] Diagnostic           
+ / commandes . Tab completer . Alt+Entree nouvelle ligne                        

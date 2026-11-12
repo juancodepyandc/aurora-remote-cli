@@ -1,24 +1,24 @@
-   ? Aurora                         Connexion : flux recu   
-   Cible 127.0.0.1:43557                       Diag. 2 ms   
-   Session b346363e                       Mission mis_pty   
-   completed                                      glacier   
-    <1 Conversation>   F4 : changer de vue                  
+    ? Aurora * Isobare                * flux recu * 4 ms    
+    Cible 127.0.0.1:45011                Mission mis_pty    
+    Session 9926b417                           completed    
+     1 Chat    F4 vues * Ctrl+K palette                     
+     +     Une idee. Un cap.                                
+   ++#++#  ISOBARE / ATELIER POLAIRE                        
+   #++###             ??                                    
    + conversation --------------------------------------+   
-   |                                                    |   
-   |VOUS                                                |   
    |                                                    |   
    |Verifie le contrat                                  |   
    |                                                    |   
-   |Execution sur le serveur . 127.0.0.1:43557          |   
+   |Execution sur le serveur . 127.0.0.1:45011          |   
    |                                                    |   
    |                                                    |   
    |AURORA                                              |   
    |                                                    |   
    |CONTROLE TERMINE                                    |   
    +----------------------------------------------------+   
-   completed * completed                                    
-    00:01  Mission . completed                              
+   - completed * completed                                  
+    00:02  Mission . completed                              
    + Votre demande * Entree envoyer * Alt+Entree ligne -+   
    |                                                    |   
    +----------------------------------------------------+   
-   F2 theme * F3 modele * F4 vue * ^C arret * ^Q sortie     
+   [^K] palette  [F2] theme  [F4] vue  [^C] arret           

@@ -1,0 +1,32 @@
+   ≈ Aurora · Marée · Loutre                                ● connecté · 4 ms   
+   Cible 127.0.0.1:41431                                       Mission aucune   
+   Session 8b2c5bb5                                                      Prêt   
+    1 Chat   2 Mod   3 Agt   4 Skill   5 MCP   6 Bil   7 Jrnl   8 Fich          
+   MARÉE / ATELIER DISTANT                                                      
+                                                                                
+              ▀                                                                 
+        ▀▀▀▀▀▀▀▀▀▀▀▀▀         ▄▀█ █ █ █▀█ █▀█ █▀█ ▄▀█                           
+      ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀      █▀█ █▄█ █▀▄ █▄█ █▀▄ █▀█                           
+      ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀                                                        
+       ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀                                                         
+       ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀       À votre rythme.                                   
+         ▀▀▀▀▀▀▀▀▀▀▀▀                                                           
+        ▀▀▀▀▀▀▀▀▀▀▀▀▀         Décrivez le résultat attendu.                     
+       ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀   ▀                                                      
+       ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀  /modules Explorer                                 
+        ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀  /missions Reprendre                               
+        ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀   /theme Changer d’univers                          
+       ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀     /help Commandes                                   
+                              Ctrl+K Palette · /skills · /mcp                   
+                                                                                
+                                                                                
+      ⣀⣀⣀⡠⠤⠤⠤⠤⠔⠊⠁    ⣀⣀⣀                                                        
+   ⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤                                                       
+                                                                                
+  · Prêt · aucun travail en cours                                               
+   Mission conservée · /missions pour la retrouver                              
+   Reprise incomplète · /retry pour récupérer le texte                          
+  ╭ Votre demande · Entrée envoyer · Alt+Entrée ligne ───────────────────────╮  
+  │                                                                          │  
+  ╰──────────────────────────────────────────────────────────────────────────╯  
+   Ctrl+K  palette   F2  thèmes   F3  modèles   F4  vues   F5  état             

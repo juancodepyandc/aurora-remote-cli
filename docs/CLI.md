@@ -28,7 +28,7 @@ jobia --color never --help
 jobia --color never ui | cat
 ```
 
-F2 ou /theme : aperçu en direct, flèches, Entrée garde, Échap restaure. /theme glacier applique directement. F3 modèles, F4 vues, F5 diagnostic, Alt+1..6 vues directes, Ctrl+C arrêt, Ctrl+Q sortie, Alt+Entrée nouvelle ligne. Dans Rust, PgUp/PgDown parcourent la sortie, Ctrl+Home/End début/suivi ; ↑↓ rappellent la saisie. Dans Python, Tab donne le focus à la sortie pour la parcourir.
+Ctrl+K : palette de recherche (commandes, vues, thèmes, skills, outils MCP, modèles). /connect : appairage avec un code affiché dans l'interface. /skills, /skill NOM, /mcp : vues et actions des skills et serveurs MCP. /file : demandes en attente pendant une mission. F2 ou /theme : aperçu en direct, flèches, Entrée garde, Échap restaure. /theme glacier applique directement. F3 modèles, F4 vues, F5 diagnostic, Alt+1..6 vues directes, Ctrl+C arrêt, Ctrl+Q sortie, Alt+Entrée nouvelle ligne. Dans Rust, PgUp/PgDown parcourent la sortie, Ctrl+Home/End début/suivi ; ↑↓ rappellent la saisie. Dans Python, Tab donne le focus à la sortie pour la parcourir.
 
 Tests dans le checkout :
 
@@ -49,3 +49,8 @@ cargo test --manifest-path native/Cargo.toml --locked
 La validation PTY lance uniquement un faux serveur loopback et une configuration temporaire ; elle coupe réellement le flux HTTP puis vérifie la reprise sans nouveau POST. Elle ne consomme aucun calcul AuroraIA. Les PNG sont des rasterisations des cellules du renderer : pas des captures du Mac physique. Les paramètres du terminal réel restent à vérifier sur Terminal.app, iTerm2, tmux et SSH.
 
 `--extended` soumet ensuite une deuxième mission distincte dans le scénario, change le thème pendant son exécution et demande son arrêt depuis le sélecteur : exactement deux créations et un arrêt doivent être observés. `jobia doctor` indique désormais si le renderer natif est trouvé : une installation Python seule n'installe pas le binaire Rust. Recompiler le renderer après une mise à jour de ses sources ; un ancien binaire ne reçoit pas automatiquement les correctifs clavier.
+
+
+## Reconnexion après un redémarrage d'Aurora (1.7.0)
+
+Aucune commande n'est nécessaire : l'interface et chaque commande retrouvent la nouvelle adresse publiée, vérifient qu'un bridge Aurora y répond, puis l'enregistrent. Pour diagnostiquer : `jobia status` (sonde réelle), `jobia doctor --remote` (ligne « Adresse »). Une publication forkée se règle avec `JOBIA_LIVE_REPO=owner/repo[@branche]` ou `jobia config live_repo owner/repo`. Les nouvelles cibles natives `aarch64-unknown-linux-gnu` et `x86_64-unknown-linux-musl` se compilent avec `cargo build --release --locked --target …` puis `python scripts/package_native.py --target …`.

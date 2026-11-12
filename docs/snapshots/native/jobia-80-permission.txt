@@ -1,11 +1,11 @@
-  ╱ Aurora                                               Connexion : flux reçu  
-  Cible pc-maitre.example                                          Diag. 24 ms  
-  Session demo-42                                             Mission mis_demo  
-  Autorisation requise                                                   jobia  
-   [1 Conversation]   F4 : changer de vue                                       
+   ╱ Aurora · Horizon                                     ● flux reçu · 24 ms   
+   Cible pc-maitre.example                                   Mission mis_demo   
+   Session demo-42                                       Autorisation requise   
+    1 Chat   2 Mod   3 Agt   4 Skill   5 MCP   6 Bil   7 Jrnl   8 Fich          
+    ▀▀    Ouvrez le champ.                                                      
+  ▀▀▀▀ ▀  HORIZON / AURORE BORÉALE                                              
+  ▀▀ ▀▀▀         ╱╱╱       ╱╱╱╱╱      ╱╱╱                                       
    conversation ──────────────────────────────────────────────────────────────  
-  Aurora                                                                        
-  Le plan est prêt. Je commence par le fichier d’entrée.                        
                                                                                 
   python                                                                        
     def ready():                                                                
@@ -23,10 +23,10 @@
   SORTIE REÇUE · résultat non encore confirmé                                   
                                                                                 
   Lecture de la configuration en cours…                                         
-  permission · Autorisation requise                                             
+  ⠋ permission · Autorisation requise                                           
    0 observations · 0 fichiers · 0 caractères reçus                             
    00:00  Écrire un fichier : confirmation explicite nécessaire.                
    Votre demande · Entrée envoyer · Alt+Entrée ligne ─────────────────────────  
   Explique le résultat                                                          
                                                                                 
-  F2 thèmes · F3 modèles · F4 vues · F5 état · ^C arrêt · ^Q sortie             
+   Ctrl+K  palette   F2  thèmes   F3  modèles   F4  vues   F5  état             

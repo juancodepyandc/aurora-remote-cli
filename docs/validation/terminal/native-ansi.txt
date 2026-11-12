@@ -1,24 +1,24 @@
-   ◇ Aurora                         Connexion : flux reçu   
-   Cible 127.0.0.1:38465                       Diag. 2 ms   
-   Session 9503ae12                       Mission mis_pty   
-   completed                                      glacier   
-    <1 Conversation>   F4 : changer de vue                  
+    ◇ Aurora · Isobare                ● flux reçu · 4 ms    
+    Cible 127.0.0.1:35703                Mission mis_pty    
+    Session bf971fd3                           completed    
+     1 Chat    F4 vues · Ctrl+K palette                     
+           Une idée. Un cap.                                
+           ISOBARE / ATELIER POLAIRE                        
+                      ╱╲                                    
    ┌ conversation ──────────────────────────────────────┐   
-   │                                                    │   
-   │VOUS                                                │   
    │                                                    │   
    │Vérifie le contrat                                  │   
    │                                                    │   
-   │Exécution sur le serveur · 127.0.0.1:38465          │   
+   │Exécution sur le serveur · 127.0.0.1:35703          │   
    │                                                    │   
    │                                                    │   
    │AURORA                                              │   
    │                                                    │   
    │CONTROLE TERMINE                                    │   
    └────────────────────────────────────────────────────┘   
-   completed · completed                                    
-    00:01  Mission · completed                              
+   · completed · completed                                  
+    00:02  Mission · completed                              
    ┌ Votre demande · Entrée envoyer · Alt+Entrée ligne ─┐   
    │                                                    │   
    └────────────────────────────────────────────────────┘   
-   F2 thème · F3 modèle · F4 vue · ^C arrêt · ^Q sortie     
+    ^K  palette   F2  thème   F4  vue   ^C  arrêt           

@@ -1,32 +1,32 @@
-   ◇ Aurora                                              Connexion : connecté   
-   Cible pc-maitre.example                                        Diag. 24 ms   
-   Session demo-42                                             Mission aucune   
-   Prêt                                                               glacier   
-    <1 Conversation>   F4 : changer de vue                                      
-   ┌ Espace de travail ─────────────────────────────────────────────────────┐   
-   │                   Isobare                                              │   
-   │     ▀                                                                  │   
-   │   ▀▀▀▀▀           Un horizon ouvert.                                   │   
-   │ ▀▀▀▀▀▀▀▀▀ ▀▀▀                                                          │   
-   │▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀   Décrivez le résultat que vous voulez obtenir.        │   
-   │▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀   Le plan, les outils et les preuves apparaîtront      │   
-   │▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀   pendant la mission.                                  │   
-   │▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀                                                        │   
-   │▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀   /modules explorer les parcours   /missions reprendre │   
-   │                   un travail                                           │   
-   │                                                                        │   
-   │                   /theme choisir votre univers   /help toutes les      │   
-   │                   commandes                                            │   
-   │                                                                        │   
-   │                   La cible et la session restent visibles en haut de   │   
-   │                   l’écran.                                             │   
-   │                                                                        │   
-   │                                                                        │   
-   └────────────────────────────────────────────────────────────────────────┘   
-   idle · Prêt                                                                  
+    ◇ Aurora · Isobare                                    ● connecté · 24 ms    
+    Cible pc-maitre.example                                   Mission aucune    
+    Session demo-42                                                     Prêt    
+     1 Chat   2 Mod   3 Agt   4 Skill   5 MCP   6 Bil   7 Jrnl   8 Fich         
+    ISOBARE / ATELIER POLAIRE                                                   
+                                                                                
+                                                                                
+    ▄▀█ █ █ █▀█ █▀█ █▀█ ▄▀█                               ▀▀▀▀▀                 
+    █▀█ █▄█ █▀▄ █▄█ █▀▄ █▀█                              ▀▀▀▀▀▀▀                
+                                                       ▀▀▀▀▀▀▀▀▀▀▀    ▀▀        
+                                                    ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀     
+    Une idée. Un cap.                               ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀    
+                                                    ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀    
+    Décrivez le résultat attendu.                   ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀    
+                                                    ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀    
+    /modules Explorer                               ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀    
+    /missions Reprendre                             ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀    
+    /theme Changer d’univers                        ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀    
+    /help Commandes                                                             
+    Ctrl+K Palette · /skills · /mcp                                             
+                                                                                
+                                                                                
+               ╱╲                                                               
+         ╱╲   ╱  ╲     ╱╲                                                       
+    ____╱  ╲_╱    ╲___╱  ╲__                                                    
+   · Prêt · aucun travail en cours                                              
     0 observations · 0 fichiers · 0 caractères reçus                            
     Le plan et les outils apparaîtront ici.                                     
    ┌ Votre demande · Entrée envoyer · Alt+Entrée ligne ─────────────────────┐   
    │                                                                        │   
    └────────────────────────────────────────────────────────────────────────┘   
-   F2 thèmes · F3 modèles · F4 vues · F5 état · ^C arrêt · ^Q sortie            
+    Ctrl+K  palette   F2  thèmes   F3  modèles   F4  vues   F5  état            
