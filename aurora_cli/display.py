@@ -711,13 +711,15 @@ def status_display(data: dict) -> None:
     hardware = data.get("hardware") or {}
     bridge = data.get("bridge")
     ollama = data.get("ollama")
+    def state(slot: str, label: str) -> Text:
+        # Styled text, not markup: table cells are rendered literally.
+        return Text(view.text(label), style=view.style(slot, bold=True))
+
     rows = [
-        ("Pont", view.mark("success", "actif") if bridge else view.mark("error", "inactif"),
-         "port 3001"),
-        ("Ollama", view.mark("success", "actif") if ollama else view.mark("error", "inactif"),
+        ("Pont", state("success", "actif") if bridge else state("error", "inactif"), "port 3001"),
+        ("Ollama", state("success", "actif") if ollama else state("error", "inactif"),
          f"{data.get('models_count', 0)} modèle(s)"),
-        ("ComfyUI", view.mark("success", "actif") if data.get("comfyui")
-         else view.mark("warning", "veille"), ""),
+        ("ComfyUI", state("success", "actif") if data.get("comfyui") else state("warning", "veille"), ""),
         ("GPU", str(hardware.get("gpu", "n/d")),
          f"{hardware.get('vram_free_gb', 0)}/{hardware.get('vram_total_gb', 0)} Go libres"),
         ("RAM", f"{hardware.get('ram_gb', 0)} Go", str(hardware.get("os", ""))),

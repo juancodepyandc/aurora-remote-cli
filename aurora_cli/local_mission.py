@@ -409,7 +409,9 @@ class LocalMission:
         from .mcp_transport import call_stdio
         if isinstance(timeout_seconds, bool) or not isinstance(timeout_seconds, (int, float)) or not 1 <= timeout_seconds <= 180:
             raise ValueError('MCP timeout must be between 1 and 180 seconds')
-        if cfg.get('url'):
+        if cfg.get('url') or os.name == 'nt' or '${' in json.dumps(cfg):
+            # One calling path with the registry: HTTP transports, ${VAR}
+            # expansion and full command paths (npx.cmd, uvx.exe on Windows).
             from .mcp_registry import call
             response, error = call(cfg, method, params or {}, cwd=str(self.root), timeout=timeout_seconds)
         else:
@@ -509,6 +511,12 @@ class LocalMission:
             })
         if name not in self.ALL_TOOLS:
             raise ValueError('Outil non disponible : '+str(name))
+        # optimize/explore execute submitted Python: in SAFE (read-only, chosen
+        # by the user) they are refused like run_python; math/cyber stay reads.
+        code_hypothesis = (name == 'test_hypothesis'
+                           and str(args.get('mode', 'math') or 'math').strip().lower() in {'optimize', 'explore'})
+        if code_hypothesis and self.state['permissions'] == 'SAFE':
+            raise PermissionError('SAFE interdit l’exécution de code (test_hypothesis optimize/explore)')
         effects = name in self.EFFECT_TOOLS
         if effects:
             if self.state['permissions'] == 'SAFE':

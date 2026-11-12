@@ -36,6 +36,14 @@ function Find-JobiaPython([int]$MinMinor) {
 $selectedPython = Find-JobiaPython 10
 if (-not $selectedPython) {
     $uvCmd = Get-Command "uv" -ErrorAction SilentlyContinue
+    if (-not $uvCmd) {
+        # No Python and no uv: install uv (per-user, no administrator rights).
+        try {
+            powershell -NoProfile -ExecutionPolicy ByPass -Command "irm https://astral.sh/uv/install.ps1 | iex" | Out-Null
+            $env:Path = "$env:USERPROFILE\.local\bin;$env:Path"
+            $uvCmd = Get-Command "uv" -ErrorAction SilentlyContinue
+        } catch {}
+    }
     if ($uvCmd) {
         try {
             & $uvCmd.Source python install 3.12 2>$null

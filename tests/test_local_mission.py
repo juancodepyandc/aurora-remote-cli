@@ -461,3 +461,13 @@ def test_local_mission_scientific_hypothesis_and_skill_capitalization(tmp_path):
 
 
 
+
+
+def test_safe_refuses_code_executing_hypotheses_but_keeps_math(tmp_path):
+    import pytest as _pytest
+    from aurora_cli.local_mission import LocalMission
+    mission = LocalMission('Vérifier une conjecture', tmp_path, 'SAFE')
+    with _pytest.raises(PermissionError):
+        mission.tool('test_hypothesis', {'mode': 'optimize', 'baseline_code': 'open("x","w")',
+                                            'candidate_code': 'open("x","w")'})
+    assert not (tmp_path / 'x').exists()

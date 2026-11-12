@@ -49,7 +49,9 @@ class JOBIACore:
             try:
                 # La décision (fast, cyber, etc) et le contexte (mémoire) sont gérés CÔTÉ SERVEUR via mission_start
                 model = self.get_model()
-                kwargs = {"session_id": session_id}
+                from aurora_cli import config
+                kwargs = {"session_id": session_id,
+                          "permissions": config.get("default_permissions", "FULL")}
                 if model:
                     kwargs["model"] = model
                 data = client.mission_start(prompt, **kwargs)

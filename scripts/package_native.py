@@ -12,9 +12,11 @@ from aurora_cli import __version__  # noqa: E402
 
 
 def main():
-    target=next(line.partition(': ')[2] for line in subprocess.check_output(['rustc','-vV'],text=True).splitlines() if line.startswith('host: '))
+    # --target TRIPLE packages a cross build (native/target/TRIPLE/release).
+    explicit=sys.argv[sys.argv.index('--target')+1] if '--target' in sys.argv else ''
+    target=explicit or next(line.partition(': ')[2] for line in subprocess.check_output(['rustc','-vV'],text=True).splitlines() if line.startswith('host: '))
     suffix='.exe' if os.name=='nt' else ''
-    source=ROOT/'native/target/release'/('aurora-native'+suffix)
+    source=ROOT/'native/target'/(explicit or '')/'release'/('aurora-native'+suffix)
     actual=subprocess.check_output([str(source),'--version'],text=True).strip()
     if actual!=f'aurora-native {__version__} protocol 1':
         raise RuntimeError('Python/native version mismatch: '+actual)

@@ -273,7 +273,23 @@ def status():
     data = config.load()
     display.kv(brand.APP_NAME, data.get("server_url") or "(non configuré)")
     display.kv("Mode", data.get("mode", "auto"))
-    display.kv("Pont", "configuré" if config.is_configured() else "non configuré")
+    reachable = False
+    if config.is_configured():
+        # Observed, not assumed: a cheap public probe, following a moved PC.
+        client = _client(timeout=10)
+        try:
+            alive = client.alive()
+            if not alive.get("ok") and client.relocate():
+                alive = client.alive()
+                config.set_key("server_url", client.server_url)
+            reachable = bool(alive.get("ok"))
+            from aurora_cli.terminal import target_label
+            display.kv("Pont", (f"joignable · {target_label(client.server_url)} · {alive.get('latency_ms', 0):.0f} ms"
+                                if reachable else "configuré mais injoignable (reconnexion automatique dès son retour)"))
+        finally:
+            client.close()
+    else:
+        display.kv("Pont", "non configuré · jobia connect (ou /connect dans l'interface)")
 
     try:
         result = scan(deep=True)
@@ -289,7 +305,7 @@ def status():
 
     router = Router(mode=data.get("mode", "auto"), prefer=data.get("provider", ""),
                     result=result)
-    router.note_remote(config.is_configured())
+    router.note_remote(reachable)
     route = router.route()
     if not route.ok:
         display.warning(
@@ -497,6 +513,7 @@ def renderer_install_command():
 @missions_command.command(name="list")
 @click.option("--json", "as_json", is_flag=True)
 def missions_list_command(as_json):
+    """Lister les missions conservées par le PC Aurora."""
     with _client() as client:
         result = _require_remote_ok(client.missions_list())
     if as_json:
@@ -527,6 +544,7 @@ def missions_evidence_command(mission_id, evidence_id, pointer, tool, offset, li
 @click.argument("mission_id")
 @click.option("--model", default="", help="Continue the same objective using another available model.")
 def missions_resume_command(mission_id, model):
+    """Reprendre une mission interrompue depuis son checkpoint, au besoin avec un autre modèle."""
     from .mission import run_mission
     with _client() as client:
         if not run_mission(client, "Reprise "+mission_id, workspace=str(Path.cwd()), resume_id=mission_id,model=model):
@@ -667,7 +685,7 @@ def models(shallow, provider):
     if not selected:
         display.warning("Aucun modèle trouvé.")
         display.hint(
-            "Essayez --deep, ou lancez un runtime (Ollama, LM Studio, llama.cpp) "
+            "Lancez un runtime (Ollama, LM Studio, llama.cpp) "
             "puis relancez jobia models."
         )
         return
@@ -704,7 +722,7 @@ def ask(request, tier, as_json, verbose):
     result = scan(deep=True)
     found = [m for p in result.providers for m in p.models] + result.loose_models
 
-    plan = recommend(request, prof, found)
+    plan = recommend(request, prof, found, tier=tier)
     if as_json:
         # Roles by default, the same rule the human view follows, so the
         # machine-readable form cannot become a back door for the names the
@@ -1334,6 +1352,7 @@ def run(caps, fixture, no_research, goal, receipt):
     display.hint(report["reason"])
     display.hint(f"{len(report['passes'])} passe(s)")
     if receipt:
+        Path(receipt).parent.mkdir(parents=True, exist_ok=True)
         Path(receipt).write_text(json.dumps(report, indent=2, ensure_ascii=False),
                                  encoding="utf-8")
         display.hint(f"Reçu : {receipt}")
@@ -1423,7 +1442,12 @@ def research(capability, limit, offline):
         StubHubClient({}) if offline else None,
     )
     task = TaskSpec(capability=capability)
-    candidates = researcher.candidates(task, limit=limit)
+    try:
+        candidates = researcher.candidates(task, limit=limit)
+    except OSError as exc:  # URLError included: offline or Hub unreachable
+        display.warning(f"Hugging Face injoignable ({exc}) · catalogue embarqué utilisé.")
+        researcher = HuggingFaceResearcher(StubHubClient({}))
+        candidates = researcher.candidates(task, limit=limit)
     display.header(f"Candidats {capability} ({len(candidates)})")
     for candidate in candidates:
         runner = candidate.adapter.get("runner", "aucun runner")
@@ -1621,6 +1645,10 @@ def config_cmd(key, value, check_tunnel):
         if not ok:
             raise click.exceptions.Exit(1)
         return
+    try:
+        value = config.validated(key, value)
+    except ValueError as exc:
+        raise click.ClickException(f"{key} : {exc}") from exc
     config.set(key, value)
     if config.is_secret(key):
         display.success(f"{key} enregistré (masqué).")
@@ -1767,7 +1795,9 @@ def agents_delete(agent_id):
     """Delete a dynamic agent from the bridge."""
     client = _client()
     try:
-        _require_remote_ok(client.agent_dynamic_delete(agent_id))
+        result = _require_remote_ok(client.agent_dynamic_delete(agent_id))
+        if result.get("deleted") == 0:
+            raise click.ClickException(f"Aucun agent dynamique {agent_id} sur le PC (rien supprimé).")
         display.success(f"Agent dynamique supprimé : {agent_id}")
     finally:
         client.close()

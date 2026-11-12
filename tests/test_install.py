@@ -252,3 +252,56 @@ def test_path_configuration_uses_the_calling_shell_not_the_bootstrap_path(target
     assert str(target.bindir) in (tmp_path/'.zshrc').read_text()
     make(target,policy).configure_path()
     assert (tmp_path/'.zshrc').read_text().count('# JOBIA launcher')==1
+
+
+def test_venv_without_ensurepip_falls_back_to_other_creators(target, policy, monkeypatch):
+    """Debian/Ubuntu without python3-venv: uv, then virtualenv, then pip bootstrap."""
+    from aurora_cli import install as module
+    monkeypatch.setattr(module.shutil, 'which', lambda name: '/usr/bin/uv' if name == 'uv' else None)
+
+    class Runner(FakeRunner):
+        def __call__(self, command, *, cwd=None, timeout=1800):
+            self.calls.append(command)
+            joined = ' '.join(map(str, command))
+            if 'uv venv' in joined:
+                target.python.parent.mkdir(parents=True, exist_ok=True)
+                target.python.write_text('#!python')
+                return 0, 'Using CPython'
+            return 1, 'The virtual environment was not created successfully because ensurepip is not available.'
+
+    runner = Runner()
+    result = make(target, policy, runner).create_venv()
+    assert result.status == 'ok' and 'uv' in result.detail
+    assert any('uv venv --seed' in ' '.join(map(str, call)) for call in runner.calls)
+
+
+def test_last_resort_bootstraps_pip_and_failure_names_the_distro_package(target, policy, monkeypatch):
+    from aurora_cli import install as module
+    monkeypatch.setattr(module.shutil, 'which', lambda name: None)
+    monkeypatch.setattr(module, 'bootstrap_pip', lambda python, runner: (0, 'pip installed'))
+
+    class Runner(FakeRunner):
+        def __call__(self, command, *, cwd=None, timeout=1800):
+            self.calls.append(command)
+            if '--without-pip' in command:
+                target.python.parent.mkdir(parents=True, exist_ok=True)
+                target.python.write_text('#!python')
+                return 0, ''
+            return 1, 'ensurepip is not available'
+
+    assert make(target, policy, Runner()).create_venv().status == 'ok'
+    for leftover in (target.venv,):
+        import shutil
+        shutil.rmtree(leftover, ignore_errors=True)
+    monkeypatch.setattr(module, 'distro_hint', lambda: 'sudo apt install python3-venv python3-pip')
+    failed = make(target, policy, FakeRunner({'venv': (1, 'ensurepip is not available')})).create_venv()
+    assert failed.status == 'failed' and 'apt install python3-venv' in failed.detail
+
+
+def test_fish_shell_gets_a_conf_d_snippet(target, policy, monkeypatch, tmp_path):
+    monkeypatch.setenv('SHELL', '/usr/bin/fish')
+    monkeypatch.setenv('JOBIA_INSTALL_CALLER_PATH', '/usr/bin:/bin')
+    monkeypatch.setenv('XDG_CONFIG_HOME', str(tmp_path / 'xdg'))
+    assert make(target, policy).configure_path().status == 'ok'
+    snippet = tmp_path / 'xdg' / 'fish' / 'conf.d' / 'jobia.fish'
+    assert 'fish_add_path -g' in snippet.read_text() and str(target.bindir) in snippet.read_text()

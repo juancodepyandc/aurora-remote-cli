@@ -285,8 +285,12 @@ def _is_vision_language(model) -> bool:
                                              "qwen-vl", "qwen3-vl", "minicpm-v", "internvl"))
 
 
-def recommend(request: str, machine, models) -> Recommendation:
-    """Build the plan for a request against a measured machine and a scan."""
+def recommend(request: str, machine, models, *, tier: str | None = None) -> Recommendation:
+    """Build the plan for a request against a measured machine and a scan.
+
+    ``tier`` forces a quality level when this machine can hold it; otherwise
+    the recommended tier for the current free memory is used.
+    """
     matches = match_agents(request)
     if not matches:
         return Recommendation(request=request, steps=[], machine=machine,
@@ -301,8 +305,8 @@ def recommend(request: str, machine, models) -> Recommendation:
         covered = [m for m in models if _covers(agent, m)]
         tiers = catalog.available_tiers(agent, machine)
         local_possible = bool(tiers)
-        artifact = catalog.resolve(agent, machine, catalog.recommended_tier(agent, machine)) \
-            if local_possible else None
+        chosen = tier if tier in tiers else catalog.recommended_tier(agent, machine)
+        artifact = catalog.resolve(agent, machine, chosen) if local_possible else None
         because = f"« {keyword} »"
         blocked = ""
         if not local_possible:

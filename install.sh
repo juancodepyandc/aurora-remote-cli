@@ -39,8 +39,12 @@ if SELECTED_PYTHON="$(pick_python 10)"; then
 else
   # Auto-provision an optimal standalone Python 3.12 via uv (no root required)
   # or platform package manager before falling back to system Python >= 3.8.
-  if ! command -v uv >/dev/null 2>&1 && command -v curl >/dev/null 2>&1; then
-    curl -LsSf https://astral.sh/uv/install.sh | sh >/dev/null 2>&1 || true
+  if ! command -v uv >/dev/null 2>&1; then
+    if command -v curl >/dev/null 2>&1; then
+      curl -LsSf https://astral.sh/uv/install.sh | sh >/dev/null 2>&1 || true
+    elif command -v wget >/dev/null 2>&1; then
+      wget -qO- https://astral.sh/uv/install.sh | sh >/dev/null 2>&1 || true
+    fi
   fi
   if command -v uv >/dev/null 2>&1; then
     if uv python install 3.12 >/dev/null 2>&1; then
@@ -60,6 +64,19 @@ if [ -n "$SELECTED_PYTHON" ]; then
   exec "$SELECTED_PYTHON" "$JOBIA_ROOT/aurora_cli/install.py" --python "$SELECTED_PYTHON" --root "$JOBIA_ROOT" --receipt "$JOBIA_ROOT/install-receipt.json" "$@"
 fi
 
-echo "Python 3 est requis pour installer JOBIA." >&2
+echo "Python 3.10 ou plus récent est requis pour installer JOBIA." >&2
+if [ -r /etc/os-release ]; then
+  . /etc/os-release
+  case " ${ID:-} ${ID_LIKE:-} " in
+    *" debian "*|*" ubuntu "*) echo "  sudo apt install python3 python3-venv python3-pip" >&2 ;;
+    *" fedora "*|*" rhel "*|*" centos "*) echo "  sudo dnf install python3 python3-pip" >&2 ;;
+    *" arch "*) echo "  sudo pacman -S python python-pip" >&2 ;;
+    *" alpine "*) echo "  sudo apk add python3 py3-pip" >&2 ;;
+    *" opensuse"*|*" suse "*) echo "  sudo zypper install python3 python3-pip" >&2 ;;
+    *" nixos "*) echo "  nix-shell -p python3" >&2 ;;
+  esac
+elif [ "$(uname -s)" = "Darwin" ]; then
+  echo "  brew install python@3.12  (ou https://www.python.org/downloads/)" >&2
+fi
 exit 1
 

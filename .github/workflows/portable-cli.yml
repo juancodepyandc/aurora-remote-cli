@@ -59,7 +59,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-22.04, windows-latest, macos-latest, macos-15-intel]
+        os: [ubuntu-22.04, ubuntu-24.04-arm, windows-latest, macos-latest, macos-15-intel]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     steps:
@@ -84,6 +84,12 @@ jobs:
           python scripts/validate_terminal.py --depth none
           python scripts/validate_terminal.py --renderer python --depth none --extended --restored
       - run: python scripts/package_native.py
+      - name: Static musl build (any x86_64 distribution, Alpine, old glibc)
+        if: matrix.os == 'ubuntu-22.04'
+        run: |
+          rustup target add x86_64-unknown-linux-musl --toolchain 1.96.1
+          cargo +1.96.1 build --manifest-path native/Cargo.toml --release --locked --target x86_64-unknown-linux-musl
+          python scripts/package_native.py --target x86_64-unknown-linux-musl
       - uses: actions/upload-artifact@v4
         with:
           name: native-${{ matrix.os }}

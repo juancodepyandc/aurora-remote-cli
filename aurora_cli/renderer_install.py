@@ -23,18 +23,40 @@ REPOSITORY = 'juancodepyandc/aurora-remote-cli'
 MAX_BINARY_BYTES = 32 * 1024 * 1024
 
 
-def target_triple(system=None, machine=None):
+def _musl() -> bool:
+    """Alpine and other musl distributions cannot load glibc binaries."""
+    if platform.libc_ver()[0] == 'glibc':
+        return False
+    return any(Path('/lib').glob('ld-musl-*')) if Path('/lib').is_dir() else False
+
+
+def target_candidates(system=None, machine=None, *, musl=None):
+    """Release assets that can run here, most fitting first.
+
+    Linux x86_64 also gets the static musl build, which runs on any
+    distribution whatever its glibc (old LTS releases, Alpine, containers).
+    """
     system = system or platform.system()
     machine = (machine or platform.machine()).lower()
     arch = {'arm64':'aarch64','aarch64':'aarch64','amd64':'x86_64','x86_64':'x86_64'}.get(machine)
-    targets = {('Darwin','aarch64'):'aarch64-apple-darwin',
-               ('Darwin','x86_64'):'x86_64-apple-darwin',
-               ('Linux','x86_64'):'x86_64-unknown-linux-gnu',
-               ('Windows','x86_64'):'x86_64-pc-windows-msvc'}
+    targets = {('Darwin','aarch64'):['aarch64-apple-darwin'],
+               ('Darwin','x86_64'):['x86_64-apple-darwin'],
+               ('Linux','x86_64'):['x86_64-unknown-linux-gnu','x86_64-unknown-linux-musl'],
+               ('Linux','aarch64'):['aarch64-unknown-linux-gnu'],
+               # Windows on ARM runs the x64 build through its emulation layer.
+               ('Windows','x86_64'):['x86_64-pc-windows-msvc'],
+               ('Windows','aarch64'):['x86_64-pc-windows-msvc']}
     try:
-        return targets[(system,arch)]
+        candidates = list(targets[(system,arch)])
     except KeyError:
         raise RuntimeError(f'Binaire natif non distribué pour {system}/{machine}. Interface Python disponible.') from None
+    if system == 'Linux' and arch == 'x86_64' and (_musl() if musl is None else musl):
+        candidates.reverse()
+    return candidates
+
+
+def target_triple(system=None, machine=None):
+    return target_candidates(system, machine)[0]
 
 
 def managed_binary(prefix=None):
@@ -68,7 +90,16 @@ def _download(client, url, limit):
 
 
 def install_native(*, client=None, destination=None, target=None, verify=probe):
-    target = target or target_triple()
+    if target is None:
+        # Try each fitting build in turn: a missing asset or a binary that
+        # cannot start here moves on to the next candidate.
+        errors = []
+        for candidate in target_candidates():
+            try:
+                return install_native(client=client, destination=destination, target=candidate, verify=verify)
+            except RuntimeError as exc:
+                errors.append(str(exc))
+        raise RuntimeError(errors[-1] if errors else 'Aucun renderer natif adapté.')
     name = asset_name(target)
     destination = Path(destination or managed_binary())
     receipt = destination.with_name(destination.name+'.sha256')

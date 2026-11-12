@@ -172,6 +172,41 @@ def run(command: list[str], *, cwd: Path | None = None, timeout: int = 1800) -> 
     return completed.returncode, (completed.stdout or "") + (completed.stderr or "")
 
 
+def distro_hint() -> str:
+    """The package that provides venv/pip on this Linux distribution."""
+    try:
+        fields = dict(line.split("=", 1) for line in Path("/etc/os-release").read_text().splitlines() if "=" in line)
+    except OSError:
+        return ""
+    ids = (fields.get("ID", "") + " " + fields.get("ID_LIKE", "")).replace('"', "").lower().split()
+    table = [({"debian", "ubuntu", "linuxmint", "pop", "raspbian"}, "sudo apt install python3-venv python3-pip"),
+             ({"fedora", "rhel", "centos", "rocky", "almalinux"}, "sudo dnf install python3 python3-pip"),
+             ({"arch", "manjaro", "endeavouros"}, "sudo pacman -S python python-pip"),
+             ({"opensuse", "suse", "sles", "opensuse-leap", "opensuse-tumbleweed"}, "sudo zypper install python3 python3-pip"),
+             ({"alpine"}, "sudo apk add python3 py3-pip"),
+             ({"void"}, "sudo xbps-install python3 python3-pip"),
+             ({"nixos"}, "nix-shell -p python3 python3Packages.pip")]
+    for names, command in table:
+        if names & set(ids):
+            return command
+    return ""
+
+
+def bootstrap_pip(python: Path, runner=run) -> tuple[int, str]:
+    """Install pip into a venv created without ensurepip (stdlib download)."""
+    import tempfile
+    import urllib.request
+    try:
+        with urllib.request.urlopen("https://bootstrap.pypa.io/get-pip.py", timeout=60) as response:
+            script = response.read(8_000_000)
+    except OSError as exc:
+        return 1, f"get-pip indisponible : {exc}"
+    with tempfile.TemporaryDirectory() as scratch:
+        path = Path(scratch) / "get-pip.py"
+        path.write_bytes(script)
+        return runner([str(python), str(path), "--quiet"])
+
+
 class Installer:
     """Runs the declared steps, records them, and verifies the result."""
 
@@ -250,9 +285,30 @@ class Installer:
             return StepResult("venv", "skipped", f"déjà présent : {self.target.venv}")
         self.target.venv.parent.mkdir(parents=True, exist_ok=True)
         code, output = self.runner([self.interpreter, "-m", "venv", str(self.target.venv)])
-        if code != 0 or not self.target.python.is_file():
-            return StepResult("venv", "failed", output.strip()[-500:])
-        return StepResult("venv", "ok", f"créé : {self.target.venv}")
+        if code == 0 and self.target.python.is_file():
+            return StepResult("venv", "ok", f"créé : {self.target.venv}")
+        # Debian/Ubuntu ship venv without ensurepip unless python3-venv is
+        # installed; minimal images often lack it too. Try other creators.
+        errors = [output.strip()[-300:]]
+        uv = shutil.which("uv")
+        attempts = ([[uv, "venv", "--seed", "--python", str(self.interpreter), str(self.target.venv)]] if uv else [])
+        attempts.append([self.interpreter, "-m", "virtualenv", str(self.target.venv)])
+        for command in attempts:
+            shutil.rmtree(self.target.venv, ignore_errors=True)
+            code, output = self.runner(command)
+            if code == 0 and self.target.python.is_file():
+                return StepResult("venv", "ok", f"créé avec {Path(str(command[0])).name} : {self.target.venv}")
+            errors.append(output.strip()[-200:])
+        shutil.rmtree(self.target.venv, ignore_errors=True)
+        code, output = self.runner([self.interpreter, "-m", "venv", "--without-pip", str(self.target.venv)])
+        if code == 0 and self.target.python.is_file():
+            code, output = bootstrap_pip(self.target.python, self.runner)
+            if code == 0:
+                return StepResult("venv", "ok", f"créé sans ensurepip, pip installé : {self.target.venv}")
+        errors.append(output.strip()[-200:])
+        hint = distro_hint()
+        return StepResult("venv", "failed", " | ".join(e for e in errors if e)[-600:]
+                          + (f" · Installez : {hint}" if hint else ""))
 
     def check_version(self) -> StepResult:
         """Compare installed against declared, so an update is a decision.
@@ -360,8 +416,14 @@ class Installer:
         else:
             import shlex
             shell = Path(os.environ.get("SHELL", "sh")).name
-            profile = Path.home() / ({"zsh": ".zshrc", "bash": ".bashrc"}.get(shell, ".profile"))
-            line = "export PATH=" + shlex.quote(bindir) + ':"$PATH"'
+            if shell == "fish":
+                # fish does not read POSIX profiles; conf.d snippets load at startup.
+                profile = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "fish" / "conf.d" / "jobia.fish"
+                profile.parent.mkdir(parents=True, exist_ok=True)
+                line = "fish_add_path -g " + shlex.quote(bindir)
+            else:
+                profile = Path.home() / ({"zsh": ".zshrc", "bash": ".bashrc"}.get(shell, ".profile"))
+                line = "export PATH=" + shlex.quote(bindir) + ':"$PATH"'
             try:
                 existing = profile.read_text(encoding="utf-8") if profile.exists() else ""
                 if line not in existing.splitlines():

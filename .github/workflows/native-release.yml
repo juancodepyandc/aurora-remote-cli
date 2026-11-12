@@ -34,7 +34,7 @@ jobs:
           import hashlib
           from pathlib import Path
           from aurora_cli import __version__
-          for target in ['aarch64-apple-darwin','x86_64-apple-darwin','x86_64-unknown-linux-gnu','x86_64-pc-windows-msvc']:
+          for target in ['aarch64-apple-darwin','x86_64-apple-darwin','x86_64-unknown-linux-gnu','x86_64-unknown-linux-musl','aarch64-unknown-linux-gnu','x86_64-pc-windows-msvc']:
               suffix='.exe' if target.endswith('windows-msvc') else ''
               name=f'aurora-native-v{__version__}-{target}{suffix}'
               path=Path('artifacts')/name
@@ -52,7 +52,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-22.04, windows-latest, macos-latest, macos-15-intel]
+        os: [ubuntu-22.04, ubuntu-24.04-arm, windows-latest, macos-latest, macos-15-intel]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7.0.1

@@ -74,7 +74,7 @@ def run_interactive(client: Bridge) -> None:
         return
 
     session_id = ''
-    session_permissions = config.get('default_permissions', 'AUTONOMOUS')
+    session_permissions = config.get('default_permissions', 'FULL')
     try:
         sessions = client.session_list().get('sessions', [])
         if sessions:
@@ -88,7 +88,7 @@ def run_interactive(client: Bridge) -> None:
                 session_permissions = sessions[int(answer)-1].get('permissions', 'non précisées')
                 display.success('Session reprise : '+session_id)
         if not session_id:
-            data = client.session_create(permissions=config.get('default_permissions', 'AUTONOMOUS'))
+            data = client.session_create(permissions=config.get('default_permissions', 'FULL'))
             session_id = data.get('session', {}).get('id', '')
             if session_id:
                 display.success('Nouvelle session : '+session_id)
@@ -143,15 +143,15 @@ def run_interactive(client: Bridge) -> None:
                 elif cmd == '/modules':
                     from aurora_cli.ui import STUDIO_MODULES_META
                     display.print(view.table('MODULES DÉCLARÉS',
-                        [('Module', 'primary'), ('Rôle', 'secondary'), ('Description', 'text')],
-                        [(key, meta['master'], meta['engine']+'\n'+meta['capabilities'])
+                        [('Module', 'primary'), ('Nom', 'secondary'), ('Description', 'text')],
+                        [(key, meta.get('title', key), meta.get('capabilities', ''))
                          for key, meta in STUDIO_MODULES_META.items()]))
                     display.hint('Catalogue déclaré ; disponibilité réelle à vérifier avec /status.')
                 elif cmd == '/agi':
-                    from aurora_cli.ui import WorkspaceApp
+                    from aurora_cli.ui import MissionView, WorkspaceApp
                     diagnostic = WorkspaceApp.__new__(WorkspaceApp)
                     diagnostic.active_module = active_repl_module
-                    diagnostic.state = type('State', (), {'goal': arg or 'Diagnostic'})()
+                    diagnostic.state = MissionView(goal=arg or 'Diagnostic')
                     display.print(view.markdown(diagnostic.agi_cognitive_report(arg), title='Analyse de la demande'))
                 elif cmd in {'/chat', '/code', '/image', '/3d', '/cyber', '/business', '/academy', '/voice'}:
                     active_repl_module = {'/academy': 'LEARNING'}.get(cmd, cmd[1:].upper())
@@ -165,6 +165,7 @@ def run_interactive(client: Bridge) -> None:
                     applied = _cmd_permissions(client, user_input)
                     if applied:
                         session_permissions = applied
+                        config.set('default_permissions', applied)  # next missions use it too
                 elif cmd == '/agents':
                     _cmd_agents(client)
                 elif cmd == '/tools':
@@ -187,7 +188,7 @@ def run_interactive(client: Bridge) -> None:
                     session_id = _cmd_sessions(client, session_id)
                 elif cmd == '/fresh':
                     try:
-                        data = client.session_create(permissions=config.get('default_permissions', 'AUTONOMOUS'))
+                        data = client.session_create(permissions=config.get('default_permissions', 'FULL'))
                         session_id = data.get('session', {}).get('id', '')
                         display.success('Nouvelle session : '+session_id) if session_id else display.warning('Session non confirmée.')
                     except Exception as exc:

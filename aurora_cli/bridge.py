@@ -9,7 +9,7 @@ from uuid import uuid4
 from pathlib import Path
 import re
 import os
-from urllib.parse import urlsplit
+from urllib.parse import quote, urlsplit
 from typing import Any, Generator
 
 import httpx
@@ -81,6 +81,11 @@ _UNDELIVERED_STATUS = frozenset({502, 530})
 _UNREACHABLE_STATUS = frozenset({502, 503, 504, 530})
 _UNDELIVERED_ERRORS = frozenset({"ConnectError", "ConnectTimeout", "UnsupportedProtocol", "LocalProtocolError"})
 _SAFE_POSTS = re.compile(r"^/api/cli/(auth|inputs|mission/[^/]+/stop|mcp/catalog)$")
+
+
+def _seg(value: str) -> str:
+    """One URL path segment: names and IDs can never climb to another route."""
+    return quote(str(value), safe="")
 
 
 class _SharedTransport(httpx.BaseTransport):
@@ -471,10 +476,10 @@ class Bridge:
         return self.get("/api/cli/session/list")
 
     def session_resume(self, session_id: str) -> dict:
-        return self.post(f"/api/cli/session/{session_id}/resume")
+        return self.post(f"/api/cli/session/{_seg(session_id)}/resume")
 
     def session_delete(self, session_id: str) -> dict:
-        return self.delete(f"/api/cli/session/{session_id}")
+        return self.delete(f"/api/cli/session/{_seg(session_id)}")
 
     # --- Permissions ---
 
@@ -490,28 +495,28 @@ class Bridge:
         return self.get("/api/cli/agents/official")
 
     def agent_disable(self, name: str) -> dict:
-        return self.post(f"/api/cli/agents/official/{name}/disable")
+        return self.post(f"/api/cli/agents/official/{_seg(name)}/disable")
 
     def agent_enable(self, name: str) -> dict:
-        return self.post(f"/api/cli/agents/official/{name}/enable")
+        return self.post(f"/api/cli/agents/official/{_seg(name)}/enable")
 
     def agents_dynamic(self) -> dict:
         return self.get("/api/cli/agents/dynamic/list")
 
     def agent_dynamic_get(self, agent_id: str) -> dict:
-        return self.get(f"/api/cli/agents/dynamic/{agent_id}")
+        return self.get(f"/api/cli/agents/dynamic/{_seg(agent_id)}")
 
     def agent_dynamic_create(self, **kwargs: Any) -> dict:
         return self.post("/api/cli/agents/dynamic/create", kwargs)
 
     def agent_dynamic_modify(self, agent_id: str, **kwargs: Any) -> dict:
-        return self.post(f"/api/cli/agents/dynamic/{agent_id}/modify", kwargs)
+        return self.post(f"/api/cli/agents/dynamic/{_seg(agent_id)}/modify", kwargs)
 
     def agent_dynamic_delete(self, agent_id: str) -> dict:
-        return self.delete(f"/api/cli/agents/dynamic/{agent_id}")
+        return self.delete(f"/api/cli/agents/dynamic/{_seg(agent_id)}")
 
     def agent_dynamic_save(self, agent_id: str) -> dict:
-        return self.post(f"/api/cli/agents/dynamic/{agent_id}/save")
+        return self.post(f"/api/cli/agents/dynamic/{_seg(agent_id)}/save")
 
     # --- MCP ---
 
@@ -645,7 +650,12 @@ class Bridge:
         files = [Path(p).expanduser().resolve() for p in input_files]
         if re.search(r'\b3d\b',request,re.I):
             from .core.request_spec import parse_creation_request
-            image = parse_creation_request(request).input_image
+            try:
+                image = parse_creation_request(request).input_image
+            except ValueError:
+                # "cette image" without a local file: the PC may hold it; the
+                # request goes out as written instead of failing here.
+                image = None
             if image is not None and image not in files:
                 files.append(image)
         if len(files)>8:
@@ -694,7 +704,7 @@ class Bridge:
         if host.endswith('.trycloudflare.com'):
             yield from self.mission_poll(mission_id, last_event_id)
             return
-        yield from self.stream_sse(f"/api/cli/mission/{mission_id}/stream", method="GET",
+        yield from self.stream_sse(f"/api/cli/mission/{_seg(mission_id)}/stream", method="GET",
                                   resume=True, last_event_id=last_event_id)
 
     def mission_poll(self, mission_id: str, last_event_id: int = 0) -> Generator[dict, None, None]:
@@ -704,7 +714,7 @@ class Bridge:
         retries = 0
         deadline = None
         while True:
-            result = self.get(f'/api/cli/mission/{mission_id}/events',
+            result = self.get(f'/api/cli/mission/{_seg(mission_id)}/events',
                               headers={'Last-Event-ID':str(last_event_id)},
                               params={'wait':20}, timeout=30)
             if not result.get('ok'):
@@ -754,17 +764,17 @@ class Bridge:
                 yield {'type':'heartbeat','transport':'poll'}
 
     def mission_status(self, mission_id: str) -> dict:
-        return self.get(f"/api/cli/mission/{mission_id}/status")
+        return self.get(f"/api/cli/mission/{_seg(mission_id)}/status")
 
     def mission_stop(self, mission_id: str) -> dict:
-        return self.post(f"/api/cli/mission/{mission_id}/stop")
+        return self.post(f"/api/cli/mission/{_seg(mission_id)}/stop")
 
     def missions_list(self) -> dict:
         return self.get("/api/cli/missions")
 
     def mission_evidence(self, mission_id: str, *, evidence_id: str = "", pointer: str = "", tool: str = "", offset: int = 0, limit: int = 16) -> dict:
-        return self.get(f"/api/cli/mission/{mission_id}/evidence", params={
+        return self.get(f"/api/cli/mission/{_seg(mission_id)}/evidence", params={
             'evidence_id':evidence_id, 'pointer':pointer, 'tool':tool, 'offset':offset, 'limit':limit})
 
     def mission_resume(self, mission_id: str, model: str = "") -> dict:
-        return self.post(f"/api/cli/mission/{mission_id}/resume", {"model": model})
+        return self.post(f"/api/cli/mission/{_seg(mission_id)}/resume", {"model": model})

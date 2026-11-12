@@ -168,6 +168,23 @@ def set(key: str, value: Any) -> None:
     set_key(key, value)
 
 
+def normalize_url(raw: str) -> str:
+    """Give a scheme to a bare address: http for loopback/private, https else."""
+    url = (raw or "").strip().rstrip("/")
+    if not url or "://" in url:
+        return url
+    host = url.split("/", 1)[0].rsplit(":", 1)[0].strip("[]")
+    private = host in {"localhost", "127.0.0.1", "::1"} or host.endswith(".local")
+    if not private:
+        import ipaddress
+        try:
+            address = ipaddress.ip_address(host)
+            private = address.is_private or address.is_loopback
+        except ValueError:
+            private = False
+    return ("http://" if private else "https://") + url
+
+
 def resolve_server_url(explicit: str = "", cfg: dict[str, Any] | None = None) -> str:
     """Resolve the remote bridge URL, explicit argument first."""
     if cfg is None:
@@ -175,7 +192,49 @@ def resolve_server_url(explicit: str = "", cfg: dict[str, Any] | None = None) ->
     url = explicit or os.environ.get(brand.env("server_url"), "") \
         or os.environ.get(brand.env_legacy("server_url"), "") \
         or str(cfg.get("server_url", ""))
-    return url.strip().rstrip("/")
+    return normalize_url(url)
+
+
+def validated(key: str, value: Any) -> Any:
+    """Normalise a value set by hand; refuse values that would break later commands."""
+    if not isinstance(value, str):
+        return value
+    text = value.strip()
+    if key == "default_permissions":
+        level = text.upper()
+        if level not in PERMISSION_LEVELS:
+            raise ValueError("Niveau inconnu : " + " | ".join(PERMISSION_LEVELS))
+        return level
+    if key == "mode":
+        if text.lower() not in {"auto", "local", "remote"}:
+            raise ValueError("Mode : auto | local | remote")
+        return text.lower()
+    if key == "animation":
+        if text.lower() not in {"auto", "full", "reduced", "none"}:
+            raise ValueError("Animation : auto | full | reduced | none")
+        return text.lower()
+    if key == "server_url":
+        url = normalize_url(text)
+        from aurora_cli.tunnel import valid_url
+        return valid_url(url) if url else ""
+    if key in {"auto_resume"}:
+        if text.lower() in {"1", "true", "oui", "yes", "on"}:
+            return True
+        if text.lower() in {"0", "false", "non", "no", "off"}:
+            return False
+        raise ValueError("Valeur attendue : true | false")
+    if key in {"local_endpoints", "skill_catalogs"}:
+        if text.startswith("["):
+            parsed = json.loads(text)
+            if not isinstance(parsed, list) or not all(isinstance(v, str) for v in parsed):
+                raise ValueError("Liste de textes attendue")
+            return parsed
+        return [part.strip() for part in text.split(",") if part.strip()]
+    if key == "theme" and text:
+        from aurora_cli import themes
+        if not themes.is_known(text):
+            raise ValueError("Thème inconnu : " + ", ".join(themes.theme_ids()))
+    return text
 
 
 def is_configured() -> bool:

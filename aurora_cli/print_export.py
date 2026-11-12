@@ -67,8 +67,18 @@ def prepare_export(client, source, options, output, *, wait_seconds=210):
             stream.flush(); os.fsync(stream.fileno())
         if digest.hexdigest() != expected:
             raise RuntimeError('L’archive reçue ne correspond pas à son empreinte serveur.')
-        # Exclusive destination creation protects an existing user file.
-        os.link(temporary, output)
+        # Exclusive destination creation protects an existing user file. Hard
+        # links fail across volumes and on exFAT/SMB: copy exclusively instead.
+        try:
+            os.link(temporary, output)
+        except FileExistsError:
+            raise
+        except OSError:
+            import shutil
+            with open(temporary, 'rb') as source, open(output, 'xb') as target:
+                shutil.copyfileobj(source, target)
+                target.flush()
+                os.fsync(target.fileno())
     finally:
         Path(temporary).unlink(missing_ok=True)
     return state.get('report', {})

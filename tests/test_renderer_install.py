@@ -84,3 +84,30 @@ def test_release_versions_match_before_building_native_assets():
     assert locked==[__version__]
     assert load('native/Cargo.toml')['package']['version']==__version__
     assert load('pyproject.toml')['project']['version']==__version__
+
+
+def test_linux_gets_arm64_and_static_musl_candidates():
+    from aurora_cli import renderer_install as native
+    assert native.target_candidates('Linux', 'aarch64') == ['aarch64-unknown-linux-gnu']
+    assert native.target_candidates('Linux', 'x86_64', musl=False) == ['x86_64-unknown-linux-gnu', 'x86_64-unknown-linux-musl']
+    assert native.target_candidates('Linux', 'x86_64', musl=True)[0] == 'x86_64-unknown-linux-musl'
+    assert native.target_candidates('Windows', 'ARM64') == ['x86_64-pc-windows-msvc']
+
+
+def test_a_missing_asset_falls_back_to_the_next_candidate(monkeypatch, tmp_path):
+    from aurora_cli import renderer_install as native
+    tried = []
+
+    def fake(*, client=None, destination=None, target=None, verify=None):
+        if target is None:
+            return original(client=client, destination=destination, target=None, verify=verify)
+        tried.append(target)
+        if target.endswith('gnu'):
+            raise RuntimeError('absent')
+        return tmp_path / 'aurora-native'
+
+    original = native.install_native
+    monkeypatch.setattr(native, 'target_candidates', lambda: ['x86_64-unknown-linux-gnu', 'x86_64-unknown-linux-musl'])
+    monkeypatch.setattr(native, 'install_native', fake)
+    assert original(destination=tmp_path / 'aurora-native') == tmp_path / 'aurora-native'
+    assert tried == ['x86_64-unknown-linux-gnu', 'x86_64-unknown-linux-musl']

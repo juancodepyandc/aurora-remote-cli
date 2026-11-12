@@ -437,7 +437,7 @@ def call(cfg: dict, method: str, params: dict | None = None, *, timeout: float =
     if command and not os.path.isabs(command):
         located = shutil.which(command)
         if located is None:
-            return None, f"Commande introuvable : {command} (installez-la ou corrigez la configuration)"
+            return None, f"Commande introuvable : {command} (installez-la ou corrigez la configuration ; request was not sent)"
         # Windows needs the full path to start npx.cmd / uvx.exe without a shell.
         resolved["command"] = located
     workdir = resolved.pop("cwd", None) or cwd
