@@ -14,11 +14,9 @@ from __future__ import annotations
 import dataclasses
 import re
 import time
-from typing import Any, Iterable, Sequence
+from typing import TYPE_CHECKING, Any, Iterable, Sequence
 from rich import box as rich_box
 from rich.console import Console, Group, RenderableType
-from rich.live import Live
-from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
@@ -31,6 +29,9 @@ from aurora_cli.core.providers import ModelInfo, ProviderInfo, human_size
 from aurora_cli.core.capabilities import Capabilities
 from aurora_cli.themes.base import Theme
 from aurora_cli.terminal import safe_text, ascii_text
+
+if TYPE_CHECKING:  # imported lazily at run time: only animated paths need it
+    from rich.live import Live
 
 #: Boxes available to themes, resolved from a theme's short name.
 BOXES: dict[str, Any] = {
@@ -440,7 +441,7 @@ class Display:
 
     def markdown(self, text: str, *, title: str = "", slot: str = "primary") -> Panel:
         return self.panel(
-            Markdown(self.text(text), justify="left", code_theme=self.theme.scan_style),
+            _markdown()(self.text(text), justify="left", code_theme=self.theme.scan_style),
             title=title, slot=slot, padding=(1, 2),
         )
 
@@ -519,11 +520,12 @@ class Display:
             self.console.print(self.markdown(text, title=title))
             return
         shown = ""
+        from rich.live import Live
         with Live(console=self.console, auto_refresh=False, transient=True) as live:
             for char in text:
                 shown += char
                 live.update(self.panel(
-                    Markdown(shown, justify="left", code_theme=self.theme.scan_style),
+                    _markdown()(shown, justify="left", code_theme=self.theme.scan_style),
                     title=title, slot="primary", padding=(0, 2),
                 ), refresh=True)
                 time.sleep(speed)
@@ -537,6 +539,12 @@ class Display:
         self.console.print()
         self.warning('Autorisation requise · saisie masquée')
         return Prompt.ask(self.mark('primary', prompt), password=True, console=self.console)
+
+
+def _markdown():
+    """rich.markdown pulls markdown-it (~30 ms): imported on first rendering."""
+    from rich.markdown import Markdown
+    return Markdown
 
 
 # --- Live helpers ---------------------------------------------------------
@@ -584,6 +592,7 @@ class _ThinkingLive:
         return self.view.panel(text, title=brand.APP_NAME, slot="primary")
 
     def __enter__(self) -> "_ThinkingLive":
+        from rich.live import Live
         self._live = Live(self._renderable(), console=self.view.console,
                           refresh_per_second=12, transient=True)
         self._live.start()

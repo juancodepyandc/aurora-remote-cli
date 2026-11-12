@@ -776,8 +776,12 @@ impl Ui {
             );
         }
         let activity = value_lines(&self.state, "activity", self.unicode());
+        let label = self.text("activity_label");
         let status = if !self.notice.is_empty() {
             clean(&self.notice, self.unicode())
+        } else if !label.is_empty() && matches!(self.text("status").as_str(), "idle" | "") {
+            // Loading, reconnection or pairing explained in words while idle.
+            label
         } else {
             format!("{} · {}", self.text("status"), self.text("phase"))
         };

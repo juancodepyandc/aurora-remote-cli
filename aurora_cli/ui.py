@@ -320,6 +320,7 @@ class WorkspaceApp:
         self.skill_rows, self.remote_skill_rows, self.mcp_rows, self.remote_mcp_rows = [], [], [], []
         self.integrations_loaded = 0.0
         self._palette = None  # {'items': [...], 'selected': int} while the palette is open
+        self._loading = {}  # label -> start time of background work shown as loading
         self.transcript = ''.join(f"\n### {'VOUS' if m['role']=='user' else 'AURORA'}\n\n{plain(m['content'])}\n" for m in self.history)[-200000:]
         self.loop = None
         self.body_lexer = RenderedLexer()
@@ -681,7 +682,8 @@ class WorkspaceApp:
         self.integrations_loaded = time.monotonic()
 
     async def refresh_integrations(self, *, remote=True):
-        await asyncio.to_thread(self.load_integrations, remote=remote)
+        async with self.loading('Inventaire skills et MCP'):
+            await asyncio.to_thread(self.load_integrations, remote=remote)
         self.refresh_body()
 
     def skills_view_text(self):
@@ -765,9 +767,9 @@ class WorkspaceApp:
                 lines = [f'### Skills · « {plain(rest)} »', '']
                 lines += [f'- **{s.name}** · {s.level} · {plain(s.description)[:160]}' for _, s in local]
                 if len(local) < 3:
-                    self.show_toast('Recherche dans les catalogues publics…', 'info')
                     try:
-                        hits, errors = await asyncio.to_thread(library.catalog_search, rest, limit=6)
+                        async with self.loading('Recherche dans les catalogues de skills'):
+                            hits, errors = await asyncio.to_thread(library.catalog_search, rest, limit=6)
                     except Exception as exc:
                         hits, errors = [], [str(exc)]
                     lines += [f'- **{s.name}** · catalogue {s.source} · /skills import {s.source} {s.name}  \n'
@@ -779,9 +781,9 @@ class WorkspaceApp:
                 return
             if action == 'import' and rest:
                 source, *names = rest.split()
-                self.show_toast('Import de skills · ' + source, 'info', None)
                 try:
-                    report = await asyncio.to_thread(library.import_skills, source, names=names)
+                    async with self.loading('Import de skills · ' + source):
+                        report = await asyncio.to_thread(library.import_skills, source, names=names)
                 except Exception as exc:
                     self.show_toast('Import impossible', 'warning')
                     self.note('Import impossible : ' + plain(exc))
@@ -805,7 +807,8 @@ class WorkspaceApp:
                       if h['kind'] != 'serveur' else f"- **{h['name']}** · serveur · {plain(h['description'])[:140]}"
                       for h in local]
             try:
-                registry = await asyncio.to_thread(mcp_registry.registry_search, rest, limit=6)
+                async with self.loading('Registre officiel MCP'):
+                    registry = await asyncio.to_thread(mcp_registry.registry_search, rest, limit=6)
             except Exception as exc:
                 registry = []
                 lines.append('Registre officiel indisponible : ' + plain(exc))
@@ -827,7 +830,8 @@ class WorkspaceApp:
                         found.setdefault(row['name'], row['config'])
                 return mcp_registry.import_servers(found, origin=rest or 'import')
             try:
-                imported, skipped = await asyncio.to_thread(run_import)
+                async with self.loading('Import MCP'):
+                    imported, skipped = await asyncio.to_thread(run_import)
             except Exception as exc:
                 self.note('Import MCP impossible : ' + plain(exc))
                 return
@@ -835,19 +839,21 @@ class WorkspaceApp:
             self.note('### MCP importés\n\n' + (', '.join(imported) or 'rien de nouveau')
                       + (f"\n\nConflits gardés : {', '.join(skipped)}" if skipped else ''))
             if imported:
-                await asyncio.to_thread(mcp_registry.refresh, set(imported))
+                async with self.loading('Lecture des catalogues MCP'):
+                    await asyncio.to_thread(mcp_registry.refresh, set(imported))
             await self.refresh_integrations(remote=False)
             return
         if action == 'refresh':
-            self.show_toast('Lecture des catalogues MCP…', 'info', None)
-            await asyncio.to_thread(mcp_registry.refresh)
+            async with self.loading('Lecture des catalogues MCP'):
+                await asyncio.to_thread(mcp_registry.refresh)
             self.show_toast('Catalogues MCP à jour', 'success')
             await self.refresh_integrations(remote=False)
             return
         if action == 'install' and rest:
             name = rest.split()[0]
             try:
-                rows = await asyncio.to_thread(mcp_registry.registry_search, name, limit=20)
+                async with self.loading('Installation MCP · ' + name):
+                    rows = await asyncio.to_thread(mcp_registry.registry_search, name, limit=20)
                 entry = next((r for r in rows if r['name'] == name), None) or (rows[0] if len(rows) == 1 else None)
                 if entry is None:
                     raise ValueError('nom exact introuvable dans le registre officiel')
@@ -1183,7 +1189,10 @@ class WorkspaceApp:
             style = 'failure' if state.status in {'failed','interrupted'} else 'activity'
             if not active and state.status not in {'failed','interrupted'}:
                 connection = self.connection_state()
-                if connection in {'offline', 'reconnecting'}:
+                if self._loading:
+                    started = min(self._loading.values())
+                    label = ' · '.join(self._loading) + f'… {int(time.monotonic()-started)}s'
+                elif connection in {'offline', 'reconnecting'}:
                     label, style = 'PC Aurora injoignable · reconnexion automatique (nouvelle adresse comprise)', 'warning'
                 elif connection == 'pairing':
                     label, style = 'Appairage · en attente de validation sur le PC', 'warning'
@@ -1192,6 +1201,7 @@ class WorkspaceApp:
         width = self.app.output.get_size().columns-2
         from . import visuals
         caps = display.view.caps
+        self.activity_label = label  # shared with the native renderer's status line
         if self.ticking():
             glyph = visuals.spinner(display.view.theme.components.spinner, unicode=caps.unicode,
                                     animation=self.animation_mode(), elapsed=self.elapsed())
@@ -2148,9 +2158,27 @@ class WorkspaceApp:
                     handle.cancel()
 
     def ticking(self):
-        """Real activity worth a live clock: a mission, a reconnection, a pairing."""
+        """Real activity worth a live clock: a mission, a reconnection, a pairing, a loading."""
         return (self.state.status in {'starting','running','queued','permission'}
-                or self.connection in {'diagnostic','reconnexion','hors ligne','appairage'})
+                or self.connection in {'diagnostic','reconnexion','hors ligne','appairage'}
+                or bool(self._loading))
+
+    def loading(self, label):
+        """``async with app.loading('Import'):`` animates the activity line meanwhile."""
+        app = self
+
+        class _Loading:
+            async def __aenter__(self):
+                app._loading[label] = time.monotonic()
+                app.ensure_clock()
+                app.app.invalidate()
+
+            async def __aexit__(self, *exc):
+                app._loading.pop(label, None)
+                app.ensure_clock()
+                app.app.invalidate()
+                return False
+        return _Loading()
 
     def ensure_clock(self):
         """A one-second status clock exists only while something really happens."""

@@ -61,6 +61,7 @@ def snapshot(app, *, picker=''):
         'theme': theme_record(display.view.theme), 'themes': [theme_record(t) for t in themes.all_themes()],
         'connection_state': app.connection_state(), 'reconnect_in': app.reconnect_in(),
         'connection_label': clean(app.connection_badge()[1]), 'ticking': app.ticking(),
+        'activity_label': clean(getattr(app, 'activity_label', '')),
         'active_skills': [clean(name) for name in app.active_skills],
         'tab_counts': {'skills': len(app.skill_rows) + len(app.remote_skill_rows),
                        'mcp': len(app.mcp_rows) + len(app.remote_mcp_rows), 'fichiers': len(app.state.files)},

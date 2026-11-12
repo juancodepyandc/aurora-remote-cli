@@ -8,10 +8,20 @@ import time
 
 import click
 
-from .bridge import Bridge
-from .assembly_viewer import launch_viewer
 from . import display
 from .click_ui import AuroraCommand
+
+
+def Bridge(*args, **kwargs):  # noqa: N802 - historical patch point, imported lazily
+    """httpx is paid only by commands that actually talk to the bridge."""
+    from .bridge import Bridge as client
+    return client(*args, **kwargs)
+
+
+def launch_viewer(*args, **kwargs):
+    """The viewer server (http.server) is imported only when a viewer opens."""
+    from .assembly_viewer import launch_viewer as launch
+    return launch(*args, **kwargs)
 
 
 def prepare_export(client, source, options, output, *, wait_seconds=210):

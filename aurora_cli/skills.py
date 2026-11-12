@@ -24,10 +24,7 @@ import json
 import os
 import re
 import shutil
-import subprocess
-import tempfile
 import time
-import zipfile
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -346,7 +343,7 @@ def _github(source: str):
     return owner, repo, branch or "", (subpath or "").strip("/")
 
 
-def _safe_extract(archive: zipfile.ZipFile, target: Path) -> None:
+def _safe_extract(archive, target: Path) -> None:
     root = target.resolve()
     for member in archive.infolist():
         destination = (target / member.filename).resolve()
@@ -364,6 +361,9 @@ def _safe_extract(archive: zipfile.ZipFile, target: Path) -> None:
 
 def fetch_repository(owner: str, repo: str, branch: str, destination: Path) -> str:
     """Shallow clone with git when present, else the GitHub archive. Returns the revision."""
+    import subprocess
+    import tempfile
+    import zipfile
     url = f"https://github.com/{owner}/{repo}.git"
     if shutil.which("git"):
         command = ["git", "clone", "--depth", "1", "--quiet", *(["--branch", branch] if branch else []), url, str(destination)]
@@ -418,6 +418,8 @@ def _skill_folders(root: Path) -> list[Path]:
 def import_skills(source: str, *, names=(), project: bool = False, overwrite: bool = False,
                   workspace: Path | None = None, list_only: bool = False) -> ImportReport:
     """Copy skills from ``source`` into the user (or project) library."""
+    import tempfile
+    import zipfile
     target_root = project_library(workspace) if project else user_library()
     report = ImportReport(target=str(target_root))
     wanted = {n.lower() for n in names}

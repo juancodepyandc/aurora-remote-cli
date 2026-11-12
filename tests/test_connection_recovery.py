@@ -360,3 +360,23 @@ def test_cli_config_and_single_dash_check_options(monkeypatch):
     res_auto = runner.invoke(main, ['--color', 'never', '--config', 'auto', '-check'])
     assert res_auto.exit_code == 0, res_auto.output
     assert state['server_url'] == NEW
+
+
+def test_successive_clients_share_one_keep_alive_pool(monkeypatch):
+    created = []
+
+    class Pool(httpx.MockTransport):
+        closed = False
+
+        def __init__(self, **kwargs):
+            created.append(self)
+            super().__init__(lambda request: httpx.Response(200, json={'ok': True}))
+
+        def close(self):
+            type(self).closed = True
+
+    monkeypatch.setattr(bridge.httpx, 'HTTPTransport', Pool)
+    for _ in range(3):
+        with bridge.Bridge(server_url='http://127.0.0.1:3001', api_key='k') as client:
+            assert client.status()['ok']
+    assert len(created) == 1 and not Pool.closed

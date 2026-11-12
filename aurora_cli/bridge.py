@@ -83,6 +83,40 @@ _UNDELIVERED_ERRORS = frozenset({"ConnectError", "ConnectTimeout", "UnsupportedP
 _SAFE_POSTS = re.compile(r"^/api/cli/(auth|inputs|mission/[^/]+/stop|mcp/catalog)$")
 
 
+class _SharedTransport(httpx.BaseTransport):
+    """A process-wide connection pool that a client's close() leaves open."""
+
+    def __init__(self, inner):
+        self._inner = inner
+
+    def handle_request(self, request):
+        return self._inner.handle_request(request)
+
+    def close(self):
+        pass
+
+
+_POOLS: dict = {}
+_POOLS_LOCK = __import__("threading").Lock()
+
+
+def _pooled_transport(retries: int) -> httpx.BaseTransport:
+    """Keep-alive connections survive short-lived ``Bridge`` instances: each
+    interface action reuses the TLS session to the tunnel instead of paying a
+    new handshake. Keyed by the transport factory itself, which tests replace."""
+    factory = httpx.HTTPTransport
+    key = (factory, retries)
+    with _POOLS_LOCK:
+        inner = _POOLS.get(key)
+        if inner is None:
+            try:
+                inner = factory(retries=retries, limits=httpx.Limits(keepalive_expiry=30.0))
+            except TypeError:  # test doubles that accept only ``retries``
+                inner = factory(retries=retries)
+            _POOLS[key] = inner
+    return _SharedTransport(inner)
+
+
 def failure_kind(result: dict) -> str:
     """``undelivered``: the bridge never saw the request; ``unreachable``:
     the bridge or tunnel is unavailable and delivery is unknown; ``''`` else."""
@@ -136,8 +170,9 @@ class Bridge:
         self._client = self._make_client(self.server_url)
 
     def _make_client(self, base_url: str, *, retries: int = 3, timeout=None) -> httpx.Client:
-        # Robust transport: connection-level retries before any recovery.
-        transport = httpx.HTTPTransport(retries=retries)
+        # Robust transport: connection-level retries before any recovery,
+        # pooled so that successive clients reuse their connections.
+        transport = _pooled_transport(retries)
         budget = self.timeout if timeout is None else timeout
         return httpx.Client(
             transport=transport,

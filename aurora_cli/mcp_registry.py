@@ -23,8 +23,6 @@ import os
 import re
 import shutil
 import sys
-import tempfile
-from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
@@ -96,6 +94,7 @@ def _strip_jsonc(text: str) -> str:
 
 
 def _write_private(path: Path, payload: dict) -> None:
+    import tempfile
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, name = tempfile.mkstemp(prefix=".mcp-", suffix=".tmp", dir=path.parent)
     tmp = Path(name)
@@ -518,6 +517,7 @@ def refresh(names=None, *, workspace=None, timeout: float = 25.0) -> dict:
         return name, record
 
     if targets:
+        from concurrent.futures import ThreadPoolExecutor
         with ThreadPoolExecutor(max_workers=min(4, len(targets))) as pool:
             for name, record in pool.map(probe, targets.items()):
                 cache[name] = record
