@@ -5,7 +5,7 @@ from aurora_cli.config import load, save, get, set_key, resolve_server_url, is_c
 
 class TestAuroraConfig(unittest.TestCase):
     def test_default_config(self):
-        self.assertEqual(DEFAULT_CONFIG["default_permissions"], "AUTONOMOUS")
+        self.assertEqual(DEFAULT_CONFIG["default_permissions"], "FULL")
         self.assertIn("server_url", DEFAULT_CONFIG)
         self.assertIn("api_key", DEFAULT_CONFIG)
 

@@ -52,26 +52,28 @@ def test_theme_preview_cancel_commit_and_unknown_protocol(monkeypatch):
     asyncio.run(scenario())
 
 
-def test_busy_quit_model_and_stop_do_not_change_mission(monkeypatch):
+def test_busy_mission_allows_model_change_new_conversation_and_quit(monkeypatch):
     async def scenario():
         with create_pipe_input() as pipe:
             app = ui.WorkspaceApp(history=[],input=pipe,output=DummyOutput())
             app.stop = AsyncMock()
             output = StringIO()
             server = RenderServer(app,output)
-            app.task = asyncio.create_task(asyncio.sleep(10))
+            mission = asyncio.create_task(asyncio.sleep(10))
+            app.task, app.state.id = mission, 'mis_remote'
             app.models = ['observed']
-            await server.handle(command('quit'))
             await server.handle(command('model','observed'))
-            await server.handle(command('new'))
-            assert not server.closed and config.get('default_model','')!='observed'
+            assert config.get('default_model','')=='observed' and app.task is mission  # next missions
             await server.handle(command('stop'))
             await asyncio.sleep(0)
             app.stop.assert_awaited_once()
-            app.task.cancel()
-            await asyncio.gather(app.task,return_exceptions=True)
+            await server.handle(command('new'))
+            assert app.task is None and 'mis_remote' not in (app.state.id or '')  # detached, still on the PC
+            app.task, app.state.id = mission, 'mis_other'
             await server.handle(command('quit'))
             assert server.closed and json.loads(output.getvalue().splitlines()[-1])['type']=='exit'
+            mission.cancel()
+            await asyncio.gather(mission,return_exceptions=True)
             server.close()
     asyncio.run(scenario())
 
@@ -143,7 +145,7 @@ def test_presentation_commands_keep_running_mission_and_block_new_work():
                 assert app.task is mission and not mission.done()
                 await server.handle(command('submit','Une autre mission'))
                 assert app.task is mission and app.busy
-                assert 'Une mission est active' in app.transcript
+                assert app.queued == ['Une autre mission']  # waits for the active mission
                 app.health = 'Accès refusé : appareil à reconnecter'
                 assert snapshot(app)['state']['health'] == app.health
             finally:

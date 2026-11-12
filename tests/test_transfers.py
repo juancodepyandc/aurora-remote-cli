@@ -48,3 +48,23 @@ class TestAuroraTransfers(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+import pytest as _pytest
+
+
+@_pytest.mark.parametrize('name', ['.git/config', 'sub/.git/hooks/pre-commit', '.ssh/authorized_keys', '.env',
+                                   '.env.local', 'deep/.npmrc', '.aws/credentials'])
+def test_repository_internals_and_credentials_are_never_written(tmp_path, name):
+    from aurora_cli.transfers import receive_file
+    import base64 as _b64
+    workspace = tmp_path / 'workspace'
+    workspace.mkdir()
+    with _pytest.raises(ValueError, match='refused'):
+        receive_file({'filename': name, 'data': _b64.b64encode(b'x').decode()}, None, workspace)
+    assert not any(workspace.rglob('*'))
+
+
+def test_ordinary_project_dotfiles_are_still_delivered(tmp_path):
+    from aurora_cli.transfers import _private
+    assert not _private('.github/workflows/ci.yml') and not _private('.gitignore') and not _private('src/.eslintrc')

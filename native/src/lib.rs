@@ -594,21 +594,16 @@ impl Ui {
     }
     pub fn submit(&mut self) -> Option<String> {
         let text = self.input.value();
+        let busy = self
+            .state
+            .get("busy")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
         let command_name = text.split_whitespace().next().unwrap_or("").to_lowercase();
         let presentation = list(&self.state, "interactive_commands")
             .iter()
             .any(|item| item.as_str() == Some(command_name.as_str()));
-        if self
-            .state
-            .get("busy")
-            .and_then(Value::as_bool)
-            .unwrap_or(false)
-            && text.trim() != "/quit"
-            && !presentation
-        {
-            self.notice = "Mission active : Ctrl+C demande son arrêt ; brouillon conservé".into();
-            return None;
-        }
+        let queued = busy && !presentation && !text.trim().is_empty();
         if text.trim().is_empty() {
             return None;
         }
@@ -621,6 +616,10 @@ impl Ui {
         self.input.clear();
         self.follow = true;
         self.notice.clear();
+        if queued {
+            // Nothing is refused: the engine queues it after the active mission.
+            self.notice = "Demande mise en file · elle partira à la fin de la mission".into();
+        }
         Some(command("submit", &text))
     }
     pub fn recall(&mut self, back: bool) {

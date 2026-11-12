@@ -185,8 +185,9 @@ fn model_cancel_busy_draft_and_theme_preview_are_reversible() {
     for c in "brouillon".chars() {
         ui.input.insert(c);
     }
-    assert!(ui.submit().is_none());
-    assert_eq!(ui.input.value(), "brouillon");
+    // During a mission the request is sent and queued by the engine.
+    assert!(ui.submit().unwrap().contains("brouillon"));
+    assert!(ui.notice.contains("file"));
     ui.open_modal(ModalKind::Model);
     assert!(ui.close_modal(false).unwrap().contains("picker_cancel"));
 }
@@ -223,7 +224,7 @@ fn long_wrapped_output_follows_the_last_line_after_resize() {
 }
 
 #[test]
-fn active_mission_accepts_only_declared_presentation_commands() {
+fn active_mission_queues_new_requests_instead_of_refusing_them() {
     let mut ui = Ui::default();
     let mut state = fixture("otter");
     state["busy"] = json!(true);
@@ -232,8 +233,9 @@ fn active_mission_accepts_only_declared_presentation_commands() {
     ui.input.text = "/theme glacier".chars().collect();
     assert!(ui.submit().unwrap().contains("/theme glacier"));
     ui.input.text = "Une autre mission".chars().collect();
-    assert!(ui.submit().is_none());
-    assert_eq!(ui.input.value(), "Une autre mission");
+    assert!(ui.submit().unwrap().contains("Une autre mission"));
+    assert!(ui.notice.contains("file"));
+    assert_eq!(ui.input.value(), "");
 }
 
 #[test]

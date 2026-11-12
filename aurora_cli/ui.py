@@ -59,7 +59,8 @@ SLASH_COMMANDS_CATALOG: list[tuple[str, str, str, str]] = [
     ("/permissions", ">", "ACCÈS", "SAFE, STANDARD, AUTONOMOUS ou FULL"),
     ("/connect", ">", "CONNEXION", "Associer ce PC : code à valider sur Aurora, sans clé"),
     ("/doctor", ">", "CONNEXION", "Diagnostic du pont et des moteurs (F5)"),
-    ("/new", ">", "SESSION", "Nouvelle conversation (Ctrl+N)"),
+    ("/new", ">", "SESSION", "Nouvelle conversation (Ctrl+N) ; une mission distante continue sur le PC"),
+    ("/file", ">", "SESSION", "Demandes en attente pendant une mission · /file vider"),
     ("/clear", ">", "SESSION", "Archiver et vider les conversations de ce dossier"),
     ("/avant-apres", ">", "BILANS", "Mesures reçues et limites des comparaisons"),
     ("/gains", ">", "BILANS", "Alias de /avant-apres"),
@@ -270,7 +271,8 @@ GlassFrame = HorizonFrame
 
 INTERACTIVE_COMMANDS = frozenset({'/help', '/theme', '/view', '/modules',
                                   '/avant-apres', '/gains', '/doctor', '/missions',
-                                  '/skills', '/skill', '/mcp', '/connect', '/pair', '/home', '/palette'})
+                                  '/skills', '/skill', '/mcp', '/connect', '/pair', '/home', '/palette',
+                                  '/new', '/file', '/queue', '/quit'})
 
 
 def presentation_command(raw):
@@ -321,6 +323,7 @@ class WorkspaceApp:
         self.integrations_loaded = 0.0
         self._palette = None  # {'items': [...], 'selected': int} while the palette is open
         self._loading = {}  # label -> start time of background work shown as loading
+        self.queued = []  # requests waiting for the active mission
         self.transcript = ''.join(f"\n### {'VOUS' if m['role']=='user' else 'AURORA'}\n\n{plain(m['content'])}\n" for m in self.history)[-200000:]
         self.loop = None
         self.body_lexer = RenderedLexer()
@@ -348,16 +351,14 @@ class WorkspaceApp:
                 if not was_busy and not presentation_command(raw):
                     self.task = task
             elif raw:
-                self.note('Une mission est active. Ctrl+C demande son arrêt ; ton brouillon est conservé.')
+                self.prompt.text = ''
+                self.queue_request(raw)
         @bindings.add('escape','enter',filter=has_focus(self.prompt))
         def newline(event):
             self.prompt.buffer.insert_text('\n')
         @bindings.add('c-q')
         def quit_app(event):
-            if self.busy:
-                self.note('Arrête la mission avec Ctrl+C avant de quitter. L’état distant reste conservé.')
-            else:
-                event.app.exit()
+            event.app.create_background_task(self.quit_now())
         @bindings.add('c-c')
         def stop(event):
             if self.busy:
@@ -407,8 +408,10 @@ class WorkspaceApp:
             event.app.create_background_task(self.discover())
         @bindings.add('c-n')
         def fresh(event):
-            if not self.busy:
+            if not self.busy or self.detach_mission():
                 self.new_conversation()
+            else:
+                self.note('Mission locale en cours : Ctrl+C l’arrête avant une nouvelle conversation.')
 
         theme_open = Condition(lambda:self._theme_selection is not None)
         @bindings.add('up',filter=theme_open)
@@ -1094,14 +1097,11 @@ class WorkspaceApp:
             self.app.style = self.style()
             self.refresh_body()
         elif action == 'model':
-            if self.busy:
-                self.note('Le modèle de la mission active reste inchangé.')
-            else:
-                config.set('default_model', value)
-                self.show_toast('Modèle choisi : ' + value, 'success')
+            config.set('default_model', value)
+            self.show_toast('Modèle choisi : ' + value + (' · prochaines missions' if self.busy else ''), 'success')
         elif action == 'submit':
             if self.busy and not presentation_command(value):
-                self.note('Une mission est active. Ctrl+C demande son arrêt ; la commande reste disponible ensuite.')
+                self.queue_request(value)
                 return
             task = self.app.create_background_task(self.submit(value))
             if not self.busy and not presentation_command(value):
@@ -1220,6 +1220,8 @@ class WorkspaceApp:
             return [(tone,safe_text(text,unicode=display.view.caps.unicode)) for tone,text in rows]
         if self.app.output.get_size().rows>=28:
             counts = f' {len(state.evidence)} observations · {len(state.files)} fichiers · {state.received_chars} caractères reçus'
+            if self.queued:
+                counts += f' · {len(self.queued)} demande(s) en file'
             rows.append(('class:footer',fit(counts,width,display.view.caps.unicode)+'\n'))
         if self.is_welcome() and self.history:
             rows.append(('class:footer',' Historique conservé · /view conversation pour le retrouver'))
@@ -1403,6 +1405,8 @@ class WorkspaceApp:
                     self.history.append({'role':'assistant','content':result})
                 if hasattr(self.history,'save'):
                     self.history.save()
+        elif kind == 'mission_interrupted' and event.get('auto_resume'):
+            self.note('### Aurora a redémarré\n\nReprise automatique de la même mission depuis son checkpoint…')
         elif kind in {'error','mission_interrupted'}:
             self.note(event.get('message',event.get('error','Mission interrompue.'))+'\nÉtat conservé. /missions puis /resume ID pour reprendre.')
         elif kind in {'permission_request','permission_required'}:
@@ -1761,13 +1765,12 @@ class WorkspaceApp:
         return [(style,safe_text(text,unicode=display.view.caps.unicode)) for style,text in rows]
 
     async def choose_model(self):
-        if self.busy:
-            self.note('Le modèle de la mission active reste inchangé.')
-            return
         name = await radiolist_dialog(title='Modèle IA & Moteur',text='Modèles observés ; leur qualité doit être évaluée sur ta tâche.',
                                      values=[('', 'Réglage par défaut du moteur')]+[(n,n) for n in dict.fromkeys(self.models)],style=self.style()).run_async()
         if name is not None:
             config.set('default_model',name)
+            if self.busy:
+                self.show_toast('Modèle retenu pour les prochaines missions · la mission en cours continue', 'info')
             self.app.invalidate()
 
     def new_conversation(self):
@@ -1783,9 +1786,12 @@ class WorkspaceApp:
         self.refresh_body()
 
     def _remote(self,raw,*,resume=None,attach=None,pending=None):
+        import threading
         from .bridge import Bridge
         from .transfers import receive_file
+        detach = self._detach = threading.Event()
         with self.bridge_factory() as client:
+            payload = None
             if attach:
                 response = client.mission_status(attach)
                 if response.get('ok'):
@@ -1796,7 +1802,7 @@ class WorkspaceApp:
                 from urllib.parse import urlsplit
                 local_server = urlsplit(client.server_url).hostname in {'127.0.0.1','localhost','::1'}
                 payload = pending or {'request':self.request_text(raw),'workspace':str(Path.cwd()) if local_server else '',
-                    'permissions':config.get('default_permissions','SAFE'),'model':config.get('default_model',''),
+                    'permissions':config.get('default_permissions','FULL'),'model':config.get('default_model',''),
                     'idempotency_key':uuid4().hex}
                 if 'references' not in payload and isinstance(client, Bridge):
                     payload['references'] = client.prepare_references(raw)
@@ -1804,6 +1810,15 @@ class WorkspaceApp:
                         self.history.state['pending_request'] = payload
                         self.history.save()
                 response = client.mission_start(**payload)
+                # An unknown acceptance is replayed with the same idempotency
+                # key: the bridge returns the original mission, never a second.
+                for attempt in range(1, 4):
+                    if not response.get('acceptance_unknown') or detach.is_set():
+                        break
+                    self.post(self.state.record, f'Acceptation incertaine · nouvel essai {attempt} avec la même clé',
+                              'warning')
+                    time.sleep(min(2 ** attempt, 8))
+                    response = client.mission_start(**payload)
             mid = response.get('mission_id')
             if mid:
                 self.post(self.accepted,mid)
@@ -1812,17 +1827,39 @@ class WorkspaceApp:
             snapshot = client.mission_status(mid)
             if snapshot.get('ok'):
                 self.post(self.event,{'type':'mission_snapshot',**snapshot})
-            terminal = False
-            for event in client.mission_stream(mid,last_event_id=response.get('cursor',0)):
-                if event.get('type')=='file_transfer':
-                    path = receive_file(event,client,Path.cwd())
-                    self.post(self.event,{'type':'file_received','path':str(path)})
-                else:
+            cursor, resumes = response.get('cursor',0), 0
+            while True:
+                terminal = None
+                for event in client.mission_stream(mid,last_event_id=cursor):
+                    if detach.is_set():
+                        return  # Detached: the mission goes on on the PC; /attach follows it.
+                    kind = event.get('type')
+                    if kind=='file_transfer':
+                        path = receive_file(event,client,Path.cwd())
+                        self.post(self.event,{'type':'file_received','path':str(path)})
+                        continue
+                    if (kind=='mission_interrupted' and resumes < 2
+                            and config.get('auto_resume', True) not in (False, 'false', '0', 0)):
+                        event = {**event, 'auto_resume': True}
                     self.post(self.event,event)
-                if event.get('type') in {'mission_complete','error','mission_interrupted'}:
-                    terminal = True
-            if not terminal:
-                raise RuntimeError('Flux fermé sans confirmation terminale ; aucune action relancée')
+                    if isinstance(event.get('last_event_id'), int):
+                        cursor = event['last_event_id']
+                    if kind in {'mission_complete','error','mission_interrupted'}:
+                        terminal = event
+                if terminal is None:
+                    raise RuntimeError('Flux fermé sans confirmation terminale ; aucune action relancée')
+                if not terminal.get('auto_resume') or detach.is_set():
+                    return
+                # The PC restarted: continue the same objective from its checkpoint.
+                resumes += 1
+                time.sleep(3)
+                response = client.mission_resume(mid, model=config.get('default_model',''))
+                if not response.get('ok'):
+                    self.post(self.note, 'Reprise automatique impossible : '+plain(response.get('error','refusée'))
+                              +f'\n/resume {mid} pour réessayer.')
+                    return
+                self.post(self.accepted, mid)
+                cursor = response.get('cursor', cursor)
 
     def accepted(self,mid):
         self.state.id,self.state.status = mid,'running'
@@ -1859,10 +1896,21 @@ class WorkspaceApp:
             cmd = parts[0].lower()
             arg = parts[1].strip() if len(parts) > 1 else ''
             if cmd=='/quit':
-                self.app.exit()
+                await self.quit_now()
                 return
             if cmd=='/new':
+                if self.busy and not self.detach_mission():
+                    self.note('Mission locale en cours : Ctrl+C l’arrête avant une nouvelle conversation.')
+                    return
                 self.new_conversation()
+                return
+            if cmd in {'/file', '/queue'}:
+                if arg.lower() in {'vider', 'clear'}:
+                    self.queued.clear()
+                    self.note('File de demandes vidée.')
+                else:
+                    self.note('### File de demandes\n\n' + ('\n'.join(f'{i}. {plain(r)}' for i, r in enumerate(self.queued, 1))
+                                                          or 'Aucune demande en attente.') + '\n\n/file vider pour l’effacer.')
                 return
             if cmd=='/clear':
                 from .core.conversation import Conversation, clear_archives
@@ -2048,9 +2096,12 @@ class WorkspaceApp:
                 else:
                     await self.local(raw)
         except Exception as exc:
-            self.event({'type':'error','message':str(exc) or type(exc).__name__})
+            if getattr(self, '_detach', None) is None or not self._detach.is_set():
+                self.event({'type':'error','message':str(exc) or type(exc).__name__})
         finally:
             self.app.invalidate()
+            if self.queued:
+                asyncio.get_running_loop().call_soon(self._start_queued)
 
     async def local(self,raw,*,automatic=False):
         self._active_target = 'cet ordinateur'
@@ -2099,6 +2150,49 @@ class WorkspaceApp:
             return
         self.event({'type':'mission_complete','result':result.get('result',''), 'status':'completed',
                     'verification':{'verified':list(mission.get('verified',{}))}})
+
+    def queue_request(self, raw):
+        """A request sent during a mission waits for it instead of being refused."""
+        self.queued.append(raw)
+        self.show_toast(f'Demande mise en file ({len(self.queued)}) · elle partira à la fin de la mission', 'info')
+        self.state.record(f'En file · {raw[:60]}')
+        self.app.invalidate()
+
+    def _start_queued(self):
+        if self.busy or not self.queued:
+            return
+        raw = self.queued.pop(0)
+        coroutine = self.submit(raw)
+        try:
+            task = self.app.create_background_task(coroutine) if self.app.is_running else \
+                asyncio.get_running_loop().create_task(coroutine)
+        except RuntimeError:
+            coroutine.close()
+            self.queued.insert(0, raw)
+            return
+        self.task = task
+        self.app.invalidate()
+
+    def detach_mission(self):
+        """Leave a remote mission running on the PC; /attach ID follows it again."""
+        mid = self.state.id
+        if self.local_process is not None or not mid:
+            return False
+        if getattr(self, '_detach', None) is not None:
+            self._detach.set()
+        self.task = None
+        self.state.record('Mission détachée · '+mid)
+        self.show_toast(f'Mission {mid} détachée · elle continue sur le PC · /attach {mid}', 'info', 10)
+        return True
+
+    async def quit_now(self):
+        """Quit at any time: a remote mission continues, a local one is stopped."""
+        if self.busy:
+            if self.local_process is not None:
+                await self.stop()
+            else:
+                self.detach_mission()
+        self.app.exit()
 
     async def stop(self):
         if self.local_process and self.local_process.returncode is None:

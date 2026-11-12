@@ -403,7 +403,9 @@ def mission(request, model, server_workspace, permissions, context_tokens, host,
     retained = history.state.get('pending_request') or history.state.get('active_mission_id')
     mode = 'local' if resume_local else host or ('remote' if server_workspace is not None else config.get('mode','auto'))
     if retained and mode != 'remote' and not resume_local:
-        raise click.ClickException('Mission distante déjà acceptée ou incertaine ; utilise /retry ou missions watch/resume. Aucun repli local.')
+        active = history.state.get('active_mission_id')
+        display.hint('Mission distante conservée' + (f' ({active})' if active else '') +
+                     ' : jobia missions watch/resume pour la suivre. Nouvelle demande lancée normalement.')
     if not request and not resume_local:
         raise click.UsageError('Une demande est requise pour une nouvelle mission.')
     remote = mode == 'remote'

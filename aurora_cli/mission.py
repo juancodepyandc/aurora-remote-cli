@@ -59,17 +59,22 @@ def run_mission(client: Bridge, request: str, workspace: str = "", permissions: 
         if isinstance(retained, dict) and not resume_id and not watch_id:
             pending = retained.get('pending_request')
             active = retained.get('active_mission_id')
-            if pending or active:
-                if not _same_server(retained.get('mission_server_url', ''), client.server_url):
-                    raise ValueError('Serveur différent pour une acceptation retenue ; aucune nouvelle mission créée')
-                original = pending or retained.get('accepted_request', {})
-                if original.get('request') != request:
-                    raise ValueError('Mission précédente retenue ; suivre/reprendre son identifiant avant une nouvelle demande')
+            original = (pending or retained.get('accepted_request', {})) if (pending or active) else {}
+            same = (pending or active) and _same_server(retained.get('mission_server_url', ''), client.server_url) \
+                and isinstance(original, dict) and original.get('request') == request
+            if same:
+                # The same request again: follow the accepted mission, or replay
+                # the uncertain start with its key (the bridge deduplicates it).
                 if active:
                     watch_id = active
                 else:
                     payload = dict(pending)
             else:
+                if active:
+                    display.hint(f'Mission précédente conservée sur le serveur : {active} '
+                                 f'(jobia missions watch {active}). Nouvelle mission lancée.')
+                retained.pop('active_mission_id', None)
+                retained.pop('pending_request', None)
                 if isinstance(client, Bridge):
                     payload['references'] = client.prepare_references(request, input_files)
                 retained['pending_request'] = payload
@@ -229,6 +234,12 @@ def run_mission(client: Bridge, request: str, workspace: str = "", permissions: 
                 out_path = receive_file(event, client, root)
                 display.success(f"Fichier reçu et vérifié : {out_path}")
 
+            elif etype == "remote_command" and str(permissions).upper() == "SAFE":
+                # The user chose read-only for this mission: honour that choice.
+                display.warning(f"Commande refusée (SAFE, lecture seule) : {event.get('command', '')}")
+                client.post(f"/api/cli/mission/{mission_id}/input", data={
+                    "input_type": "remote_command_result", "value": "Refusé : mission en SAFE (lecture seule)."})
+
             elif etype == "remote_command":
                 cmd = event.get("command", "")
                 cwd = event.get("cwd", "")
@@ -274,6 +285,11 @@ def run_mission(client: Bridge, request: str, workspace: str = "", permissions: 
                     out = f"Erreur de lecture: {e}"
                 client.post(f"/api/cli/mission/{mission_id}/input", data={"input_type": "remote_read_result", "value": out})
 
+            elif etype == "remote_write_file" and str(permissions).upper() == "SAFE":
+                display.warning(f"Écriture refusée (SAFE, lecture seule) : {event.get('path', '')}")
+                client.post(f"/api/cli/mission/{mission_id}/input", data={
+                    "input_type": "remote_write_result", "value": "Refusé : mission en SAFE (lecture seule)."})
+
             elif etype == "remote_write_file":
                 path = event.get("path", "")
                 content = event.get("content", "")
@@ -296,8 +312,10 @@ def run_mission(client: Bridge, request: str, workspace: str = "", permissions: 
                     live_spinner.__exit__(None, None, None)
                     live_spinner = None
                 _separate_from_tokens()
-                display.warning(f"Connexion interrompue · reprise du flux {event.get('attempt', '?')}/3 · mission {mission_id}")
-                display.hint('Le serveur conserve la mission ; aucune nouvelle demande envoyée.')
+                moved = event.get('relocated_to')
+                display.warning(f"Connexion interrompue · reprise du flux, tentative {event.get('attempt', '?')} · mission {mission_id}"
+                                + (f" · nouvelle adresse {moved}" if moved else ""))
+                display.hint('Le serveur conserve la mission ; le client suit le PC, même après un redémarrage.')
 
             elif etype in ("error", "mission_interrupted"):
                 if live_spinner:

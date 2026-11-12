@@ -56,8 +56,9 @@ def test_auto_selects_remote_only_after_observing_readiness(ready):
     asyncio.run(scenario())
 
 
-def test_unknown_post_acceptance_never_falls_back_locally_and_retains_key():
+def test_unknown_acceptance_is_replayed_with_its_key_and_never_falls_back_locally(monkeypatch):
     config.set('mode','auto');config.set('server_url','https://configured.example');config.set('api_key','test')
+    monkeypatch.setattr(ui.time, 'sleep', lambda seconds: None)
     class Uncertain(ObservedBridge):
         def mission_start(self,**kwargs):
             self.calls.append(('start',kwargs))
@@ -70,13 +71,15 @@ def test_unknown_post_acceptance_never_falls_back_locally_and_retains_key():
             await app.submit('Exact task')
             app.local.assert_not_awaited()
             key = app.history.state['pending_request']['idempotency_key']
+            starts = [call for call in bridge.calls if isinstance(call,tuple)]
+            # Automatic replays: same payload, same key; the bridge deduplicates.
+            assert len(starts)==4 and all(call==starts[0] for call in starts)
             bridge.readiness = {'ok':False,'error':'Unreachable'}
             await app.submit('/retry')
             app.local.assert_not_awaited()
             assert bridge.calls.count('doctor')==1
             starts = [call for call in bridge.calls if isinstance(call,tuple)]
-            assert len(starts)==2 and starts[0]==starts[1]
-            assert starts[1][1]['idempotency_key']==key
+            assert len(starts)==8 and all(call[1]['idempotency_key']==key for call in starts)
     asyncio.run(scenario())
 
 

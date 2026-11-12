@@ -21,6 +21,19 @@ def _digest(path: Path) -> str:
     return digest.hexdigest()
 
 
+#: Repository internals and credential stores: a delivered file there would be
+#: executed or trusted by other tools (git hooks, fsmonitor, ssh, cloud CLIs).
+_PRIVATE_DIRS = {".git", ".hg", ".svn", ".ssh", ".gnupg", ".aws", ".kube", ".docker"}
+_PRIVATE_FILES = {".netrc", ".npmrc", ".pypirc", ".git-credentials"}
+
+
+def _private(filename: str) -> bool:
+    parts = [part.lower() for part in filename.split("/")]
+    name = parts[-1]
+    return (any(part in _PRIVATE_DIRS for part in parts[:-1]) or name in _PRIVATE_DIRS
+            or name in _PRIVATE_FILES or name == ".env" or name.startswith(".env."))
+
+
 def receive_file(event: dict, client, workspace: str | Path = "") -> Path:
     """Publish a local file only after its complete contents have been checked."""
     filename = event.get("filename")
@@ -29,6 +42,8 @@ def receive_file(event: dict, client, workspace: str | Path = "") -> Path:
             or PurePosixPath(filename).is_absolute() or PureWindowsPath(filename).drive
             or any(part in ("", ".", "..") for part in filename.split("/"))):
         raise ValueError("Invalid transfer filename")
+    if _private(filename):
+        raise ValueError("Transfer refused: repository internals and credential files stay untouched")
     root = Path(workspace or os.getcwd()).resolve()
     target = root.joinpath(*filename.split("/"))
     if target.is_symlink() or not target.resolve().is_relative_to(root):

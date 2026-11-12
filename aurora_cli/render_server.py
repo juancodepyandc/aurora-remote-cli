@@ -157,7 +157,7 @@ class RenderServer:
                     return
             was_busy = self.app.busy
             if was_busy and not presentation_command(raw):
-                self.app.note('Une mission est active. Ctrl+C demande son arrêt ; le brouillon est conservé.')
+                self.app.queue_request(raw)  # starts when the active mission ends
                 return
             self.spawn(self.app.submit(raw),mission=not was_busy and not presentation_command(raw))
         elif command in {'theme_preview','theme_commit','theme_cancel'}:
@@ -179,9 +179,7 @@ class RenderServer:
                     self.picker = ''
             self.app.refresh_body()
         elif command in {'model','model_next'}:
-            if self.app.busy:
-                self.app.note('Le modèle de la mission active reste inchangé.')
-                return
+            # A new default applies to the next missions; the active one keeps its model.
             choices = ['',*dict.fromkeys(self.app.models)]
             if command == 'model_next':
                 current = config.get('default_model','')
@@ -190,6 +188,8 @@ class RenderServer:
                 self.app.note('Modèle absent du dernier inventaire.')
                 return
             config.set('default_model',value)
+            if self.app.busy:
+                self.app.show_toast('Modèle retenu pour les prochaines missions', 'info')
             self.picker = ''
         elif command in {'page','view','view_next'}:
             if command == 'view_next':
@@ -219,14 +219,18 @@ class RenderServer:
             else:
                 self.app.note('Aucune mission active à arrêter.')
         elif command == 'new':
-            if self.app.busy:
-                self.app.note('Arrêtez la mission avant de changer de conversation.')
+            if self.app.busy and not self.app.detach_mission():
+                self.app.note('Mission locale en cours : Ctrl+C l’arrête avant une nouvelle conversation.')
                 return
             self.app.new_conversation()
         elif command == 'quit':
+            # Quitting is always possible: a remote mission goes on on the PC
+            # (reattach with /attach ID), a local one is stopped first.
             if self.app.busy:
-                self.app.note('Une mission est active. Ctrl+C demande son arrêt avant de quitter.')
-                return
+                if self.app.local_process is not None:
+                    await self.app.stop()
+                else:
+                    self.app.detach_mission()
             self.closed = True
             self.write({'version':VERSION,'type':'exit'})
         else:

@@ -35,7 +35,9 @@ PERMISSION_LEVELS = ("SAFE", "STANDARD", "AUTONOMOUS", "FULL")
 DEFAULT_CONFIG: dict[str, Any] = {
     "server_url": "",
     "api_key": "",
-    "default_permissions": "AUTONOMOUS",
+    # No guard-rail by default: the user's own PC, at full capability.
+    # `/permissions` or `jobia permissions LEVEL` restricts it at any time.
+    "default_permissions": "FULL",
     "default_workspace": "",
     "theme": "",
     "language": "auto",
